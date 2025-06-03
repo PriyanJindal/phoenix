@@ -459,7 +459,9 @@ def main() -> None:
         host=host,  # type: ignore[arg-type]
         port=port,
         root_path=host_root_path,
+        log_level=Settings.logging_level,
     )
+    print("server config", server_config)
 
     if tls_enabled_for_http:
         assert tls_config
