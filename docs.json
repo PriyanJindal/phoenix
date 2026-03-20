@@ -46,10 +46,11 @@
             "pages": ["docs/phoenix"]
           },
           {
-            "group": "Quick Start",
+            "group": "Get Started",
+            "icon": "rocket",
             "pages": [
               {
-                "group": "Get Started with Phoenix",
+                "group": "Quick Start",
                 "pages": [
                   {
                     "group": "Python",
@@ -71,7 +72,14 @@
                   }
                 ]
               },
-              "docs/phoenix/agent-assisted-setup",
+              {
+                "group": "Coding Agents",
+                "pages": [
+                  "docs/phoenix/integrations/developer-tools/coding-agents",
+                  "docs/phoenix/integrations/phoenix-mcp-server",
+                  "docs/phoenix/agent-assisted-setup"
+                ]
+              },
               "docs/phoenix/end-to-end-features-notebook",
               "docs/phoenix/phoenix-demo"
             ]
