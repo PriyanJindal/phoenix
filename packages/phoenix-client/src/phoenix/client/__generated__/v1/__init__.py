@@ -14,6 +14,10 @@ class AnnotationResult(TypedDict):
     explanation: NotRequired[str]
 
 
+class AnonymousUser(TypedDict):
+    auth_method: Literal["ANONYMOUS"]
+
+
 class CategoricalAnnotationValue(TypedDict):
     label: str
     score: NotRequired[float]
@@ -794,6 +798,10 @@ class GetPromptsResponseBody(TypedDict):
 class GetUsersResponseBody(TypedDict):
     data: Sequence[Union[LocalUser, OAuth2User, LDAPUser]]
     next_cursor: Optional[str]
+
+
+class GetViewerResponseBody(TypedDict):
+    data: Union[LocalUser, OAuth2User, LDAPUser, AnonymousUser]
 
 
 class HTTPValidationError(TypedDict):

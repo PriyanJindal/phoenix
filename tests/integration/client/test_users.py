@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from secrets import token_hex
-from typing import Literal, Optional, Union, cast
+from typing import Iterator, Literal, Optional, Union, cast
 
 import httpx
 import pytest
@@ -685,3 +685,51 @@ class TestEmailSanitization:
 
         # Clean up
         users_api.delete(user_id=created_user["id"])
+
+
+class TestGetViewer:
+    """Tests for the GET /v1/user endpoint."""
+
+    async def test_returns_anonymous_user_when_auth_disabled(
+        self,
+        _ports: Iterator[int],
+        _env_database: dict[str, str],
+    ) -> None:
+        """When auth is disabled, GET /v1/user returns an anonymous user."""
+        from .._helpers import _server
+
+        env = {
+            **_env_database,
+            "PHOENIX_PORT": str(next(_ports)),
+            "PHOENIX_GRPC_PORT": str(next(_ports)),
+        }
+        with _server(_AppInfo(env)) as app:
+            client = _httpx_client(app)
+            response = client.get("v1/user")
+            response.raise_for_status()
+            data = response.json()["data"]
+            assert data["auth_method"] == "ANONYMOUS"
+
+    async def test_returns_authenticated_user_profile(
+        self,
+        _app: _AppInfo,
+    ) -> None:
+        """When auth is enabled, GET /v1/user returns the authenticated user's profile."""
+        client = _httpx_client(_app, _app.admin_secret)
+        response = client.get("v1/user")
+        response.raise_for_status()
+        data = response.json()["data"]
+        assert data["auth_method"] in ("LOCAL", "OAUTH2", "LDAP")
+        assert "username" in data
+        assert "email" in data
+        assert "id" in data
+        assert "role" in data
+
+    async def test_returns_401_without_credentials(
+        self,
+        _app: _AppInfo,
+    ) -> None:
+        """When auth is enabled and no token is provided, GET /v1/user returns 401."""
+        client = _httpx_client(_app)
+        response = client.get("v1/user")
+        assert response.status_code == 401
