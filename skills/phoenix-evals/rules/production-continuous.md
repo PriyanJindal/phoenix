@@ -33,6 +33,95 @@ Build a continuous monitoring loop:
 4. **Queue concerning results** for human review
 5. **Create test cases** from recurring failure patterns
 
+### Python
+
+```python
+from phoenix.client import Client
+from datetime import datetime, timedelta
+
+client = Client()
+
+# 1. Sample recent spans (includes full attributes for evaluation)
+spans_df = client.spans.get_spans_dataframe(
+    project_identifier="my-app",
+    start_time=datetime.now() - timedelta(hours=1),
+    root_spans_only=True,
+    limit=100,
+)
+
+# 2. Run evaluators
+from phoenix.evals import evaluate_dataframe
+
+results_df = evaluate_dataframe(
+    dataframe=spans_df,
+    evaluators=[quality_eval, safety_eval],
+)
+
+# 3. Upload results as annotations
+from phoenix.evals.utils import to_annotation_dataframe
+
+annotations_df = to_annotation_dataframe(results_df)
+client.spans.log_span_annotations_dataframe(dataframe=annotations_df)
+```
+
+### TypeScript
+
+```typescript
+import { getSpans } from "@arizeai/phoenix-client/spans";
+import { logSpanAnnotations } from "@arizeai/phoenix-client/spans";
+
+// 1. Sample recent spans
+const { spans } = await getSpans({
+  project: { projectName: "my-app" },
+  startTime: new Date(Date.now() - 60 * 60 * 1000),
+  parentId: null, // root spans only
+  limit: 100,
+});
+
+// 2. Run evaluators (user-defined)
+const results = await Promise.all(
+  spans.map(async (span) => ({
+    spanId: span.context.span_id,
+    ...await runEvaluators(span, [qualityEval, safetyEval]),
+  }))
+);
+
+// 3. Upload results as annotations
+await logSpanAnnotations({
+  spanAnnotations: results.map((r) => ({
+    spanId: r.spanId,
+    name: "quality",
+    score: r.qualityScore,
+    label: r.qualityLabel,
+    annotatorKind: "LLM" as const,
+  })),
+});
+```
+
+For trace-level monitoring (e.g., agent workflows), use `get_traces`/`getTraces` to identify traces:
+
+```python
+# Python: identify slow traces
+traces = client.traces.get_traces(
+    project_identifier="my-app",
+    start_time=datetime.now() - timedelta(hours=1),
+    sort="latency_ms",
+    order="desc",
+    limit=50,
+)
+```
+
+```typescript
+// TypeScript: identify slow traces
+import { getTraces } from "@arizeai/phoenix-client/traces";
+
+const { traces } = await getTraces({
+  project: { projectName: "my-app" },
+  startTime: new Date(Date.now() - 60 * 60 * 1000),
+  limit: 50,
+});
+```
+
 ## Alerting
 
 | Condition | Severity | Action |
