@@ -2,20 +2,26 @@ import { css } from "@emotion/react";
 import copy from "copy-to-clipboard";
 import { useCallback, useRef, useState } from "react";
 
-import {
-  Button,
-  Icon,
-  Icons,
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  Popover,
-} from "@phoenix/components";
-import type { CopyItem } from "@phoenix/hooks/useMatchesWithCrumb";
+import { Button } from "../button";
+import { Icon } from "../icon";
+import { Menu, MenuItem, MenuTrigger } from "../menu";
+import { Popover } from "../overlay";
+import type { CopyActionMenuItem } from "./types";
 
 const SHOW_COPIED_TIMEOUT_MS = 2000;
 
-export function NavCopyActionMenu({ items }: { items: CopyItem[] }) {
+export interface CopyActionMenuProps {
+  /**
+   * The items to display in the copy action menu.
+   */
+  items: CopyActionMenuItem[];
+}
+
+/**
+ * A menu button that presents a list of copyable items.
+ * Each item copies its value to the clipboard when selected.
+ */
+export function CopyActionMenu({ items }: CopyActionMenuProps) {
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -35,8 +41,7 @@ export function NavCopyActionMenu({ items }: { items: CopyItem[] }) {
     [items]
   );
 
-  const icon =
-    copiedItemId != null ? <Icons.Checkmark /> : <Icons.DuplicateOutline />;
+  const iconKey = copiedItemId != null ? "Checkmark" : "DuplicateOutline";
 
   return (
     <MenuTrigger>
@@ -44,8 +49,13 @@ export function NavCopyActionMenu({ items }: { items: CopyItem[] }) {
         size="S"
         variant="quiet"
         aria-label="Copy"
-        leadingVisual={<Icon svg={icon} />}
-        className="nav-copy-action-menu__button"
+        leadingVisual={
+          <Icon
+            svgKey={iconKey}
+            color={copiedItemId != null ? "success" : "inherit"}
+          />
+        }
+        className="copy-action-menu__button"
         data-copied={copiedItemId != null || undefined}
       >
         {copiedItemId != null ? "Copied" : undefined}
@@ -62,7 +72,9 @@ export function NavCopyActionMenu({ items }: { items: CopyItem[] }) {
               key={item.name}
               id={item.name}
               textValue={`Copy ${item.name}`}
-              leadingContent={<Icon svg={<Icons.DuplicateOutline />} />}
+              leadingContent={
+                <Icon svgKey={item.iconKey ?? "DuplicateOutline"} />
+              }
             >
               {item.name}
             </MenuItem>

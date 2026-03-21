@@ -3,10 +3,10 @@ import copy from "copy-to-clipboard";
 import type { RefObject } from "react";
 import { useCallback, useState } from "react";
 
-import type { ButtonProps } from "./button";
-import { Button } from "./button";
-import { Icon, Icons } from "./icon";
-import { Tooltip, TooltipTrigger } from "./tooltip";
+import type { ButtonProps } from "../button";
+import { Button } from "../button";
+import { Icon } from "../icon";
+import { Tooltip, TooltipTrigger } from "../tooltip";
 
 const SHOW_COPIED_TIMEOUT_MS = 2000;
 
@@ -47,20 +47,20 @@ export function CopyToClipboardButton(props: CopyToClipboardButtonProps) {
   }, [text]);
   return (
     <div className="copy-to-clipboard-button" css={copyToClipboardButtonCSS}>
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         <Button
           size={size}
           leadingVisual={
             <Icon
               color={isCopied ? "success" : "inherit"}
-              svg={isCopied ? <Icons.Checkmark /> : <Icons.DuplicateOutline />}
+              svgKey={isCopied ? "Checkmark" : "DuplicateOutline"}
             />
           }
           onPress={onPress}
           {...otherProps}
           className="copy-button"
         />
-        <Tooltip offset={5}>Copy</Tooltip>
+        <Tooltip offset={1}>Copy</Tooltip>
       </TooltipTrigger>
     </div>
   );
