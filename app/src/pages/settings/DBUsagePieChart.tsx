@@ -11,18 +11,15 @@ import { storageSizeFormatter } from "@phoenix/utils/storageSizeFormatUtils";
 import type { DBUsagePieChart_data$key } from "./__generated__/DBUsagePieChart_data.graphql";
 
 const REMAINING_TEXT = "remaining";
-function TooltipContent({
-  active,
-  payload,
-}: TooltipContentProps<number, string>) {
+function TooltipContent({ active, payload }: TooltipContentProps) {
   if (active && payload && payload.length) {
     return (
       <ChartTooltip>
         <ChartTooltipItem
           shape="square"
           color={payload[0].payload.fill || "transparent"}
-          name={payload[0].name || "--"}
-          value={storageSizeFormatter(payload[0].value || 0)}
+          name={String(payload[0].name ?? "--")}
+          value={storageSizeFormatter(Number(payload[0].value) || 0)}
         />
       </ChartTooltip>
     );

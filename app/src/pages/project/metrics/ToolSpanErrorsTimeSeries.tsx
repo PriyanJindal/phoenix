@@ -34,16 +34,12 @@ import {
 
 import type { ToolSpanErrorsTimeSeriesQuery } from "./__generated__/ToolSpanErrorsTimeSeriesQuery.graphql";
 
-function TooltipContent({
-  active,
-  payload,
-  label,
-}: TooltipContentProps<number, string>) {
+function TooltipContent({ active, payload, label }: TooltipContentProps) {
   const SemanticChartColors = useSemanticChartColors();
   const { fullTimeFormatter } = useTimeFormatters();
   if (active && payload && payload.length) {
     const errorValue = payload[0]?.value ?? null;
-    const errorString = intFormatter(errorValue);
+    const errorString = intFormatter(Number(errorValue));
     return (
       <ChartTooltip>
         {label && (

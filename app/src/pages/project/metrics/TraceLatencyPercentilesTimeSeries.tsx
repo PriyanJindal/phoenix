@@ -34,37 +34,28 @@ import { formatFloat, intFormatter } from "@phoenix/utils/numberFormatUtils";
 
 import type { TraceLatencyPercentilesTimeSeriesQuery } from "./__generated__/TraceLatencyPercentilesTimeSeriesQuery.graphql";
 
-function TooltipContent({
-  active,
-  payload,
-  label,
-}: TooltipContentProps<number, string>) {
+function TooltipContent({ active, payload, label }: TooltipContentProps) {
   const { fullTimeFormatter } = useTimeFormatters();
   if (active && payload && payload.length) {
     return (
       <ChartTooltip>
         {label && (
           <Text weight="heavy" size="S">{`${fullTimeFormatter(
-            new Date(label)
+            new Date(String(label))
           )}`}</Text>
         )}
-        {payload.map(
-          (
-            entry: { value?: number; color?: string; dataKey?: string },
-            index: number
-          ) => {
-            if (!entry.value) return null;
-            return (
-              <ChartTooltipItem
-                key={index}
-                color={entry.color || "#ffffff"}
-                shape="line"
-                name={entry.dataKey || "unknown"}
-                value={`${formatFloat(entry.value)} s`}
-              />
-            );
-          }
-        )}
+        {payload.map((entry, index) => {
+          if (!entry.value) return null;
+          return (
+            <ChartTooltipItem
+              key={index}
+              color={entry.color || "#ffffff"}
+              shape="line"
+              name={String(entry.dataKey || "unknown")}
+              value={`${formatFloat(Number(entry.value))} s`}
+            />
+          );
+        })}
       </ChartTooltip>
     );
   }

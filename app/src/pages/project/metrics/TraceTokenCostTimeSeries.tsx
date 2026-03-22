@@ -34,18 +34,14 @@ import {
 
 import type { TraceTokenCostTimeSeriesQuery } from "./__generated__/TraceTokenCostTimeSeriesQuery.graphql";
 
-function TooltipContent({
-  active,
-  payload,
-  label,
-}: TooltipContentProps<number, string>) {
+function TooltipContent({ active, payload, label }: TooltipContentProps) {
   const chartColors = useCategoryChartColors();
   const { fullTimeFormatter } = useTimeFormatters();
   if (active && payload && payload.length) {
     const promptValue = payload[0]?.value;
     const completionValue = payload[1]?.value;
-    const promptString = costFormatter(promptValue);
-    const completionString = costFormatter(completionValue);
+    const promptString = costFormatter(Number(promptValue));
+    const completionString = costFormatter(Number(completionValue));
     return (
       <ChartTooltip>
         {label && (

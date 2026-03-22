@@ -33,41 +33,28 @@ import { formatFloat } from "@phoenix/utils/numberFormatUtils";
 import type { SpanAnnotationScoreTimeSeriesQuery } from "./__generated__/SpanAnnotationScoreTimeSeriesQuery.graphql";
 import type { ProjectMetricViewProps } from "./types";
 
-function TooltipContent({
-  active,
-  payload,
-  label,
-}: TooltipContentProps<number, string>) {
+function TooltipContent({ active, payload, label }: TooltipContentProps) {
   const { fullTimeFormatter } = useTimeFormatters();
   if (active && payload && payload.length) {
     return (
       <ChartTooltip>
         {label && (
           <Text weight="heavy" size="S">{`${fullTimeFormatter(
-            new Date(label)
+            new Date(String(label))
           )}`}</Text>
         )}
-        {payload.map(
-          (
-            entry: {
-              value?: number;
-              color?: string;
-              dataKey?: string | number;
-            },
-            index: number
-          ) => {
-            if (!entry.value) return null;
-            return (
-              <ChartTooltipItem
-                key={index}
-                color={entry.color || "#FF00FF"} // hot pink, fail loudly.
-                shape="line"
-                name={String(entry.dataKey || "unknown")}
-                value={entry.value.toFixed(2)}
-              />
-            );
-          }
-        )}
+        {payload.map((entry, index) => {
+          if (!entry.value) return null;
+          return (
+            <ChartTooltipItem
+              key={index}
+              color={entry.color || "#FF00FF"} // hot pink, fail loudly.
+              shape="line"
+              name={String(entry.dataKey || "unknown")}
+              value={Number(entry.value).toFixed(2)}
+            />
+          );
+        })}
       </ChartTooltip>
     );
   }

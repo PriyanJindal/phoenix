@@ -28,11 +28,7 @@ import { intFormatter } from "@phoenix/utils/numberFormatUtils";
 
 import type { TopModelsByTokenQuery } from "./__generated__/TopModelsByTokenQuery.graphql";
 
-function TooltipContent({
-  active,
-  payload,
-  label,
-}: TooltipContentProps<number, string>) {
+function TooltipContent({ active, payload, label }: TooltipContentProps) {
   const colors = useCategoryChartColors();
 
   if (active && payload && payload.length) {
@@ -43,20 +39,20 @@ function TooltipContent({
       <ChartTooltip>
         {label && (
           <Text weight="heavy" size="S">
-            {label}
+            {String(label)}
           </Text>
         )}
         <ChartTooltipItem
           color={colors.category1}
           shape="circle"
           name="Prompt tokens"
-          value={intFormatter(promptTokens)}
+          value={intFormatter(Number(promptTokens))}
         />
         <ChartTooltipItem
           color={colors.category2}
           shape="circle"
           name="Completion tokens"
-          value={intFormatter(completionTokens)}
+          value={intFormatter(Number(completionTokens))}
         />
       </ChartTooltip>
     );
