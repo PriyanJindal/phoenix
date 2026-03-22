@@ -3,6 +3,7 @@ import { graphql, useMutation } from "react-relay";
 import { useNavigate } from "react-router";
 
 import {
+  Alert,
   Button,
   Dialog,
   Flex,
@@ -24,7 +25,7 @@ import {
   DialogTitleExtra,
 } from "@phoenix/components/core/dialog";
 import { FloatingToolbarContainer } from "@phoenix/components/core/toolbar/FloatingToolbarContainer";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
 
 interface SelectedExperiment {
@@ -60,7 +61,7 @@ export function ExperimentSelectionToolbar(
   } = props;
   const isPlural = selectedExperiments.length !== 1;
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleDelete = useCallback(() => {
     deleteExperiments({
@@ -81,17 +82,14 @@ export function ExperimentSelectionToolbar(
       },
       onError: (error) => {
         const formattedError = getErrorMessagesFromRelayMutationError(error);
-        notifyError({
-          title: "An error occurred",
-          message: `Failed to delete experiments: ${formattedError?.[0] ?? error.message}`,
-        });
-        setIsDeleteDialogOpen(false);
+        setDeleteError(
+          `Failed to delete experiments: ${formattedError?.[0] ?? error.message}`
+        );
       },
     });
   }, [
     deleteExperiments,
     isPlural,
-    notifyError,
     notifySuccess,
     onClearSelection,
     onExperimentsDeleted,
@@ -158,7 +156,10 @@ export function ExperimentSelectionToolbar(
       <ModalOverlay
         isDismissable
         isOpen={isDeleteDialogOpen}
-        onOpenChange={setIsDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (open) setDeleteError(null);
+          setIsDeleteDialogOpen(open);
+        }}
       >
         <Modal size="S">
           <Dialog>
@@ -169,6 +170,13 @@ export function ExperimentSelectionToolbar(
                   <DialogCloseButton slot="close" />
                 </DialogTitleExtra>
               </DialogHeader>
+              {deleteError && (
+                <View paddingX="size-200" paddingTop="size-100">
+                  <Alert variant="danger" banner>
+                    {deleteError}
+                  </Alert>
+                </View>
+              )}
               <View padding="size-200">
                 <Text color="danger">
                   {`Are you sure you want to delete these experiments? This will also delete all associated annotations and traces, and it cannot be undone.`}

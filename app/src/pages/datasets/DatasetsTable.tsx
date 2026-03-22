@@ -42,12 +42,7 @@ import {
 } from "@phoenix/components/table/styles";
 import { TableEmptyWrap } from "@phoenix/components/table/TableEmptyWrap";
 import { TimestampCell } from "@phoenix/components/table/TimestampCell";
-import {
-  useNotifyError,
-  useNotifySuccess,
-  useViewerCanModify,
-} from "@phoenix/contexts";
-import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
+import { useNotifySuccess, useViewerCanModify } from "@phoenix/contexts";
 import { makeSafeColumnId } from "@phoenix/utils/tableUtils";
 
 import type { DatasetsTable_datasets$key } from "./__generated__/DatasetsTable_datasets.graphql";
@@ -89,7 +84,6 @@ export function DatasetsTable(props: DatasetsTableProps) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
   const { data, loadNext, hasNext, isLoadingNext, refetch } =
     usePaginationFragment<
       DatasetsTableDatasetsQuery,
@@ -331,14 +325,6 @@ export function DatasetsTable(props: DatasetsTableProps) {
                     { fetchPolicy: "store-and-network" }
                   );
                 }}
-                onDatasetEditError={(error) => {
-                  const formattedError =
-                    getErrorMessagesFromRelayMutationError(error);
-                  notifyError({
-                    title: "Dataset update failed",
-                    message: formattedError?.[0] ?? error.message,
-                  });
-                }}
                 onDatasetDelete={() => {
                   notifySuccess({
                     title: "Dataset deleted",
@@ -360,14 +346,6 @@ export function DatasetsTable(props: DatasetsTableProps) {
                     { fetchPolicy: "store-and-network" }
                   );
                 }}
-                onDatasetDeleteError={(error) => {
-                  const formattedError =
-                    getErrorMessagesFromRelayMutationError(error);
-                  notifyError({
-                    title: "Dataset deletion failed",
-                    message: formattedError?.[0] ?? error.message,
-                  });
-                }}
               />
             </Flex>
           );
@@ -375,7 +353,7 @@ export function DatasetsTable(props: DatasetsTableProps) {
       });
     }
     return cols;
-  }, [filter, labelFilter, notifyError, notifySuccess, refetch, canModify]);
+  }, [filter, labelFilter, notifySuccess, refetch, canModify]);
 
   const table = useReactTable({
     columns,

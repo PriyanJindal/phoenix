@@ -4,16 +4,16 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { startTransition, useCallback, useMemo } from "react";
+import { startTransition, useCallback, useMemo, useState } from "react";
 import { graphql, useMutation, useRefetchableFragment } from "react-relay";
 
-import { Flex, Icon, Icons } from "@phoenix/components";
+import { Alert, Flex, Icon, Icons } from "@phoenix/components";
 import { DeleteAPIKeyButton } from "@phoenix/components/auth";
 import { TextCell } from "@phoenix/components/table";
 import { tableCSS } from "@phoenix/components/table/styles";
 import { TableEmpty } from "@phoenix/components/table/TableEmpty";
 import { TimestampCell } from "@phoenix/components/table/TimestampCell";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
 
 import type { SystemAPIKeysTableFragment$key } from "./__generated__/SystemAPIKeysTableFragment.graphql";
@@ -47,7 +47,7 @@ export function SystemAPIKeysTable({
     query
   );
 
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   const notifySuccess = useNotifySuccess();
   const [commit] = useMutation(graphql`
     mutation SystemAPIKeysTableDeleteAPIKeyMutation($input: DeleteApiKeyInput!) {
@@ -81,14 +81,11 @@ export function SystemAPIKeysTable({
         },
         onError: (error) => {
           const formattedError = getErrorMessagesFromRelayMutationError(error);
-          notifyError({
-            title: "Error deleting system key",
-            message: formattedError?.[0] ?? error.message,
-          });
+          setError(formattedError?.[0] ?? error.message);
         },
       });
     },
-    [commit, notifyError, notifySuccess, refetch]
+    [commit, notifySuccess, refetch]
   );
 
   const tableData = useMemo(() => {
@@ -148,68 +145,71 @@ export function SystemAPIKeysTable({
   const rows = table.getRowModel().rows;
   const isEmpty = table.getRowModel().rows.length === 0;
   return (
-    <table css={tableCSS}>
-      <thead>
-        {table.getHeaderGroups().map((headerGroup) => (
-          <tr key={headerGroup.id}>
-            {headerGroup.headers.map((header) => (
-              <th colSpan={header.colSpan} key={header.id}>
-                {header.isPlaceholder ? null : (
-                  <div
-                    {...{
-                      className: header.column.getCanSort() ? "sort" : "",
-                      onClick: header.column.getToggleSortingHandler(),
-                      style: {
-                        left: header.getStart(),
-                        width: header.getSize(),
-                      },
-                    }}
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
-                    {header.column.getIsSorted() ? (
-                      <Icon
-                        className="sort-icon"
-                        svg={
-                          header.column.getIsSorted() === "asc" ? (
-                            <Icons.ArrowUpFilled />
-                          ) : (
-                            <Icons.ArrowDownFilled />
-                          )
-                        }
-                      />
-                    ) : null}
-                  </div>
-                )}
-              </th>
-            ))}
-          </tr>
-        ))}
-      </thead>
-      {isEmpty ? (
-        <TableEmpty message="No Keys" />
-      ) : (
-        <tbody>
-          {rows.map((row) => {
-            return (
-              <tr key={row.id}>
-                {row.getVisibleCells().map((cell) => {
-                  return (
-                    <td key={cell.id}>
+    <>
+      {error && <Alert variant="danger">{error}</Alert>}
+      <table css={tableCSS}>
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <th colSpan={header.colSpan} key={header.id}>
+                  {header.isPlaceholder ? null : (
+                    <div
+                      {...{
+                        className: header.column.getCanSort() ? "sort" : "",
+                        onClick: header.column.getToggleSortingHandler(),
+                        style: {
+                          left: header.getStart(),
+                          width: header.getSize(),
+                        },
+                      }}
+                    >
                       {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
+                        header.column.columnDef.header,
+                        header.getContext()
                       )}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      )}
-    </table>
+                      {header.column.getIsSorted() ? (
+                        <Icon
+                          className="sort-icon"
+                          svg={
+                            header.column.getIsSorted() === "asc" ? (
+                              <Icons.ArrowUpFilled />
+                            ) : (
+                              <Icons.ArrowDownFilled />
+                            )
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        {isEmpty ? (
+          <TableEmpty message="No Keys" />
+        ) : (
+          <tbody>
+            {rows.map((row) => {
+              return (
+                <tr key={row.id}>
+                  {row.getVisibleCells().map((cell) => {
+                    return (
+                      <td key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        )}
+      </table>
+    </>
   );
 }

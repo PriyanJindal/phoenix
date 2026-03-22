@@ -43,7 +43,7 @@ import {
 } from "@phoenix/components";
 import { GenerativeProviderIcon } from "@phoenix/components/generative";
 import { tableCSS } from "@phoenix/components/table/styles";
-import { useNotifyError, useNotifySuccess, useViewer } from "@phoenix/contexts";
+import { useNotifySuccess, useViewer } from "@phoenix/contexts";
 import { useCredentialsContext } from "@phoenix/contexts/CredentialsContext";
 import { isModelProvider } from "@phoenix/utils/generativeUtils";
 
@@ -416,7 +416,7 @@ function ServerCredentials({
   provider: GenerativeProvidersCard_data$data["modelProviders"][number];
 }) {
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
 
   // Lazy load secrets only when this component mounts (admin opens secrets tab)
   const secretKeys = useMemo(
@@ -534,20 +534,11 @@ function ServerCredentials({
           });
         },
         onError: (error) => {
-          notifyError({
-            title: "Failed to update secrets",
-            message: error instanceof Error ? error.message : String(error),
-          });
+          setError(error instanceof Error ? error.message : String(error));
         },
       });
     },
-    [
-      provider.credentialRequirements,
-      savedServerValues,
-      commit,
-      notifySuccess,
-      notifyError,
-    ]
+    [provider.credentialRequirements, savedServerValues, commit, notifySuccess]
   );
 
   // Get keys that have values on the server (including unparsable secrets)
@@ -583,10 +574,7 @@ function ServerCredentials({
         });
       },
       onError: (error) => {
-        notifyError({
-          title: "Failed to delete secrets",
-          message: error instanceof Error ? error.message : String(error),
-        });
+        setError(error instanceof Error ? error.message : String(error));
       },
     });
   }, [
@@ -595,7 +583,6 @@ function ServerCredentials({
     provider.credentialRequirements,
     reset,
     notifySuccess,
-    notifyError,
   ]);
 
   // Check if any credentials for this provider have parse errors
@@ -622,6 +609,7 @@ function ServerCredentials({
 
   return (
     <Flex direction="column" gap="size-100">
+      {error && <Alert variant="danger">{error}</Alert>}
       {providerUnparsableSecrets.map(({ envVarName, parseError }) => (
         <Alert key={envVarName} variant="danger" title={envVarName}>
           {parseError}

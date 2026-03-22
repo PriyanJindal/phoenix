@@ -1,7 +1,6 @@
 import { graphql, useMutation } from "react-relay";
 
 import { Button } from "@phoenix/components";
-import { useNotifyError } from "@phoenix/contexts";
 
 import type { GenerateSystemAPIKeyButtonMutation } from "./__generated__/GenerateSystemAPIKeyButtonMutation.graphql";
 
@@ -16,6 +15,7 @@ type GenerateSystemAPIKeyButtonProps = {
    * @default "System Key"
    */
   keyName?: string;
+  onError?: (message: string) => void;
 };
 
 /**
@@ -25,9 +25,8 @@ type GenerateSystemAPIKeyButtonProps = {
 export function GenerateSystemAPIKeyButton({
   onApiKeyGenerated,
   keyName = "System Key",
+  onError,
 }: GenerateSystemAPIKeyButtonProps) {
-  const notifyError = useNotifyError();
-
   const [commit, isCommitting] =
     useMutation<GenerateSystemAPIKeyButtonMutation>(graphql`
       mutation GenerateSystemAPIKeyButtonMutation($name: String!) {
@@ -49,10 +48,7 @@ export function GenerateSystemAPIKeyButton({
         onApiKeyGenerated(response.createSystemApiKey.jwt);
       },
       onError: (error) => {
-        notifyError({
-          title: "Error creating system key",
-          message: error.message,
-        });
+        onError?.(error.message);
       },
     });
   };

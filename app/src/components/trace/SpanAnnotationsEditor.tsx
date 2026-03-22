@@ -16,6 +16,7 @@ import {
 } from "react-relay";
 
 import {
+  Alert,
   Autocomplete,
   Button,
   Dialog,
@@ -46,7 +47,6 @@ import type { SpanAnnotationsEditorSpanAnnotationsListQuery } from "@phoenix/com
 import { AnnotationConfigList } from "@phoenix/components/trace/AnnotationConfigList";
 import type { AnnotationFormMutationResult } from "@phoenix/components/trace/AnnotationFormProvider";
 import { AnnotationFormProvider } from "@phoenix/components/trace/AnnotationFormProvider";
-import { useNotifyError } from "@phoenix/contexts";
 import { useViewer } from "@phoenix/contexts/ViewerContext";
 import type { AnnotationConfig as AnnotationConfigType } from "@phoenix/pages/settings/types";
 import { deduplicateAnnotationsByName } from "@phoenix/pages/trace/utils";
@@ -333,7 +333,7 @@ function SpanAnnotationsList(props: {
     annotationConfigsRefetchKey,
   } = props;
   const { viewer } = useViewer();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   // If not authenticated, pass a null user to the query to get the system annotation
   const userFilter = useMemo(() => (viewer ? [viewer.id] : [null]), [viewer]);
 
@@ -493,10 +493,7 @@ function SpanAnnotationsList(props: {
                 success: false,
                 error: error.message,
               });
-              notifyError({
-                title: "Error deleting annotation",
-                message: error.message,
-              });
+              setError(error.message);
             },
           });
         } else {
@@ -505,14 +502,7 @@ function SpanAnnotationsList(props: {
           });
         }
       }),
-    [
-      commitDeleteAnnotation,
-      spanNodeId,
-      timeRange,
-      projectId,
-      notifyError,
-      userFilter,
-    ]
+    [commitDeleteAnnotation, spanNodeId, timeRange, projectId, userFilter]
   );
 
   const [commitEdit] = useMutation<SpanAnnotationsEditorEditAnnotationMutation>(
@@ -594,17 +584,14 @@ function SpanAnnotationsList(props: {
                   success: false,
                   error: error.message,
                 });
-                notifyError({
-                  title: "Error editing annotation",
-                  message: error.message,
-                });
+                setError(error.message);
               },
             });
           });
         }
       });
     },
-    [commitEdit, spanNodeId, userFilter, timeRange, projectId, notifyError]
+    [commitEdit, spanNodeId, userFilter, timeRange, projectId]
   );
 
   const [commitCreateAnnotation] =
@@ -670,21 +657,11 @@ function SpanAnnotationsList(props: {
               success: false,
               error: error.message,
             });
-            notifyError({
-              title: "Error creating annotation",
-              message: error.message,
-            });
+            setError(error.message);
           },
         });
       }),
-    [
-      commitCreateAnnotation,
-      spanNodeId,
-      timeRange,
-      projectId,
-      notifyError,
-      userFilter,
-    ]
+    [commitCreateAnnotation, spanNodeId, timeRange, projectId, userFilter]
   );
 
   return (
@@ -695,6 +672,7 @@ function SpanAnnotationsList(props: {
       width="100%"
       padding="size-200"
     >
+      {error && <Alert variant="danger">{error}</Alert>}
       {!annotationConfigsLength && !extraAnnotationCards && (
         <Flex
           direction="column"

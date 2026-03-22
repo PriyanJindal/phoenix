@@ -31,7 +31,7 @@ import {
 import { AnnotationLabel } from "@phoenix/components/annotation";
 import { IndeterminateCheckboxCell } from "@phoenix/components/table/IndeterminateCheckboxCell";
 import { tableCSS } from "@phoenix/components/table/styles";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 
 import type { ProjectAnnotationConfigCardContent_project_annotations$key } from "./__generated__/ProjectAnnotationConfigCardContent_project_annotations.graphql";
 import type { ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation } from "./__generated__/ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation.graphql";
@@ -152,8 +152,8 @@ const ProjectAnnotationConfigCardContent = (
   const [loadingConfigs, setLoadingConfigs] = useState<Record<string, boolean>>(
     {}
   );
+  const [error, setError] = useState<string | null>(null);
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
 
   const data = useLazyLoadQuery<ProjectAnnotationConfigCardContentQuery>(
     graphql`
@@ -242,6 +242,7 @@ const ProjectAnnotationConfigCardContent = (
 
   const addAnnotationConfigToProject = useCallback(
     (annotationConfigId: string) => {
+      setError(null);
       setLoadingConfigs((prev) => ({ ...prev, [annotationConfigId]: true }));
       startTransition(() => {
         addAnnotationConfigToProjectiMutation({
@@ -264,24 +265,17 @@ const ProjectAnnotationConfigCardContent = (
               ...prev,
               [annotationConfigId]: false,
             }));
-            notifyError({
-              title: "Failed to add annotation config",
-              message: error.message || "An unknown error occurred",
-            });
+            setError(error.message || "An unknown error occurred");
           },
         });
       });
     },
-    [
-      projectId,
-      addAnnotationConfigToProjectiMutation,
-      notifySuccess,
-      notifyError,
-    ]
+    [projectId, addAnnotationConfigToProjectiMutation, notifySuccess]
   );
 
   const removeAnnotationConfigFromProject = useCallback(
     (annotationConfigId: string) => {
+      setError(null);
       setLoadingConfigs((prev) => ({ ...prev, [annotationConfigId]: true }));
       removeAnnotationConfigFromProjectMutation({
         variables: {
@@ -303,19 +297,11 @@ const ProjectAnnotationConfigCardContent = (
             ...prev,
             [annotationConfigId]: false,
           }));
-          notifyError({
-            title: "Failed to remove annotation config",
-            message: error.message || "An unknown error occurred",
-          });
+          setError(error.message || "An unknown error occurred");
         },
       });
     },
-    [
-      projectId,
-      removeAnnotationConfigFromProjectMutation,
-      notifySuccess,
-      notifyError,
-    ]
+    [projectId, removeAnnotationConfigFromProjectMutation, notifySuccess]
   );
 
   const { allAnnotationConfigs } = data;
@@ -359,59 +345,62 @@ const ProjectAnnotationConfigCardContent = (
   }
 
   return (
-    <div
-      css={css`
-        overflow: auto;
-      `}
-    >
-      <table
-        css={tableCSS}
-        style={{
-          width: table.getTotalSize(),
-          minWidth: "100%",
-        }}
+    <>
+      {error && <Alert variant="danger">{error}</Alert>}
+      <div
+        css={css`
+          overflow: auto;
+        `}
       >
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th colSpan={header.colSpan} key={header.id}>
-                  {header.isPlaceholder ? null : (
-                    <div
-                      style={{
-                        left: header.getStart(),
-                        width: header.getSize(),
-                      }}
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                    </div>
-                  )}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td
-                  key={cell.id}
-                  style={{
-                    width: cell.column.getSize(),
-                    maxWidth: cell.column.getSize(),
-                  }}
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        <table
+          css={tableCSS}
+          style={{
+            width: table.getTotalSize(),
+            minWidth: "100%",
+          }}
+        >
+          <thead>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th colSpan={header.colSpan} key={header.id}>
+                    {header.isPlaceholder ? null : (
+                      <div
+                        style={{
+                          left: header.getStart(),
+                          width: header.getSize(),
+                        }}
+                      >
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                      </div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <td
+                    key={cell.id}
+                    style={{
+                      width: cell.column.getSize(),
+                      maxWidth: cell.column.getSize(),
+                    }}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 };

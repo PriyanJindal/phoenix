@@ -3,6 +3,7 @@ import { graphql, useMutation } from "react-relay";
 import { useNavigate } from "react-router";
 
 import {
+  Alert,
   Button,
   Dialog,
   DialogTrigger,
@@ -27,7 +28,7 @@ import {
 } from "@phoenix/components/core/dialog";
 import { FloatingToolbarContainer } from "@phoenix/components/core/toolbar/FloatingToolbarContainer";
 import { CreateDatasetForm } from "@phoenix/components/dataset/CreateDatasetForm";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 import { useStreamState } from "@phoenix/contexts/StreamStateContext";
 import { useTracingContext } from "@phoenix/contexts/TracingContext";
 import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
@@ -50,7 +51,7 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
   const { setFetchKey } = useStreamState();
   const navigate = useNavigate();
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   const [isCreatingDataset, setIsCreatingDataset] = useState(false);
   const [isDatasetPopoverOpen, setIsDatasetPopoverOpen] = useState(false);
   const [isDeletingTracesDialogOpen, setIsDeletingTracesDialogOpen] =
@@ -82,6 +83,7 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
   const isPlural = selectedSpans.length !== 1;
   const onAddSpansToDataset = useCallback(
     (datasetId: string) => {
+      setError(null);
       commitSpansToDataset({
         variables: {
           input: {
@@ -106,10 +108,9 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
         },
         onError: (error) => {
           const formattedError = getErrorMessagesFromRelayMutationError(error);
-          notifyError({
-            title: "An error occurred",
-            message: `Failed to add spans to dataset: ${formattedError?.[0] ?? error.message}`,
-          });
+          setError(
+            `Failed to add spans to dataset: ${formattedError?.[0] ?? error.message}`
+          );
         },
       });
     },
@@ -120,10 +121,10 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
       isPlural,
       onClearSelection,
       navigate,
-      notifyError,
     ]
   );
   const onDeleteTraces = useCallback(() => {
+    setError(null);
     commitDeleteTraces({
       variables: {
         traceIds,
@@ -137,19 +138,12 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
       },
       onError: (error) => {
         const formattedError = getErrorMessagesFromRelayMutationError(error);
-        notifyError({
-          title: "An error occurred",
-          message: `Failed to delete traces: ${formattedError?.[0] ?? error.message}`,
-        });
+        setError(
+          `Failed to delete traces: ${formattedError?.[0] ?? error.message}`
+        );
       },
     });
-  }, [
-    commitDeleteTraces,
-    traceIds,
-    notifySuccess,
-    onClearSelection,
-    notifyError,
-  ]);
+  }, [commitDeleteTraces, traceIds, notifySuccess, onClearSelection]);
 
   const onDeletePress = () => {
     setIsDeletingTracesDialogOpen(true);
@@ -157,6 +151,15 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
 
   return (
     <FloatingToolbarContainer>
+      {error && (
+        <Alert
+          variant="danger"
+          dismissable
+          onDismissClick={() => setError(null)}
+        >
+          {error}
+        </Alert>
+      )}
       <Toolbar>
         <Group aria-label="Span selection">
           <IconButton
@@ -218,10 +221,7 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
               setFetchKey(`trace-transfer-${Date.now()}`);
             }}
             onError={(error) => {
-              notifyError({
-                title: "Transfer Failed",
-                message: `Failed to transfer due to error: ${error.message}`,
-              });
+              setError(`Failed to transfer due to error: ${error.message}`);
             }}
           />
           {/* Add dataset dialog */}
@@ -250,10 +250,9 @@ export function SpanSelectionToolbar(props: SpanSelectionToolbarProps) {
                       onDatasetCreateError={(error) => {
                         const formattedError =
                           getErrorMessagesFromRelayMutationError(error);
-                        notifyError({
-                          title: "Dataset creation failed",
-                          message: `Failed to create dataset: ${formattedError?.[0] ?? error.message}`,
-                        });
+                        setError(
+                          `Failed to create dataset: ${formattedError?.[0] ?? error.message}`
+                        );
                       }}
                       onDatasetCreated={(dataset) => {
                         setIsCreatingDataset(false);
