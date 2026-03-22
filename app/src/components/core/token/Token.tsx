@@ -26,7 +26,7 @@ interface TokenProps
    *
    * Can be any valid CSS color value, including CSS variables.
    *
-   * @default "var(--global-color-gray-300)"
+   * @default "var(--global-color-gray-600)"
    */
   color?: string;
   /**
@@ -58,9 +58,7 @@ const tokenBaseCSS = css`
   line-height: var(--global-line-height-s);
   padding: 0 var(--global-dimension-static-size-100);
   border-radius: var(--global-rounding-large);
-  border: 1px solid
-    lch(from var(--internal-token-color) calc((l) * infinity) c h / 0.3);
-  color: lch(from var(--internal-token-color) calc((50 - l) * infinity) 0 0);
+  border: 1px solid transparent;
   user-select: none;
   max-width: var(--token-max-width);
 
@@ -88,19 +86,15 @@ const tokenBaseCSS = css`
   }
 
   &[data-theme="light"] {
-    background: var(--internal-token-color);
-    border-color: var(--internal-token-color);
-    color: lch(from var(--internal-token-color) calc((55 - l) * infinity) 0 0);
+    background: lch(from var(--internal-token-color) 96 calc(c * 0.3) h);
+    border-color: lch(from var(--internal-token-color) 88 calc(c * 0.4) h);
+    color: lch(from var(--internal-token-color) 45 c h);
   }
 
   &[data-theme="dark"] {
-    // generate a new dark token bg color from the input color
-    --scoped-token-dark-bg: lch(
-      from var(--internal-token-color) l c h / calc(alpha - 0.8)
-    );
-    background: var(--scoped-token-dark-bg);
-    // generate a new dark token text color from the input color
-    color: lch(from var(--scoped-token-dark-bg) calc((l) * infinity) c h / 1);
+    background: lch(from var(--internal-token-color) 18 calc(c * 0.2) h);
+    border-color: lch(from var(--internal-token-color) 28 calc(c * 0.3) h);
+    color: lch(from var(--internal-token-color) 90 calc(c * 0.8) h);
   }
 
   &[data-interactive]:not([data-disabled]) {
@@ -173,7 +167,7 @@ function Token(
     children,
     isDisabled,
     css: cssProp,
-    color = "var(--global-color-gray-300)",
+    color = "var(--global-color-gray-600)",
     onPress,
     onRemove,
     size = "M",

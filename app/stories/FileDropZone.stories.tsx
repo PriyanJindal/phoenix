@@ -1,5 +1,5 @@
 import { css } from "@emotion/react";
-import type { Meta, StoryFn } from "@storybook/react";
+import type { StoryObj, Meta, StoryFn } from "@storybook/react";
 import { useCallback, useState } from "react";
 import type { DropItem, FileDropItem } from "react-aria-components";
 
@@ -83,11 +83,7 @@ const meta: Meta<typeof FileDropZone> = {
 
 export default meta;
 
-/**
- * Default drop zone that accepts all file types.
- * Click anywhere in the zone to open the file dialog.
- */
-export const Default: StoryFn<FileDropZoneProps> = (args) => {
+function DefaultRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<File[]>([]);
 
   return (
@@ -105,14 +101,15 @@ export const Default: StoryFn<FileDropZoneProps> = (args) => {
       )}
     </View>
   );
+}
+
+export const Default: StoryObj<FileDropZoneProps> = {
+  render: DefaultRender,
+
+  args: {},
 };
 
-Default.args = {};
-
-/**
- * Drop zone that only accepts CSV files
- */
-export const CSVOnly: StoryFn<FileDropZoneProps> = (args) => {
+function CSVOnlyRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [rejections, setRejections] = useState<FileRejection[]>([]);
 
@@ -145,17 +142,18 @@ export const CSVOnly: StoryFn<FileDropZoneProps> = (args) => {
       )}
     </View>
   );
+}
+
+export const CSVOnly: StoryObj<FileDropZoneProps> = {
+  render: CSVOnlyRender,
+
+  args: {
+    acceptedFileTypes: [".csv", "text/csv"],
+    label: "Drop your CSV file here",
+  },
 };
 
-CSVOnly.args = {
-  acceptedFileTypes: [".csv", "text/csv"],
-  label: "Drop your CSV file here",
-};
-
-/**
- * Drop zone that accepts multiple JSON files
- */
-export const MultipleJSONFiles: StoryFn<FileDropZoneProps> = (args) => {
+function MultipleJSONFilesRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<File[]>([]);
 
   return (
@@ -176,18 +174,19 @@ export const MultipleJSONFiles: StoryFn<FileDropZoneProps> = (args) => {
       )}
     </View>
   );
+}
+
+export const MultipleJSONFiles: StoryObj<FileDropZoneProps> = {
+  render: MultipleJSONFilesRender,
+
+  args: {
+    acceptedFileTypes: [".json", ".jsonl", "application/json"],
+    allowsMultiple: true,
+    label: "Drop your JSON/JSONL files here",
+  },
 };
 
-MultipleJSONFiles.args = {
-  acceptedFileTypes: [".json", ".jsonl", "application/json"],
-  allowsMultiple: true,
-  label: "Drop your JSON/JSONL files here",
-};
-
-/**
- * Drop zone with file list showing selected files with remove functionality
- */
-export const WithFileList: StoryFn<FileDropZoneProps> = (args) => {
+function WithFileListRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<FileWithProgress[]>([]);
 
   const handleSelect = useCallback((newFiles: File[]) => {
@@ -215,17 +214,18 @@ export const WithFileList: StoryFn<FileDropZoneProps> = (args) => {
       <FileList files={files} onRemove={handleRemove} />
     </Flex>
   );
+}
+
+export const WithFileList: StoryObj<FileDropZoneProps> = {
+  render: WithFileListRender,
+
+  args: {
+    allowsMultiple: true,
+    label: "Drop files to add to the list",
+  },
 };
 
-WithFileList.args = {
-  allowsMultiple: true,
-  label: "Drop files to add to the list",
-};
-
-/**
- * Simulated upload progress demonstration
- */
-export const WithUploadProgress: StoryFn<FileDropZoneProps> = (args) => {
+function WithUploadProgressRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<FileWithProgress[]>([]);
 
   const simulateUpload = useCallback((file: File) => {
@@ -275,21 +275,18 @@ export const WithUploadProgress: StoryFn<FileDropZoneProps> = (args) => {
       <FileList files={files} onRemove={handleRemove} />
     </Flex>
   );
+}
+
+export const WithUploadProgress: StoryObj<FileDropZoneProps> = {
+  render: WithUploadProgressRender,
+
+  args: {
+    allowsMultiple: true,
+    label: "Drop files to simulate upload",
+  },
 };
 
-WithUploadProgress.args = {
-  allowsMultiple: true,
-  label: "Drop files to simulate upload",
-};
-
-/**
- * FileList with render-function children for full control over each item.
- * Renders compact file chips instead of the default list items to demonstrate
- * the customization power of the render function pattern.
- */
-export const FileListWithRenderFunction: StoryFn<FileDropZoneProps> = (
-  args
-) => {
+function FileListWithRenderFunctionRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<FileWithProgress[]>([]);
 
   const handleSelect = useCallback((newFiles: File[]) => {
@@ -330,17 +327,18 @@ export const FileListWithRenderFunction: StoryFn<FileDropZoneProps> = (
       </FileList>
     </Flex>
   );
+}
+
+export const FileListWithRenderFunction: StoryObj<FileDropZoneProps> = {
+  render: FileListWithRenderFunctionRender,
+
+  args: {
+    allowsMultiple: true,
+    label: "Drop files — renders compact file chips",
+  },
 };
 
-FileListWithRenderFunction.args = {
-  allowsMultiple: true,
-  label: "Drop files — renders compact file chips",
-};
-
-/**
- * Drop zone with file size limit (1MB)
- */
-export const WithSizeLimit: StoryFn<FileDropZoneProps> = (args) => {
+function WithSizeLimitRender(args: FileDropZoneProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [rejections, setRejections] = useState<FileRejection[]>([]);
 
@@ -373,48 +371,47 @@ export const WithSizeLimit: StoryFn<FileDropZoneProps> = (args) => {
       )}
     </View>
   );
+}
+
+export const WithSizeLimit: StoryObj<FileDropZoneProps> = {
+  render: WithSizeLimitRender,
+
+  args: {
+    maxFileSize: 1024 * 1024,
+    description: "Maximum file size: 1MB",
+  },
 };
 
-WithSizeLimit.args = {
-  maxFileSize: 1024 * 1024,
-  description: "Maximum file size: 1MB",
+export const Disabled: StoryObj<FileDropZoneProps> = {
+  render: (args) => {
+    return (
+      <View width="size-6000">
+        <FileDropZone {...args} />
+      </View>
+    );
+  },
+
+  args: {
+    isDisabled: true,
+  },
 };
 
-/**
- * Disabled drop zone
- */
-export const Disabled: StoryFn<FileDropZoneProps> = (args) => {
-  return (
-    <View width="size-6000">
-      <FileDropZone {...args} />
-    </View>
-  );
+export const CustomLabels: StoryObj<FileDropZoneProps> = {
+  render: (args) => {
+    return (
+      <View width="size-6000">
+        <FileDropZone {...args} />
+      </View>
+    );
+  },
+
+  args: {
+    label: "Upload your dataset",
+    description: "Supports CSV and JSON formats up to 10MB",
+    acceptedFileTypes: [".csv", ".json"],
+  },
 };
 
-Disabled.args = {
-  isDisabled: true,
-};
-
-/**
- * Drop zone with custom labels
- */
-export const CustomLabels: StoryFn<FileDropZoneProps> = (args) => {
-  return (
-    <View width="size-6000">
-      <FileDropZone {...args} />
-    </View>
-  );
-};
-
-CustomLabels.args = {
-  label: "Upload your dataset",
-  description: "Supports CSV and JSON formats up to 10MB",
-  acceptedFileTypes: [".csv", ".json"],
-};
-
-/**
- * Multiple drop zones side by side
- */
 export const MultipleSideBySide: StoryFn = () => {
   const [inputFiles, setInputFiles] = useState<File[]>([]);
   const [outputFiles, setOutputFiles] = useState<File[]>([]);
@@ -451,10 +448,7 @@ export const MultipleSideBySide: StoryFn = () => {
   );
 };
 
-/**
- * Compact single-file input with browse and clear buttons.
- */
-export const FileInputDefault: StoryFn<FileInputProps> = () => {
+function FileInputDefaultRender() {
   const [file, setFile] = useState<File | null>(null);
 
   return (
@@ -466,14 +460,15 @@ export const FileInputDefault: StoryFn<FileInputProps> = () => {
       />
     </View>
   );
+}
+
+export const FileInputDefault: StoryObj<FileInputProps> = {
+  render: FileInputDefaultRender,
+
+  name: "FileInput / Default",
 };
 
-FileInputDefault.storyName = "FileInput / Default";
-
-/**
- * FileInput with accepted file types and a description slot.
- */
-export const FileInputWithDescription: StoryFn<FileInputProps> = () => {
+function FileInputWithDescriptionRender() {
   const [file, setFile] = useState<File | null>(null);
 
   return (
@@ -496,24 +491,27 @@ export const FileInputWithDescription: StoryFn<FileInputProps> = () => {
       </FileInput>
     </View>
   );
+}
+
+export const FileInputWithDescription: StoryObj<FileInputProps> = {
+  render: FileInputWithDescriptionRender,
+
+  name: "FileInput / With Description",
 };
 
-FileInputWithDescription.storyName = "FileInput / With Description";
+export const FileInputDisabled: StoryObj<FileInputProps> = {
+  render: () => {
+    const mockFile = new File(["test"], "dataset.csv", { type: "text/csv" });
 
-/**
- * FileInput in a disabled state with a file pre-selected.
- */
-export const FileInputDisabled: StoryFn<FileInputProps> = () => {
-  const mockFile = new File(["test"], "dataset.csv", { type: "text/csv" });
+    return (
+      <View width="size-6000">
+        <FileInput file={mockFile} isDisabled />
+      </View>
+    );
+  },
 
-  return (
-    <View width="size-6000">
-      <FileInput file={mockFile} isDisabled />
-    </View>
-  );
+  name: "FileInput / Disabled",
 };
-
-FileInputDisabled.storyName = "FileInput / Disabled";
 
 const dropZoneFormCSS = css`
   display: flex;
@@ -525,12 +523,7 @@ const dropZoneFormCSS = css`
   background-color: var(--global-color-gray-50);
 `;
 
-/**
- * Composable DropZone + DropOverlay wrapping a form with a FileInput.
- * Drop a file anywhere on the form area to select it, or use the browse button.
- * The overlay label changes depending on whether a file is already selected.
- */
-export const DropZoneWithOverlay: StoryFn = () => {
+function DropZoneWithOverlayRender() {
   const [file, setFile] = useState<File | null>(null);
 
   const handleSelect = useCallback((files: File[]) => {
@@ -584,6 +577,10 @@ export const DropZoneWithOverlay: StoryFn = () => {
       </DropZone>
     </View>
   );
-};
+}
 
-DropZoneWithOverlay.storyName = "DropZone / With Overlay";
+export const DropZoneWithOverlay: StoryObj = {
+  render: DropZoneWithOverlayRender,
+
+  name: "DropZone / With Overlay",
+};

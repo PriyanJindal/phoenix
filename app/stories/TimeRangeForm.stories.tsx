@@ -1,7 +1,6 @@
-import type { Meta, StoryFn } from "@storybook/react";
+import type { Meta } from "@storybook/react";
 import { useState } from "react";
 
-import type { TimeRangeFormProps } from "@phoenix/components";
 import {
   Button,
   Dialog,
@@ -25,21 +24,15 @@ const meta: Meta = {
 
 export default meta;
 
-const Template: StoryFn<TimeRangeFormProps> = (args) => (
-  <TimeRangeForm {...args} />
-);
-
-/**
- * Used to specify a time range in a pop up or modal
- */
-export const Default = Template.bind({});
-
-Default.args = {};
+export const Default = {
+  args: {},
+};
 
 const timeRangeFormatter = createTimeRangeFormatter({
   locale: "en-US",
   timeZone: "UTC",
 });
+
 export const InAPopOver = () => {
   const [timeRange, setTimeRange] = useState<OpenTimeRange>({
     start: new Date("2024-01-15T10:00:00Z"),

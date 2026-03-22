@@ -2,7 +2,6 @@ import type { Meta, StoryFn } from "@storybook/react";
 import { useState } from "react";
 
 import { Button } from "@phoenix/components/core/button/Button";
-import type { RecordIconProps } from "@phoenix/components/core/icon/RecordIcon";
 import { RecordIcon } from "@phoenix/components/core/icon/RecordIcon";
 
 const meta: Meta = {
@@ -15,16 +14,16 @@ const meta: Meta = {
 
 export default meta;
 
-const Template: StoryFn<RecordIconProps> = (args) => <RecordIcon {...args} />;
-
-export const Default = Template.bind({});
-Default.args = {
-  isActive: false,
+export const Default = {
+  args: {
+    isActive: false,
+  },
 };
 
-export const Active = Template.bind({});
-Active.args = {
-  isActive: true,
+export const Active = {
+  args: {
+    isActive: true,
+  },
 };
 
 export const InButton: StoryFn = () => {

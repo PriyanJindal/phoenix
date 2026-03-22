@@ -1,5 +1,4 @@
-import type { Meta, StoryFn } from "@storybook/react";
-import type { ComponentProps } from "react";
+import type { Meta } from "@storybook/react";
 import type { QueuedToast } from "react-aria-components";
 
 import { Toast } from "@phoenix/components";
@@ -23,76 +22,74 @@ const defaultToast: QueuedToast<NotificationParams> = {
   },
 };
 
-const Template: StoryFn<ComponentProps<typeof Toast>> = (args) => (
-  <Toast {...args} />
-);
-
 /**
- * Toasts are used to display brief messages to the user.
+ * Default toasts use neutral styling for general notifications.
  */
-export const Default = Template.bind({});
-
-Default.args = {
-  toast: {
-    key: "default",
-    content: {
-      title: "Default Toast",
-      message: "This is a default toast message.",
+export const Default = {
+  args: {
+    toast: {
+      key: "default",
+      content: {
+        title: "Default Toast",
+        message: "This is a default toast message.",
+      },
     },
   },
 };
 
 /**
- * Use the `variant` prop to change the appearance of the toast
+ * Success toasts use green to confirm positive outcomes.
+ * Use for: saved changes, completed actions, successful operations.
  */
-export const SuccessToast = Template.bind({});
-
-SuccessToast.args = {
-  toast: {
-    ...defaultToast,
-    content: {
-      ...defaultToast.content,
-      title: "Success Toast",
-      message: "This is a success toast message.",
-      variant: "success",
+export const Success = {
+  args: {
+    toast: {
+      ...defaultToast,
+      content: {
+        ...defaultToast.content,
+        title: "Success Toast",
+        message: "This is a success toast message.",
+        variant: "success",
+      },
     },
   },
 };
 
 /**
- * Use the `variant` prop to change the appearance of the toast
+ * Error toasts use red to convey failures or critical issues.
+ * Use for: failed operations, network errors, permission denied.
  */
-export const ErrorToast = Template.bind({});
-
-ErrorToast.args = {
-  toast: {
-    ...defaultToast,
-    content: {
-      ...defaultToast.content,
-      title: "Error Toast",
-      message: "This is an error toast message.",
-      variant: "error",
+export const Error = {
+  args: {
+    toast: {
+      ...defaultToast,
+      content: {
+        ...defaultToast.content,
+        title: "Error Toast",
+        message: "This is an error toast message.",
+        variant: "error",
+      },
     },
   },
 };
 
 /**
- * Include an `action` with callback
+ * Toasts can include an action button for quick follow-up.
  */
-export const ActionToast = Template.bind({});
-
-ActionToast.args = {
-  toast: {
-    ...defaultToast,
-    content: {
-      ...defaultToast.content,
-      title: "Action Toast",
-      message: "This is an action toast message.",
-      action: {
-        text: "Action",
-        onClick: () => {
-          // eslint-disable-next-line no-console
-          console.log("Action clicked");
+export const WithAction = {
+  args: {
+    toast: {
+      ...defaultToast,
+      content: {
+        ...defaultToast.content,
+        title: "Action Toast",
+        message: "This is an action toast message.",
+        action: {
+          text: "Action",
+          onClick: () => {
+            // eslint-disable-next-line no-console
+            console.log("Action clicked");
+          },
         },
       },
     },

@@ -575,30 +575,30 @@ export const darkThemeCSS = css`
     --global-color-magenta-1400-rgb: 255, 236, 243;
     --global-color-magenta-1400: rgb(var(--global-color-magenta-1400-rgb));
 
-    // Semantic colors for dark mode
-    --global-color-info-rgb: 114, 217, 255;
+    // Semantic colors for dark mode — derived from color gradients
+    --global-color-info-rgb: var(--global-color-blue-800-rgb);
     --global-color-info: rgb(var(--global-color-info-rgb));
     --global-color-info-900: rgba(var(--global-color-info-rgb), 0.9);
     --global-color-info-700: rgba(var(--global-color-info-rgb), 0.7);
     --global-color-info-500: rgba(var(--global-color-info-rgb), 0.5);
-    --global-color-danger-rgb: 248, 81, 73;
+    --global-color-danger-rgb: var(--global-color-red-800-rgb);
     --global-color-danger: rgb(var(--global-color-danger-rgb));
     --global-color-danger-900: rgba(var(--global-color-danger-rgb), 0.9);
     --global-color-danger-700: rgba(var(--global-color-danger-rgb), 0.7);
     --global-color-danger-500: rgba(var(--global-color-danger-rgb), 0.5);
     --global-color-danger-100: rgba(var(--global-color-danger-rgb), 0.1);
-    --global-color-success-rgb: 126, 231, 135;
+    --global-color-success-rgb: var(--global-color-green-800-rgb);
     --global-color-success: rgb(var(--global-color-success-rgb));
     --global-color-success-900: rgba(var(--global-color-success-rgb), 0.9);
     --global-color-success-700: rgba(var(--global-color-success-rgb), 0.7);
     --global-color-success-500: rgba(var(--global-color-success-rgb), 0.5);
     --global-color-success-100: rgba(var(--global-color-success-rgb), 0.1);
-    --global-color-warning-rgb: 230, 153, 88;
+    --global-color-warning-rgb: var(--global-color-yellow-800-rgb);
     --global-color-warning: rgb(var(--global-color-warning-rgb));
     --global-color-warning-900: rgba(var(--global-color-warning-rgb), 0.9);
     --global-color-warning-700: rgba(var(--global-color-warning-rgb), 0.7);
     --global-color-warning-500: rgba(var(--global-color-warning-rgb), 0.5);
-    --global-color-severe-rgb: 188, 76, 0;
+    --global-color-severe-rgb: var(--global-color-orange-600-rgb);
     --global-color-severe: rgb(var(--global-color-severe-rgb));
     --global-color-severe-900: rgba(var(--global-color-severe-rgb), 0.9);
     --global-color-severe-700: rgba(var(--global-color-severe-rgb), 0.7);
@@ -610,8 +610,8 @@ export const darkThemeCSS = css`
     --global-text-color-300: rgba(255, 255, 255, 0.3);
 
     // Link colors
-    --global-link-color: rgb(114, 217, 255);
-    --global-link-color-visited: var(--global-color-purple-900);
+    --global-link-color: var(--global-color-blue-800);
+    --global-link-color-visited: var(--global-color-purple-800);
 
     // Floating toolbar colors
     --floating-toolbar-background-color: var(--global-color-gray-200);
@@ -844,36 +844,41 @@ export const lightThemeCSS = css`
     --global-color-magenta-1300: #54032a;
     --global-color-magenta-1400: #3c061d;
 
-    // Semantic colors for light mode
-    --global-color-info: rgb(2, 173, 221);
-    --global-color-info-900: rgba(2, 173, 221, 0.9);
-    --global-color-info-700: rgba(2, 173, 221, 0.7);
-    --global-color-info-500: rgba(2, 173, 221, 0.5);
-    --global-color-danger: rgb(218, 11, 0);
-    --global-color-danger-900: rgba(218, 11, 0, 0.9);
-    --global-color-danger-700: rgba(218, 11, 0, 0.7);
-    --global-color-danger-500: rgba(218, 11, 0, 0.5);
-    --global-color-danger-100: rgba(218, 11, 0, 0.1);
-    --global-color-success: rgb(26, 127, 55);
-    --global-color-success-700: rgba(26, 127, 55, 0.7);
-    --global-color-success-500: rgba(26, 127, 55, 0.5);
-    --global-color-success-100: rgba(26, 127, 55, 0.1);
-    --global-color-warning: rgb(224, 102, 2);
-    --global-color-warning-900: rgba(224, 102, 2, 0.9);
-    --global-color-warning-700: rgba(224, 102, 2, 0.7);
-    --global-color-warning-500: rgba(224, 102, 2, 0.5);
-    --global-color-severe: rgb(188, 76, 0);
-    --global-color-severe-900: rgba(188, 76, 0, 0.9);
-    --global-color-severe-700: rgba(188, 76, 0, 0.7);
-    --global-color-severe-500: rgba(188, 76, 0, 0.5);
+    // Semantic colors for light mode — derived from color gradients
+    // blue-800: #147af3
+    --global-color-info: var(--global-color-blue-800);
+    --global-color-info-900: rgba(20, 122, 243, 0.9);
+    --global-color-info-700: rgba(20, 122, 243, 0.7);
+    --global-color-info-500: rgba(20, 122, 243, 0.5);
+    // red-800: #ea3829
+    --global-color-danger: var(--global-color-red-800);
+    --global-color-danger-900: rgba(234, 56, 41, 0.9);
+    --global-color-danger-700: rgba(234, 56, 41, 0.7);
+    --global-color-danger-500: rgba(234, 56, 41, 0.5);
+    --global-color-danger-100: rgba(234, 56, 41, 0.1);
+    // green-800: #008f5d
+    --global-color-success: var(--global-color-green-800);
+    --global-color-success-700: rgba(0, 143, 93, 0.7);
+    --global-color-success-500: rgba(0, 143, 93, 0.5);
+    --global-color-success-100: rgba(0, 143, 93, 0.1);
+    // yellow-800: #9b7800
+    --global-color-warning: var(--global-color-yellow-800);
+    --global-color-warning-900: rgba(155, 120, 0, 0.9);
+    --global-color-warning-700: rgba(155, 120, 0, 0.7);
+    --global-color-warning-500: rgba(155, 120, 0, 0.5);
+    // orange-600: #f68511
+    --global-color-severe: var(--global-color-orange-600);
+    --global-color-severe-900: rgba(246, 133, 17, 0.9);
+    --global-color-severe-700: rgba(246, 133, 17, 0.7);
+    --global-color-severe-500: rgba(246, 133, 17, 0.5);
 
     --global-text-color-900: rgba(0, 0, 0, 0.9);
     --global-text-color-700: rgba(0, 0, 0, 0.7);
     --global-text-color-500: rgba(0, 0, 0, 0.5);
     --global-text-color-300: rgba(0, 0, 0, 0.3);
 
-    --global-link-color: rgb(9, 105, 218);
-    --global-link-color-visited: var(--global-color-purple-900);
+    --global-link-color: var(--global-color-blue-800);
+    --global-link-color-visited: var(--global-color-purple-800);
 
     // Floating toolbar colors
     --floating-toolbar-background-color: var(--global-color-gray-75);
@@ -925,7 +930,7 @@ const baseTokensCSS = (theme: Theme) => css`
     };
 
     --global-overlay-backdrop-color: ${
-      theme === "dark" ? "rgba(0, 0, 0, 0.8)" : "rgba(0, 0, 0, 0.6)"
+      theme === "dark" ? "rgba(0, 0, 0, 0.8)" : "rgba(0, 0, 0, 0.4)"
     };
   }
 `;
@@ -974,6 +979,8 @@ const buttonCSS = (theme: Theme) => css`
       --global-color-success-900
     );
     --global-button-success-border-color: var(--global-color-success);
+    --global-button-kbd-background-color: var(--global-color-gray-300);
+    --global-button-primary-kbd-background-color: var(--global-color-gray-700);
   }
 `;
 
@@ -992,10 +999,9 @@ const checkboxCSS = (theme: Theme) => css`
 const disclosureCSS = (theme: Theme) => css`
   :root,
   .theme--${theme} {
-    --global-disclosure-background-color-active: rgba(
-      var(--global-color-gray-900-rgb),
-      0.05
-    );
+    --global-disclosure-background-color-active: ${
+      theme === "dark" ? "rgba(255, 255, 255, 0.07)" : "rgba(0, 0, 0, 0.03)"
+    };
   }
 `;
 
@@ -1086,8 +1092,6 @@ const resizeHandleCSS = (theme: Theme) => css`
   :root,
   .theme--${theme} {
     --global-resize-handle-background-color: var(--global-border-color-default);
-    --global-resize-handle-background-color-hover: var(--global-color-gray-300);
-    --global-resize-handle-indicator-color: var(--global-color-gray-300);
     --global-resize-handle-indicator-color-hover: var(--global-color-primary);
   }
 `;
