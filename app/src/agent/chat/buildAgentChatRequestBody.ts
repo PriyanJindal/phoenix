@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 
 import { agentToolDefinitions } from "./chatTools";
+import { AGENT_SYSTEM_PROMPT } from "./systemPrompt";
 
 type BuildAgentChatRequestBodyOptions = {
   body: Record<string, unknown> | undefined;
@@ -27,6 +28,7 @@ export function buildAgentChatRequestBody({
     messages,
     trigger,
     messageId,
+    system: AGENT_SYSTEM_PROMPT,
     tools: agentToolDefinitions,
   };
 }
