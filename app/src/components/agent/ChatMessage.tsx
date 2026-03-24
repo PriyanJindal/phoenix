@@ -1,11 +1,11 @@
 import { css } from "@emotion/react";
 import { getToolName, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
-import { Streamdown } from "streamdown";
 
 import {
   getBashToolCommandDisplayResult,
   getBashToolInput,
 } from "@phoenix/agent/tools/bash";
+import { MarkdownBlock } from "@phoenix/components/markdown";
 
 const userMessageCSS = css`
   align-self: flex-end;
@@ -29,6 +29,10 @@ const toolPartCSS = css`
   border-radius: var(--global-rounding-medium);
   background: var(--global-color-gray-100);
   overflow: hidden;
+
+  &:has(+ :not(.tool-part)) {
+    margin-bottom: var(--global-dimension-size-150);
+  }
 
   summary {
     cursor: pointer;
@@ -153,7 +157,7 @@ function ToolPart({
   const isError = part.state === "output-error";
 
   return (
-    <details css={toolPartCSS}>
+    <details className="tool-part" css={toolPartCSS}>
       <summary>
         <div className="tool-part__summary">
           <span className="tool-part__title">Tool: {toolName}</span>
@@ -227,7 +231,11 @@ export function AssistantMessage({ parts }: { parts: UIMessage["parts"] }) {
     <div css={assistantMessageCSS}>
       {parts.map((part, i) => {
         if (isTextUIPart(part)) {
-          return <Streamdown key={i}>{part.text}</Streamdown>;
+          return (
+            <MarkdownBlock key={i} mode="markdown" margin="none">
+              {part.text}
+            </MarkdownBlock>
+          );
         }
 
         if (isToolUIPart(part)) {
