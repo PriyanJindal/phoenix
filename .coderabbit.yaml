@@ -1,0 +1,33 @@
+reviews:
+  path_instructions:
+    - path: "docs/**/*.md"
+      instructions: |
+        You are reviewing user-facing product documentation for Arize Phoenix, an open-source LLM observability platform. Docs are published to docs.arize.com/phoenix via GitBook.
+
+        Content accuracy:
+        - Verify that any code snippets reference real, current Phoenix APIs (e.g. `px.launch_app`, `phoenix.otel`, `phoenix-evals` helpers). Flag snippets that look stale or use deprecated import paths.
+        - Check that integration-specific docs (tracing/integrations-tracing/) name the correct package and instrumentation call for that integration (e.g. LangChain, LlamaIndex, DSPy, Bedrock). Flag if the install command or class name has likely changed.
+        - When a doc mentions a configuration option (env var, CLI flag, or `pyproject.toml` key), verify it matches what is actually defined in the codebase (src/phoenix/, packages/).
+
+        Structure and navigation:
+        - Any new page added under docs/ must also be listed in docs/SUMMARY.md in the correct position in the hierarchy. Flag additions that are missing from SUMMARY.md.
+        - Each page should fit under exactly one product pillar (tracing/, evaluation/, datasets-and-experiments/, prompt-engineering/, retrieval/, inferences/, settings/). Flag pages that seem misplaced or duplicate content already covered in another section.
+        - Watch for drift between parallel sections: docs/llm-evals/ vs evaluation/llm-evals/, use-cases/ vs use-cases-evals/, inferences/ vs newer datasets docs. Flag if a PR touches one without updating the other.
+
+        GitBook syntax:
+        - GitBook-specific blocks ({% tabs %}, {% tab %}, {% embed %}, {% hint %}, <figure>) must be properly closed and correctly nested. Flag any malformed blocks.
+        - Do not flag GitBook syntax as "non-standard Markdown" — it is intentional for this project.
+        - YAML front matter (e.g. `description:`) on README.md pages is expected and correct; do not flag it.
+
+        Generated docs:
+        - Several docs pages are generated from tutorials/ notebooks via `docs/Makefile`. If a PR edits a generated .md file directly (e.g. docs/tracing/llm-traces-1/, docs/evaluation/running-pre-tested-evals/), flag it and suggest the notebook source be updated instead.
+
+        Localization stubs:
+        - docs/locales/jp/ and docs/locales/zh/ contain partial translated mirrors. PRs that add or significantly restructure English pages should note whether the localized SUMMARY.md stubs need updating.
+
+        General writing quality:
+        - Headings should follow sentence case (not Title Case for every word).
+        - Code blocks must specify a language identifier (```python, ```bash, ```typescript, etc.).
+        - Internal links must use relative paths consistent with the docs/ tree, not absolute docs.arize.com URLs.
+        - Flag broken or dangling anchor links (e.g. #section-that-no-longer-exists).
+        - Flag any references to deprecated Phoenix APIs or features that have been superseded (e.g. old inferences-based workflows that should now use tracing).
