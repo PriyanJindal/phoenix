@@ -1,12 +1,13 @@
-import React, { createContext, PropsWithChildren, useState } from "react";
+import type { PropsWithChildren } from "react";
+import { createContext, useContext, useState } from "react";
 import { useZustand } from "use-zustand";
 
-import {
-  createPlaygroundStore,
+import type {
   InitialPlaygroundState,
   PlaygroundState,
   PlaygroundStore,
 } from "@phoenix/store";
+import { createPlaygroundStore } from "@phoenix/store";
 
 export const PlaygroundContext = createContext<PlaygroundStore | null>(null);
 
@@ -26,7 +27,7 @@ export function usePlaygroundContext<T>(
   selector: (state: PlaygroundState) => T,
   equalityFn?: (left: T, right: T) => boolean
 ): T {
-  const store = React.useContext(PlaygroundContext);
+  const store = useContext(PlaygroundContext);
   if (!store) throw new Error("Missing PlaygroundContext.Provider in the tree");
   return useZustand(store, selector, equalityFn);
 }
@@ -36,7 +37,7 @@ export function usePlaygroundContext<T>(
  * Using this hook ensures up to date (non stale) values in hooks / callbacks without making them depend on specific components of the store.
  */
 export function usePlaygroundStore() {
-  const store = React.useContext(PlaygroundContext);
+  const store = useContext(PlaygroundContext);
   if (!store) throw new Error("Missing PlaygroundContext.Provider in the tree");
   return store;
 }

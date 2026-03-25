@@ -1,5 +1,116 @@
 # Migrations
 
+## v12.x to v13.0.0
+
+### DB Index for Session ID
+
+A partial index on `spans.attributes` for session id is added by migration. Migration run time is estimated at approximately 200 seconds per 100 GiB on a MacBook Pro. Cloud environments may take longer depending on instance size and I/O throughput.
+
+**Rolling deployments:** If an existing Phoenix instance is still serving traffic while a new instance starts and runs migrations, the default `CREATE INDEX` acquires a table lock that blocks writes from the old instance. To avoid this, set the following environment variable before starting the new instance:
+
+```
+PHOENIX_MIGRATE_INDEX_CONCURRENTLY=true
+```
+
+This uses `CREATE INDEX CONCURRENTLY`, which avoids the table lock but is roughly 2-3x slower. The new instance still blocks on startup until the index build completes.
+
+**Large PostgreSQL databases (hundreds of GiB+):** For very large `spans` tables, even `CONCURRENTLY` can take hours. To make the migration instant, pre-create a no-op index with the same name before upgrading (while the old version is still running):
+
+Step 1 — Create a no-op index (instant, no table scan):
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_spans_session_id
+ON spans ((attributes #>> '{session,id}'))
+WHERE false;
+```
+
+Step 2 — Upgrade Phoenix. The migration's `IF NOT EXISTS` sees the index name and skips.
+
+Step 3 — Backfill the real index at your convenience (while the app is running):
+
+```sql
+DROP INDEX CONCURRENTLY IF EXISTS ix_spans_session_id;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_spans_session_id
+ON spans (((attributes #>> '{session,id}')::varchar))
+WHERE ((attributes #>> '{session,id}')::varchar) IS NOT NULL;
+```
+
+Note: On PostgreSQL, the index uses the `#>>` path operator (e.g., `attributes #>> '{session,id}'`). Queries using chained arrow operators (`attributes -> 'session' ->> 'id'`) will not match the index. Phoenix's built-in query layer always uses the `#>>` form, so this only affects custom SQL queries run directly against the database.
+
+### Azure OpenAI v1 API
+
+Azure OpenAI integration now uses the OpenAI v1 API, which simplifies configuration by eliminating explicit API versioning. The `api_version` parameter is no longer required—versioning is now handled implicitly by the v1 API endpoint.
+
+This change requires `openai>=2.14.0`.
+
+**References**:
+- [Azure OpenAI API Version Lifecycle](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/api-version-lifecycle)
+- [Migration from Azure AI Inference to OpenAI SDK](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/model-inference-to-openai-migration)
+
+### AWS Bedrock Async Client
+
+AWS Bedrock integration now uses `aioboto3` instead of `boto3` for fully async client operations. If you have `boto3` installed for Bedrock support, you should install `aioboto3` instead:
+
+```shell
+pip install aioboto3
+```
+
+### Inferences, dimensions, embeddings, and pointcloud (UMAP)
+
+**Breaking change:** Model inferences, dimensions, embeddings, and the pointcloud (UMAP) visualization have been removed from Phoenix, along with their GraphQL and REST APIs. The UI no longer includes the `/model`, `/dimensions`, or `/embeddings` routes.
+
+## v11.0.0 to v12.0.0
+
+Instrumentation helpers are being moved to `openinference-instrumentation`.
+
+Before:
+
+```python
+from phoenix.trace import using_project
+
+with using_project(project_name="change-project"):
+    ...
+```
+
+After:
+
+```python
+# openinference-instrumentation>=0.1.38
+from openinference.instrumentation import dangerously_using_project
+
+with dangerously_using_project(project_name="change-project"):
+    ...
+```
+
+### PostgreSQL Connection Environment Variables
+
+**Breaking Change**: Specifying port numbers in `PHOENIX_POSTGRES_HOST` is no longer supported.
+
+**Before**:
+```shell
+export PHOENIX_POSTGRES_HOST=localhost:5432
+```
+
+**After**:
+```shell
+export PHOENIX_POSTGRES_HOST=localhost
+export PHOENIX_POSTGRES_PORT=5432
+```
+
+**Impact**: If you were setting `PHOENIX_POSTGRES_HOST` with a port (e.g., `localhost:5432`), you must now separate the host and port into their respective environment variables.
+
+
+## v10.0.0 to v11.0.0
+
+This release is entirely encapsulated in a set of new tables. Have a nice release!
+
+## v9.x to v10.0.0
+
+This release updates the `users` table in the database. Migration is expected to be quick.
+
+No other breaking changes are included in this release.
+
 ## v8.x to v9.0.0
 
 This release migrates all annotations on spans and traces to a structure that supports multiple annotation values per entity (trace, span). This migration also changes the constraints for the tables. Because it operates on existing data, it may take a bit of time for the records to be fully migrated over. Phoenix migrates your data at boot so you may experience some slowness in the server coming up (depending on the amount of data you have). Please deploy v9.0 when your services can account for small amount of downtime.
@@ -85,13 +196,13 @@ export PHOENIX_SECRET=a-sufficiently-long-secret
 
 Once these environment variables are set, Phoenix scaffold and admin login and the entire server will be protected. Log in as the admin user and create a system key to use with your application(s). All API keys should be added as headers to your requests via the `Authorization` header using the `Bearer` scheme.
 
-For more details, please see the [authentication setup guide](https://docs.arize.com/phoenix/setup/authentication).
+For more details, please see the [authentication setup guide](https://arize.com/docs/phoenix/setup/authentication).
 
 ### Migrating to OpenInference
 
 If you are using Phoenix's `phoenix.trace` modules for LlamaIndex, LangChain, or OpenAI, you will need to migrate to OpenInference. OpenInference is a separate set of packages that provides instrumentation for Phoenix. Phoenix 5 no longer supports LlamaIndex or LangChain instrumentation from the `phoenix.trace` module.
 
-Phoenix now includes a `phoenix.otel` module that provides simplified setup for OpenTelemetry. See the [`phoenix.otel` documentation](https://docs.arize.com/phoenix/tracing/how-to-tracing/setup-tracing/setup-tracing-python) for more details.
+Phoenix now includes a `phoenix.otel` module that provides simplified setup for OpenTelemetry. See the [`phoenix.otel` documentation](https://arize.com/docs/phoenix/tracing/how-to-tracing/setup-tracing/setup-tracing-python) for more details.
 
 **Before**
 

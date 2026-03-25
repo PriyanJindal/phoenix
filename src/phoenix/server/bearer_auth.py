@@ -7,10 +7,9 @@ from typing import Any, Optional, cast
 import grpc
 from fastapi import HTTPException, Request, WebSocket, WebSocketException
 from grpc_interceptor import AsyncServerInterceptor
-from grpc_interceptor.exceptions import Unauthenticated
 from starlette.authentication import AuthCredentials, AuthenticationBackend, BaseUser
 from starlette.requests import HTTPConnection
-from starlette.status import HTTP_401_UNAUTHORIZED
+from typing_extensions import override
 
 from phoenix import config
 from phoenix.auth import (
@@ -20,9 +19,7 @@ from phoenix.auth import (
     Token,
 )
 from phoenix.config import get_env_phoenix_admin_secret
-from phoenix.db import enums
-from phoenix.db.enums import UserRole
-from phoenix.db.models import User as OrmUser
+from phoenix.db import models
 from phoenix.server.types import (
     AccessToken,
     AccessTokenAttributes,
@@ -54,7 +51,7 @@ class BearerTokenAuthBackend(HasTokenStore, AuthenticationBackend):
                 return None
             if (
                 (admin_secret := get_env_phoenix_admin_secret())
-                and token == admin_secret
+                and token == str(admin_secret)
                 and config.SYSTEM_USER_ID is not None
             ):
                 return AuthCredentials(), PhoenixSystemUser(UserId(config.SYSTEM_USER_ID))
@@ -76,13 +73,19 @@ class PhoenixUser(BaseUser):
         self.claims = claims
         assert claims.attributes
         self._is_admin = (
-            claims.status is ClaimSetStatus.VALID
-            and claims.attributes.user_role == enums.UserRole.ADMIN
+            claims.status is ClaimSetStatus.VALID and claims.attributes.user_role == "ADMIN"
+        )
+        self._is_viewer = (
+            claims.status is ClaimSetStatus.VALID and claims.attributes.user_role == "VIEWER"
         )
 
     @cached_property
     def is_admin(self) -> bool:
         return self._is_admin
+
+    @cached_property
+    def is_viewer(self) -> bool:
+        return self._is_viewer
 
     @cached_property
     def identity(self) -> UserId:
@@ -96,6 +99,8 @@ class PhoenixUser(BaseUser):
 class PhoenixSystemUser(PhoenixUser):
     def __init__(self, user_id: UserId) -> None:
         self._user_id = user_id
+        self._is_admin = True  # System users have admin privileges
+        self._is_viewer = False  # System users are not viewers
 
     @property
     def is_admin(self) -> bool:
@@ -103,35 +108,38 @@ class PhoenixSystemUser(PhoenixUser):
 
 
 class ApiKeyInterceptor(HasTokenStore, AsyncServerInterceptor):
+    @override
     async def intercept(
         self,
-        method: Callable[[Any, grpc.ServicerContext], Awaitable[Any]],
+        method: Callable[[Any, grpc.aio.ServicerContext], Awaitable[Any]],
         request_or_iterator: Any,
-        context: grpc.ServicerContext,
+        context: grpc.aio.ServicerContext,
         method_name: str,
     ) -> Any:
-        for datum in context.invocation_metadata():
-            if datum.key.lower() == "authorization":
-                scheme, _, token = datum.value.partition(" ")
+        for key, value in context.invocation_metadata() or ():
+            if key.lower() == "authorization":
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8")
+                scheme, _, token = value.partition(" ")
                 if scheme.lower() != "bearer" or not token:
                     break
                 if (
                     (admin_secret := get_env_phoenix_admin_secret())
-                    and token == admin_secret
+                    and token == str(admin_secret)
                     and config.SYSTEM_USER_ID is not None
                 ):
                     return await method(request_or_iterator, context)
                 claims = await self._token_store.read(Token(token))
-                if not (isinstance(claims, UserClaimSet) and isinstance(claims.subject, UserId)):
+                if (
+                    not (
+                        isinstance(claims, (ApiKeyClaims, AccessTokenClaims))
+                        and isinstance(claims.subject, UserId)
+                    )
+                    or claims.status is not ClaimSetStatus.VALID
+                ):
                     break
-                if not isinstance(claims, (ApiKeyClaims, AccessTokenClaims)):
-                    raise Unauthenticated(details="Invalid token")
-                if claims.status is ClaimSetStatus.EXPIRED:
-                    raise Unauthenticated(details="Expired token")
-                if claims.status is ClaimSetStatus.VALID:
-                    return await method(request_or_iterator, context)
-                raise Unauthenticated()
-        raise Unauthenticated()
+                return await method(request_or_iterator, context)
+        await context.abort(grpc.StatusCode.UNAUTHENTICATED)
 
 
 async def is_authenticated(
@@ -144,28 +152,28 @@ async def is_authenticated(
     """
     assert request or websocket
     if request and not isinstance((user := request.user), PhoenixUser):
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token")
     if websocket and not isinstance((user := websocket.user), PhoenixUser):
-        raise WebSocketException(code=HTTP_401_UNAUTHORIZED, reason="Invalid token")
+        raise WebSocketException(code=401, reason="Invalid token")
     if isinstance(user, PhoenixSystemUser):
         return
     claims = user.claims
     if claims.status is ClaimSetStatus.EXPIRED:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Expired token")
+        raise HTTPException(status_code=401, detail="Expired token")
     if claims.status is not ClaimSetStatus.VALID:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 async def create_access_and_refresh_tokens(
     *,
     token_store: TokenStore,
-    user: OrmUser,
+    user: models.User,
     access_token_expiry: timedelta,
     refresh_token_expiry: timedelta,
 ) -> tuple[AccessToken, RefreshToken]:
     issued_at = datetime.now(timezone.utc)
     user_id = UserId(user.id)
-    user_role = UserRole(user.role.name)
+    user_role = user.role.name
     refresh_token_claims = RefreshTokenClaims(
         subject=user_id,
         issued_at=issued_at,

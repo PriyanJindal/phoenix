@@ -1,41 +1,58 @@
 from typing import Optional
 
 import strawberry
-from sqlalchemy import select
 from strawberry.relay import Node, NodeID
 from strawberry.types import Info
 
 from phoenix.db import models
 from phoenix.server.api.context import Context
 from phoenix.server.api.types.Identifier import Identifier
-from phoenix.server.api.types.Prompt import Prompt, to_gql_prompt_from_orm
 
 
 @strawberry.type
 class PromptLabel(Node):
-    id_attr: NodeID[int]
-    name: Identifier
-    description: Optional[str] = None
+    id: NodeID[int]
+    db_record: strawberry.Private[Optional[models.PromptLabel]] = None
+
+    def __post_init__(self) -> None:
+        if self.db_record and self.id != self.db_record.id:
+            raise ValueError("PromptLabel ID mismatch")
 
     @strawberry.field
-    async def prompts(self, info: Info[Context, None]) -> list[Prompt]:
-        async with info.context.db() as session:
-            statement = (
-                select(models.Prompt)
-                .join(
-                    models.PromptPromptLabel, models.Prompt.id == models.PromptPromptLabel.prompt_id
-                )
-                .where(models.PromptPromptLabel.prompt_label_id == self.id_attr)
+    async def name(
+        self,
+        info: Info[Context, None],
+    ) -> Identifier:
+        if self.db_record:
+            val = self.db_record.name
+        else:
+            val = await info.context.data_loaders.prompt_label_fields.load(
+                (self.id, models.PromptLabel.name),
             )
-            return [
-                to_gql_prompt_from_orm(prompt_orm)
-                async for prompt_orm in await session.stream_scalars(statement)
-            ]
+        return Identifier(val)
 
+    @strawberry.field
+    async def description(
+        self,
+        info: Info[Context, None],
+    ) -> Optional[str]:
+        if self.db_record:
+            val = self.db_record.description
+        else:
+            val = await info.context.data_loaders.prompt_label_fields.load(
+                (self.id, models.PromptLabel.description),
+            )
+        return val
 
-def to_gql_prompt_label(label_orm: models.PromptLabel) -> PromptLabel:
-    return PromptLabel(
-        id_attr=label_orm.id,
-        name=Identifier(label_orm.name),
-        description=label_orm.description,
-    )
+    @strawberry.field
+    async def color(
+        self,
+        info: Info[Context, None],
+    ) -> Optional[str]:
+        if self.db_record:
+            val = self.db_record.color
+        else:
+            val = await info.context.data_loaders.prompt_label_fields.load(
+                (self.id, models.PromptLabel.color),
+            )
+        return val

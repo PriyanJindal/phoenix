@@ -1,19 +1,19 @@
-import React, { useCallback, useRef } from "react";
-import { Controller, useForm } from "react-hook-form";
-import { graphql, useMutation } from "react-relay";
+import { css } from "@emotion/react";
 import {
   getLocalTimeZone,
   parseAbsoluteToLocal,
 } from "@internationalized/date";
 import { isValid as dateIsValid } from "date-fns";
-import { css } from "@emotion/react";
+import { useCallback, useRef } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { graphql, useMutation } from "react-relay";
 
+import type { DateValue } from "@phoenix/components";
 import {
   Button,
   DateField,
   DateInput,
   DateSegment,
-  DateValue,
   FieldError,
   Flex,
   Icon,
@@ -23,9 +23,9 @@ import {
   View,
 } from "@phoenix/components";
 import { ONE_MONTH_MS } from "@phoenix/constants/timeConstants";
-import { useLocalTimeFormatPattern } from "@phoenix/hooks";
+import { useCurrentTime, useLocalTimeFormatPattern } from "@phoenix/hooks";
 
-import { RemoveProjectDataFormMutation } from "./__generated__/RemoveProjectDataFormMutation.graphql";
+import type { RemoveProjectDataFormMutation } from "./__generated__/RemoveProjectDataFormMutation.graphql";
 
 type RemoveProjectDataFormProps = {
   projectId: string;
@@ -37,6 +37,7 @@ type RemoveProjectDataFormParams = {
 };
 
 export function RemoveProjectDataForm(props: RemoveProjectDataFormProps) {
+  const { nowEpochMs } = useCurrentTime();
   const { projectId } = props;
   const dateFormatPattern = useLocalTimeFormatPattern();
   const formRef = useRef<HTMLFormElement>(null);
@@ -55,13 +56,13 @@ export function RemoveProjectDataForm(props: RemoveProjectDataFormProps) {
     handleSubmit,
     setError,
     formState: { isValid },
-  } = useForm({
+  } = useForm<RemoveProjectDataFormParams>({
     defaultValues: {
       // Need to remove the offset to be able to set the defaultValue
       endDate: parseAbsoluteToLocal(
-        new Date(Date.now() - ONE_MONTH_MS).toISOString()
+        new Date(nowEpochMs - ONE_MONTH_MS).toISOString()
       ),
-    } as RemoveProjectDataFormParams,
+    },
   });
 
   const onSubmit = useCallback(
@@ -140,7 +141,7 @@ export function RemoveProjectDataForm(props: RemoveProjectDataFormProps) {
         paddingEnd="size-200"
         paddingTop="size-100"
         paddingBottom="size-100"
-        borderTopColor="light"
+        borderTopColor="default"
         borderTopWidth="thin"
       >
         <Flex direction="row" justifyContent="end">

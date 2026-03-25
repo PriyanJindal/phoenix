@@ -1,6 +1,6 @@
-import React from "react";
-import { FocusScope } from "react-aria";
 import { css } from "@emotion/react";
+import { FocusScope } from "react-aria";
+import { Button as AriaButton } from "react-aria-components";
 
 import {
   Button,
@@ -15,17 +15,15 @@ import {
   TextField,
   View,
 } from "@phoenix/components";
-import { Annotation } from "@phoenix/components/annotation";
+import type { Annotation } from "@phoenix/components/annotation";
 import { EXPLANATION_LABEL_WIDTH } from "@phoenix/components/annotation/constants";
 
 export const AnnotationInputExplanation = ({
   annotation,
   onSubmit,
-  containerRef,
 }: {
   annotation?: Annotation;
   onSubmit?: (explanation: string) => void;
-  containerRef?: HTMLDivElement;
 }) => {
   const fieldName = annotation?.name
     ? `${annotation.name}.explanation`
@@ -33,7 +31,7 @@ export const AnnotationInputExplanation = ({
 
   return (
     <DialogTrigger>
-      <Button
+      <AriaButton
         excludeFromTabOrder
         type="button"
         isDisabled={!annotation?.id}
@@ -41,18 +39,18 @@ export const AnnotationInputExplanation = ({
         css={css`
           position: absolute;
           top: 6px;
-          right: 4px;
+          right: 0;
           width: ${EXPLANATION_LABEL_WIDTH};
-          font-size: var(--ac-global-dimension-static-font-size-75);
+          font-size: var(--global-dimension-static-font-size-75);
           background: none;
           border: none;
           padding: 0 !important;
           line-height: unset;
-          color: var(--ac-global-link-color);
+          color: var(--global-link-color);
           &:disabled {
             cursor: default;
-            opacity: var(--ac-opacity-disabled);
-            color: var(--ac-global-text-color-900);
+            opacity: var(--global-opacity-disabled);
+            color: var(--global-text-color-900);
           }
           &:hover:not(:disabled) {
             text-decoration: underline;
@@ -62,8 +60,8 @@ export const AnnotationInputExplanation = ({
         `}
       >
         explain
-      </Button>
-      <Popover placement="bottom end" UNSTABLE_portalContainer={containerRef}>
+      </AriaButton>
+      <Popover placement="bottom end">
         <PopoverArrow />
         <Dialog>
           {({ close }) => (
@@ -94,7 +92,7 @@ export const AnnotationInputExplanation = ({
                         Why did you give this score?
                       </Text>
                     </TextField>
-                    <Button type="submit" variant="primary">
+                    <Button type="submit" variant="primary" size="S">
                       Save
                     </Button>
                   </Flex>

@@ -1,8 +1,17 @@
-import React, { ReactNode, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 
-import { ActionMenu, DialogContainer, Item } from "@arizeai/components";
-
-import { Flex, Icon, Icons } from "@phoenix/components";
+import {
+  Button,
+  DialogTrigger,
+  Flex,
+  Icon,
+  Icons,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Modal,
+  Popover,
+} from "@phoenix/components";
 import { StopPropagation } from "@phoenix/components/StopPropagation";
 
 import { DeletePromptDialog } from "./DeletePromptDialog";
@@ -18,54 +27,58 @@ export function PromptActionMenu({
   promptId: string;
   onDeleted: () => void;
 }) {
-  const [dialog, setDialog] = useState<ReactNode>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const onDelete = useCallback(() => {
-    setDialog(
-      <DeletePromptDialog
-        promptId={promptId}
-        onClose={() => setDialog(null)}
-        onDeleted={() => {
-          onDeleted();
-          setDialog(null);
-        }}
-      />
-    );
-  }, [promptId, onDeleted]);
+    setShowDeleteDialog(true);
+  }, []);
 
   return (
     <StopPropagation>
-      <ActionMenu
-        align="end"
-        aria-label="User Actions"
-        buttonSize="compact"
-        onAction={(action) => {
-          switch (action) {
-            case PromptAction.DELETE:
-              onDelete();
-              break;
-          }
-        }}
-      >
-        <Item key={PromptAction.DELETE}>
-          <Flex
-            direction={"row"}
-            gap="size-75"
-            justifyContent={"start"}
-            alignItems={"center"}
+      <MenuTrigger>
+        <Button
+          size="S"
+          leadingVisual={<Icon svg={<Icons.MoreHorizontalOutline />} />}
+        />
+        <Popover>
+          <Menu
+            aria-label="Prompt action menu"
+            onAction={(action) => {
+              switch (action) {
+                case PromptAction.DELETE:
+                  onDelete();
+                  break;
+              }
+            }}
           >
-            <Icon svg={<Icons.TrashOutline />} />
-            <>Delete</>
-          </Flex>
-        </Item>
-      </ActionMenu>
-      <DialogContainer
-        type="modal"
-        isDismissable
-        onDismiss={() => setDialog(null)}
+            <MenuItem id={PromptAction.DELETE}>
+              <Flex
+                direction={"row"}
+                gap="size-75"
+                justifyContent={"start"}
+                alignItems={"center"}
+              >
+                <Icon svg={<Icons.TrashOutline />} />
+                <>Delete</>
+              </Flex>
+            </MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+      <DialogTrigger
+        isOpen={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
       >
-        {dialog}
-      </DialogContainer>
+        <Modal>
+          <DeletePromptDialog
+            promptId={promptId}
+            onDeleted={() => {
+              onDeleted();
+              setShowDeleteDialog(false);
+            }}
+          />
+        </Modal>
+      </DialogTrigger>
     </StopPropagation>
   );
 }

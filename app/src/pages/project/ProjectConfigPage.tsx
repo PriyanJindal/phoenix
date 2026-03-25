@@ -1,26 +1,40 @@
-import React, { Suspense } from "react";
+import { css } from "@emotion/react";
+import { Suspense, useCallback, useState } from "react";
+import type { PreloadedQuery } from "react-relay";
 import {
   graphql,
-  PreloadedQuery,
+  useMutation,
   usePreloadedQuery,
   useRefetchableFragment,
 } from "react-relay";
-import { css } from "@emotion/react";
-
-import { Card, Item, Picker } from "@arizeai/components";
 
 import {
+  Alert,
+  Button,
+  Card,
   CopyToClipboardButton,
   Flex,
+  Icon,
+  Icons,
   Input,
   Label,
+  ListBox,
   Loading,
+  Popover,
+  Select,
+  SelectChevronUpDownIcon,
+  SelectItem,
+  SelectValue,
   TextField,
+  View,
 } from "@phoenix/components";
-import { useProjectContext } from "@phoenix/contexts";
+import { useNotifySuccess, useProjectContext } from "@phoenix/contexts";
 
-import { ProjectConfigPage_projectConfigCard$key } from "./__generated__/ProjectConfigPage_projectConfigCard.graphql";
-import { ProjectPageQueriesProjectConfigQuery as ProjectPageProjectConfigQueryType } from "./__generated__/ProjectPageQueriesProjectConfigQuery.graphql";
+import type { ProjectFormParams } from "../projects/ProjectForm";
+import { GRADIENT_PRESETS, ProjectForm } from "../projects/ProjectForm";
+import type { ProjectConfigPage_projectConfigCard$key } from "./__generated__/ProjectConfigPage_projectConfigCard.graphql";
+import type { ProjectConfigPagePatchProjectMutation } from "./__generated__/ProjectConfigPagePatchProjectMutation.graphql";
+import type { ProjectPageQueriesProjectConfigQuery as ProjectPageProjectConfigQueryType } from "./__generated__/ProjectPageQueriesProjectConfigQuery.graphql";
 import { isProjectTab } from "./constants";
 import { ProjectAnnotationConfigCard } from "./ProjectAnnotationConfigCard";
 import {
@@ -28,12 +42,13 @@ import {
   useProjectPageQueryReferenceContext,
 } from "./ProjectPageQueries";
 import { ProjectRetentionPolicyCard } from "./ProjectRetentionPolicyCard";
+
 const projectConfigPageCSS = css`
   overflow-y: auto;
 `;
 
 const projectConfigPageInnerCSS = css`
-  padding: var(--ac-global-dimension-size-400);
+  padding: var(--global-dimension-size-400);
   max-width: 800px;
   min-width: 500px;
   box-sizing: border-box;
@@ -47,7 +62,7 @@ const gradientPreviewCSS = css`
   height: 75px;
   flex: none;
   border-radius: 50%;
-  margin-top: var(--ac-global-dimension-size-100);
+  margin-top: var(--global-dimension-size-100);
 `;
 
 export const ProjectConfigPage = () => {
@@ -81,6 +96,32 @@ const ProjectConfigContent = ({
   );
 };
 
+/**
+ * Find matching gradient preset from start/end colors, or default to first preset.
+ */
+function findGradientPreset(startColor: string, endColor: string): string {
+  const match = GRADIENT_PRESETS.find(
+    (p) =>
+      p.startColor.toLowerCase() === startColor.toLowerCase() &&
+      p.endColor.toLowerCase() === endColor.toLowerCase()
+  );
+  return match?.id ?? GRADIENT_PRESETS[0].id;
+}
+
+const nameFieldCSS = css`
+  width: 100%;
+`;
+
+const ReadOnlyNameField = ({ name }: { name: string }) => (
+  <Flex direction="row" gap="size-100" alignItems="end" width="100%">
+    <TextField value={name} isReadOnly css={nameFieldCSS}>
+      <Label>Project Name</Label>
+      <Input />
+    </TextField>
+    <CopyToClipboardButton text={name} size="M" />
+  </Flex>
+);
+
 const ProjectConfigCard = ({
   project,
 }: {
@@ -92,6 +133,7 @@ const ProjectConfigCard = ({
       @refetchable(queryName: "ProjectConfigPageProjectConfigCardQuery") {
         id
         name
+        description
         gradientStartColor
         gradientEndColor
       }
@@ -104,58 +146,161 @@ const ProjectConfigCard = ({
     setDefaultTab: state.setDefaultTab,
   }));
 
-  return (
-    <Card title="Project Settings" variant="compact">
-      <Flex direction="row" gap="size-200">
-        <div
-          css={[
-            gradientPreviewCSS,
-            {
-              background: `linear-gradient(136.27deg, ${data.gradientStartColor} 14.03%, ${data.gradientEndColor} 84.38%)`,
-            },
-          ]}
+  const [isEditing, setIsEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const notifySuccess = useNotifySuccess();
+
+  const [commit, isCommitting] =
+    useMutation<ProjectConfigPagePatchProjectMutation>(graphql`
+      mutation ProjectConfigPagePatchProjectMutation($input: PatchProjectInput!) {
+        patchProject(input: $input) {
+          project {
+            id
+            description
+            gradientStartColor
+            gradientEndColor
+          }
+        }
+      }
+    `);
+
+  const handleSubmit = useCallback(
+    (params: ProjectFormParams) => {
+      setError(null);
+      commit({
+        variables: {
+          input: {
+            id: data.id,
+            description: params.description,
+            gradientStartColor: params.gradientStartColor,
+            gradientEndColor: params.gradientEndColor,
+          },
+        },
+        onCompleted: () => {
+          notifySuccess({
+            title: "Project updated",
+            message: "Project settings have been saved.",
+          });
+          setIsEditing(false);
+        },
+        onError: () => {
+          setError("An error occurred while saving project settings.");
+        },
+      });
+    },
+    [commit, data.id, notifySuccess]
+  );
+
+  if (isEditing) {
+    return (
+      <Card title="Project Settings">
+        {error && (
+          <View padding="size-200" paddingBottom="size-0">
+            <Alert variant="danger" banner>
+              {error}
+            </Alert>
+          </View>
+        )}
+        <View padding="size-200">
+          <ReadOnlyNameField name={data.name} />
+        </View>
+        <ProjectForm
+          onSubmit={handleSubmit}
+          isSubmitting={isCommitting}
+          submitButtonText={isCommitting ? "Saving..." : "Save"}
+          hideNameField
+          onCancel={() => {
+            setIsEditing(false);
+            setError(null);
+          }}
+          defaultValues={{
+            description: data.description ?? "",
+            gradientPreset: findGradientPreset(
+              data.gradientStartColor,
+              data.gradientEndColor
+            ),
+          }}
         />
-        <div
-          css={css`
-            width: 100%;
-            .ac-dropdown,
-            .ac-dropdown-button {
-              width: 100%;
-            }
-          `}
+      </Card>
+    );
+  }
+
+  return (
+    <Card
+      title="Project Settings"
+      extra={
+        <Button
+          variant="default"
+          size="S"
+          leadingVisual={<Icon svg={<Icons.EditOutline />} />}
+          onPress={() => setIsEditing(true)}
         >
-          <Flex direction="column" gap="size-100" width="100%">
-            <Flex direction="row" gap="size-100" alignItems="end" width="100%">
-              <TextField
-                value={data.name}
-                isReadOnly
-                css={css`
-                  width: 100%;
-                `}
+          Edit
+        </Button>
+      }
+    >
+      <View padding="size-200">
+        <Flex direction="row" gap="size-200">
+          <div
+            css={[
+              gradientPreviewCSS,
+              {
+                background: `linear-gradient(136.27deg, ${data.gradientStartColor} 14.03%, ${data.gradientEndColor} 84.38%)`,
+              },
+            ]}
+          />
+          <div
+            css={css`
+              width: 100%;
+              .dropdown,
+              .dropdown__button {
+                width: 100%;
+              }
+            `}
+          >
+            <Flex direction="column" gap="size-100" width="100%">
+              <ReadOnlyNameField name={data.name} />
+              {data.description && (
+                <TextField value={data.description} isReadOnly>
+                  <Label>Description</Label>
+                  <Input />
+                </TextField>
+              )}
+              <Select
+                value={defaultTab}
+                onChange={(key) => {
+                  if (typeof key === "string" && isProjectTab(key)) {
+                    setDefaultTab(key);
+                  }
+                }}
+                placeholder="Select a default tab"
               >
-                <Label>Project Name</Label>
-                <Input />
-              </TextField>
-              <CopyToClipboardButton text={data.name} size="M" />
+                <Label>Default Project Tab</Label>
+                <Button>
+                  <SelectValue />
+                  <SelectChevronUpDownIcon />
+                </Button>
+                <Popover>
+                  <ListBox>
+                    <SelectItem key="spans" id="spans">
+                      Spans
+                    </SelectItem>
+                    <SelectItem key="traces" id="traces">
+                      Traces
+                    </SelectItem>
+                    <SelectItem key="sessions" id="sessions">
+                      Sessions
+                    </SelectItem>
+                    <SelectItem key="metrics" id="metrics">
+                      Metrics
+                    </SelectItem>
+                  </ListBox>
+                </Popover>
+              </Select>
             </Flex>
-            <Picker
-              label="Default Project Tab"
-              selectedKey={defaultTab}
-              onSelectionChange={(key) => {
-                if (typeof key === "string" && isProjectTab(key)) {
-                  setDefaultTab(key);
-                }
-              }}
-              size="default"
-              placeholder="Select a default tab"
-            >
-              <Item key="spans">Spans</Item>
-              <Item key="traces">Traces</Item>
-              <Item key="sessions">Sessions</Item>
-            </Picker>
-          </Flex>
-        </div>
-      </Flex>
+          </div>
+        </Flex>
+      </View>
     </Card>
   );
 };

@@ -1,9 +1,10 @@
 import invariant from "tiny-invariant";
+
+import { assertUnreachable } from "../../utils/assertUnreachable";
 import { toAI } from "./toAI";
 import { toAnthropic } from "./toAnthropic";
 import { toOpenAI } from "./toOpenAI";
-import { SupportedSDK, Variables, toSDKParamsBase } from "./types";
-import { assertUnreachable } from "../../utils/assertUnreachable";
+import type { SupportedSDK, toSDKParamsBase, Variables } from "./types";
 
 /**
  * Parameters for an SDK conversion function
@@ -23,7 +24,7 @@ export type SDKParams<T extends SupportedSDK> = Parameters<
 /**
  * Map of SDK names to their corresponding conversion functions
  */
-const PROVIDER_TO_SDK = {
+export const PROVIDER_TO_SDK = {
   openai: toOpenAI,
   anthropic: toAnthropic,
   ai: toAI,
@@ -48,7 +49,10 @@ const getTargetSDK = <T extends SupportedSDK>(sdk: T) => {
 /**
  * Parameters specific to the toSDK function
  */
-type ToSDKParams<T extends SupportedSDK, V extends Variables = Variables> = {
+export type ToSDKParams<
+  T extends SupportedSDK,
+  V extends Variables = Variables,
+> = {
   /**
    * String representing the SDK to convert to
    */

@@ -1,29 +1,26 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import Field
 from sqlalchemy import select
 from starlette.requests import Request
-from starlette.status import (
-    HTTP_204_NO_CONTENT,
-    HTTP_403_FORBIDDEN,
-    HTTP_404_NOT_FOUND,
-    HTTP_422_UNPROCESSABLE_ENTITY,
-)
 from strawberry.relay import GlobalID
 
 from phoenix.config import DEFAULT_PROJECT_NAME
 from phoenix.db import models
-from phoenix.db.enums import UserRole
-from phoenix.db.helpers import exclude_experiment_projects
+from phoenix.db.helpers import (
+    exclude_dataset_evaluator_projects,
+    exclude_experiment_projects,
+)
 from phoenix.server.api.routers.v1.models import V1RoutesBaseModel
 from phoenix.server.api.routers.v1.utils import (
     PaginatedResponseBody,
     ResponseBody,
-    _get_project_by_identifier,
     add_errors_to_responses,
+    get_project_by_identifier,
 )
 from phoenix.server.api.types.Project import Project as ProjectNodeType
+from phoenix.server.authorization import is_not_locked, require_admin
 
 router = APIRouter(tags=["projects"])
 
@@ -69,7 +66,7 @@ class UpdateProjectResponseBody(ResponseBody[Project]):
     response_description="A list of projects with pagination information",  # noqa: E501
     responses=add_errors_to_responses(
         [
-            HTTP_422_UNPROCESSABLE_ENTITY,
+            422,
         ]
     ),
 )
@@ -86,6 +83,10 @@ async def get_projects(
         default=False,
         description="Include experiment projects in the response. Experiment projects are created from running experiments.",  # noqa: E501
     ),
+    include_dataset_evaluator_projects: bool = Query(
+        default=False,
+        description="Include dataset evaluator projects in the response. Dataset evaluator projects are created when running experiments with persisted evaluators.",  # noqa: E501
+    ),
 ) -> GetProjectsResponseBody:
     """
     Retrieve a paginated list of all projects in the system.
@@ -96,6 +97,8 @@ async def get_projects(
         limit (int): Maximum number of projects to return per request.
         include_experiment_projects (bool): Flag to include experiment projects in the response.
             Experiment projects are created from running experiments.
+        include_dataset_evaluator_projects (bool): Flag to include dataset evaluator projects in the response.
+            Dataset evaluator projects are created from running dataset evaluators.
 
     Returns:
         GetProjectsResponseBody: Response containing a list of projects and pagination information.
@@ -106,6 +109,8 @@ async def get_projects(
     stmt = select(models.Project).order_by(models.Project.id.desc())
     if not include_experiment_projects:
         stmt = exclude_experiment_projects(stmt)
+    if not include_dataset_evaluator_projects:
+        stmt = exclude_dataset_evaluator_projects(stmt)
     async with request.app.state.db() as session:
         if cursor:
             try:
@@ -114,7 +119,7 @@ async def get_projects(
             except ValueError:
                 raise HTTPException(
                     detail=f"Invalid cursor format: {cursor}",
-                    status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=422,
                 )
 
         stmt = stmt.limit(limit + 1)
@@ -141,8 +146,8 @@ async def get_projects(
     response_description="The requested project",  # noqa: E501
     responses=add_errors_to_responses(
         [
-            HTTP_404_NOT_FOUND,
-            HTTP_422_UNPROCESSABLE_ENTITY,
+            404,
+            422,
         ]
     ),
 )
@@ -167,20 +172,21 @@ async def get_project(
         HTTPException: If the project identifier format is invalid or the project is not found.
     """  # noqa: E501
     async with request.app.state.db() as session:
-        project = await _get_project_by_identifier(session, project_identifier)
+        project = await get_project_by_identifier(session, project_identifier)
     data = _to_project_response(project)
     return GetProjectResponseBody(data=data)
 
 
 @router.post(
     "/projects",
+    dependencies=[Depends(is_not_locked)],
     operation_id="createProject",
     summary="Create a new project",  # noqa: E501
     description="Create a new project with the specified configuration.",  # noqa: E501
     response_description="The newly created project",  # noqa: E501
     responses=add_errors_to_responses(
         [
-            HTTP_422_UNPROCESSABLE_ENTITY,
+            422,
         ]
     ),
 )
@@ -214,15 +220,16 @@ async def create_project(
 
 @router.put(
     "/projects/{project_identifier}",
+    dependencies=[Depends(require_admin), Depends(is_not_locked)],
     operation_id="updateProject",
     summary="Update a project by ID or name",  # noqa: E501
     description="Update an existing project with new configuration. Project names cannot be changed. The project identifier is either project ID or project name. Note: When using a project name as the identifier, it cannot contain slash (/), question mark (?), or pound sign (#) characters.",  # noqa: E501
     response_description="The updated project",  # noqa: E501
     responses=add_errors_to_responses(
         [
-            HTTP_403_FORBIDDEN,
-            HTTP_404_NOT_FOUND,
-            HTTP_422_UNPROCESSABLE_ENTITY,
+            403,
+            404,
+            422,
         ]
     ),
 )
@@ -248,22 +255,8 @@ async def update_project(
     Raises:
         HTTPException: If the project identifier format is invalid or the project is not found.
     """  # noqa: E501
-    if request.app.state.authentication_enabled:
-        async with request.app.state.db() as session:
-            # Check if the user is an admin
-            stmt = (
-                select(models.UserRole.name)
-                .join(models.User)
-                .where(models.User.id == int(request.user.identity))
-            )
-            role_name = await session.scalar(stmt)
-        if role_name != UserRole.ADMIN.value:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail="Only admins can update projects",
-            )
     async with request.app.state.db() as session:
-        project = await _get_project_by_identifier(session, project_identifier)
+        project = await get_project_by_identifier(session, project_identifier)
 
         # Update the description if provided
         if request_body.description is not None:
@@ -275,16 +268,17 @@ async def update_project(
 
 @router.delete(
     "/projects/{project_identifier}",
+    dependencies=[Depends(require_admin)],
     operation_id="deleteProject",
     summary="Delete a project by ID or name",  # noqa: E501
     description="Delete an existing project and all its associated data. The project identifier is either project ID or project name. The default project cannot be deleted. Note: When using a project name as the identifier, it cannot contain slash (/), question mark (?), or pound sign (#) characters.",  # noqa: E501
     response_description="No content returned on successful deletion",  # noqa: E501
-    status_code=HTTP_204_NO_CONTENT,
+    status_code=204,
     responses=add_errors_to_responses(
         [
-            HTTP_403_FORBIDDEN,
-            HTTP_404_NOT_FOUND,
-            HTTP_422_UNPROCESSABLE_ENTITY,
+            403,
+            404,
+            422,
         ]
     ),
 )
@@ -308,27 +302,13 @@ async def delete_project(
     Raises:
         HTTPException: If the project identifier format is invalid, the project is not found, or it's the default project.
     """  # noqa: E501
-    if request.app.state.authentication_enabled:
-        async with request.app.state.db() as session:
-            # Check if the user is an admin
-            stmt = (
-                select(models.UserRole.name)
-                .join(models.User)
-                .where(models.User.id == int(request.user.identity))
-            )
-            role_name = await session.scalar(stmt)
-        if role_name != UserRole.ADMIN.value:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail="Only admins can delete projects",
-            )
     async with request.app.state.db() as session:
-        project = await _get_project_by_identifier(session, project_identifier)
+        project = await get_project_by_identifier(session, project_identifier)
 
         # The default project must not be deleted - it's forbidden
         if project.name == DEFAULT_PROJECT_NAME:
             raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
+                status_code=403,
                 detail="The default project cannot be deleted",
             )
 

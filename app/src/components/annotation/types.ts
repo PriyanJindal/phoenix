@@ -1,4 +1,4 @@
-import { AnnotationConfig } from "@phoenix/pages/settings/types";
+import type { AnnotationConfig } from "@phoenix/pages/settings/types";
 
 export type {
   AnnotationConfig,
@@ -13,6 +13,7 @@ export interface Annotation {
   label?: string | null;
   score?: number | null;
   explanation?: string | null;
+  metadata?: Record<string, unknown>;
   annotatorKind?: string;
   createdAt?: string;
   user?: {
@@ -24,6 +25,7 @@ export interface Annotation {
 export type AnnotationInputPropsBase<T extends AnnotationConfig> = {
   annotation?: Annotation;
   annotationConfig: T;
-  containerRef?: HTMLDivElement;
   onSubmitExplanation?: (explanation: string) => void;
 };
+
+export type AnnotationDisplayPreference = "label" | "score" | "none";

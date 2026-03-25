@@ -1,87 +1,163 @@
-import React, { useMemo } from "react";
-import { graphql, useLazyLoadQuery } from "react-relay";
-import { useNavigate } from "react-router";
+import { useCallback, useMemo, useState } from "react";
+import { graphql, readInlineData, useLazyLoadQuery } from "react-relay";
 
-import { Button, Flex, Icon, Icons, Text, View } from "@phoenix/components";
-import { usePlaygroundContext } from "@phoenix/contexts/PlaygroundContext";
+import { Flex } from "@phoenix/components";
+import type { EvaluatorItem } from "@phoenix/components/evaluators/EvaluatorSelectMenuItem";
+import type { EvaluatorInputMappingInput } from "@phoenix/pages/playground/__generated__/PlaygroundDatasetExamplesTableMutation.graphql";
+import type {
+  PlaygroundDatasetSection_evaluator$data,
+  PlaygroundDatasetSection_evaluator$key,
+} from "@phoenix/pages/playground/__generated__/PlaygroundDatasetSection_evaluator.graphql";
+import type { PlaygroundDatasetSectionQuery } from "@phoenix/pages/playground/__generated__/PlaygroundDatasetSectionQuery.graphql";
+import type { Mutable } from "@phoenix/typeUtils";
+import { datasetEvaluatorsToAnnotationConfigs } from "@phoenix/utils/datasetEvaluatorUtils";
 
-import { PlaygroundDatasetSectionQuery } from "./__generated__/PlaygroundDatasetSectionQuery.graphql";
 import { PlaygroundDatasetExamplesTable } from "./PlaygroundDatasetExamplesTable";
 import { PlaygroundDatasetExamplesTableProvider } from "./PlaygroundDatasetExamplesTableContext";
+import { PlaygroundExperimentToolbar } from "./PlaygroundExperimentToolbar";
 
-export function PlaygroundDatasetSection({ datasetId }: { datasetId: string }) {
-  const instances = usePlaygroundContext((state) => state.instances);
-  const isRunning = instances.some((instance) => instance.activeRunId != null);
-  const experimentIds = useMemo(() => {
-    return instances
-      .map((instance) => instance.experimentId)
-      .filter((id) => id != null);
-  }, [instances]);
-  const navigate = useNavigate();
-
+export function PlaygroundDatasetSection({
+  datasetId,
+  splitIds,
+}: {
+  datasetId: string;
+  splitIds?: string[];
+}) {
   const data = useLazyLoadQuery<PlaygroundDatasetSectionQuery>(
     graphql`
-      query PlaygroundDatasetSectionQuery($datasetId: GlobalID!) {
+      query PlaygroundDatasetSectionQuery($datasetId: ID!) {
         dataset: node(id: $datasetId) {
           ... on Dataset {
-            name
-            exampleCount
+            datasetEvaluators(first: 100)
+              @connection(key: "PlaygroundDatasetSection_datasetEvaluators") {
+              __id
+              edges {
+                node {
+                  ...PlaygroundDatasetSection_evaluator
+                }
+              }
+            }
           }
         }
+        ...PlaygroundEvaluatorSelect_query
       }
     `,
     {
       datasetId,
+    },
+    {
+      fetchPolicy: "network-only",
     }
   );
+
+  type DatasetEvaluatorNode = PlaygroundDatasetSection_evaluator$data;
+  const datasetEvaluators: (DatasetEvaluatorNode & EvaluatorItem)[] = useMemo(
+    () =>
+      data.dataset.datasetEvaluators?.edges?.map((edge) => {
+        const evaluator =
+          readInlineData<PlaygroundDatasetSection_evaluator$key>(
+            graphql`
+              fragment PlaygroundDatasetSection_evaluator on DatasetEvaluator @inline {
+                id
+                name
+                inputMapping {
+                  literalMapping
+                  pathMapping
+                }
+                evaluator {
+                  id
+                  kind
+                  isBuiltin
+                }
+                outputConfigs {
+                  ... on CategoricalAnnotationConfig {
+                    name
+                    optimizationDirection
+                    values {
+                      label
+                      score
+                    }
+                  }
+                  ... on ContinuousAnnotationConfig {
+                    name
+                    optimizationDirection
+                    lowerBound
+                    upperBound
+                  }
+                }
+              }
+            `,
+            edge.node
+          );
+        return {
+          ...evaluator,
+          kind: evaluator.evaluator.kind,
+          isBuiltIn: evaluator.evaluator.isBuiltin,
+          isAssignedToDataset: true,
+          annotationName: evaluator.name,
+        };
+      }) ?? [],
+    [data.dataset.datasetEvaluators]
+  );
+  const [selectedDatasetEvaluatorIds, setSelectedDatasetEvaluatorIds] =
+    useState<string[]>(
+      () =>
+        datasetEvaluators.map((datasetEvaluator) => datasetEvaluator.id) ?? []
+    );
+  const onEvaluatorCreated = useCallback((datasetEvaluatorId: string) => {
+    setSelectedDatasetEvaluatorIds((prev) => [...prev, datasetEvaluatorId]);
+  }, []);
+  const selectedEvaluatorWithInputMapping = useMemo(() => {
+    return datasetEvaluators
+      .filter((datasetEvaluator) =>
+        selectedDatasetEvaluatorIds.includes(datasetEvaluator.id)
+      )
+      .reduce(
+        (acc, datasetEvaluator) => {
+          acc[datasetEvaluator.id] = {
+            name: datasetEvaluator.name,
+            inputMapping:
+              datasetEvaluator.inputMapping as Mutable<EvaluatorInputMappingInput>,
+          };
+          return acc;
+        },
+        {} as Record<
+          string,
+          { name: string; inputMapping: EvaluatorInputMappingInput }
+        >
+      );
+  }, [datasetEvaluators, selectedDatasetEvaluatorIds]);
+  const evaluatorOutputConfigs = useMemo(() => {
+    const selectedEvaluators = datasetEvaluators.filter((datasetEvaluator) =>
+      selectedDatasetEvaluatorIds.includes(datasetEvaluator.id)
+    );
+    return datasetEvaluatorsToAnnotationConfigs(selectedEvaluators);
+  }, [datasetEvaluators, selectedDatasetEvaluatorIds]);
+
+  // We want to re-mount the context when the dataset or the splits change
+  const key = `${datasetId}-${splitIds?.join("-")}`;
   return (
     <Flex direction={"column"} height={"100%"}>
-      <View
-        flex="none"
-        backgroundColor={"dark"}
-        paddingX="size-200"
-        paddingY={"size-100"}
-        borderBottomColor={"light"}
-        borderBottomWidth={"thin"}
-        height={50}
-      >
-        <Flex justifyContent="space-between" alignItems="center" height="100%">
-          <Flex gap="size-100">
-            <Text>{data.dataset.name ?? "Dataset"} results</Text>
-            {data.dataset.exampleCount != null ? (
-              <Text fontStyle="italic" color={"text-700"}>
-                {data.dataset.exampleCount} examples
-              </Text>
-            ) : null}
-          </Flex>
-          {experimentIds.length > 0 && (
-            <Button
-              size="S"
-              isDisabled={isRunning}
-              leadingVisual={
-                <Icon
-                  svg={
-                    isRunning ? (
-                      <Icons.LoadingOutline />
-                    ) : (
-                      <Icons.ExperimentOutline />
-                    )
-                  }
-                />
-              }
-              onPress={() => {
-                navigate(
-                  `/datasets/${datasetId}/compare?experimentId=${experimentIds.join("&experimentId=")}`
-                );
-              }}
-            >
-              View Experiment{instances.length > 1 ? "s" : ""}
-            </Button>
-          )}
-        </Flex>
-      </View>
-      <PlaygroundDatasetExamplesTableProvider>
-        <PlaygroundDatasetExamplesTable datasetId={datasetId} />
+      <PlaygroundExperimentToolbar
+        datasetId={datasetId}
+        datasetEvaluators={datasetEvaluators}
+        selectedDatasetEvaluatorIds={selectedDatasetEvaluatorIds}
+        onSelectionChange={setSelectedDatasetEvaluatorIds}
+        updateConnectionIds={
+          data.dataset.datasetEvaluators?.__id != null
+            ? [data.dataset.datasetEvaluators.__id]
+            : []
+        }
+        onEvaluatorCreated={onEvaluatorCreated}
+        query={data}
+      />
+      <PlaygroundDatasetExamplesTableProvider key={key}>
+        <PlaygroundDatasetExamplesTable
+          datasetId={datasetId}
+          splitIds={splitIds}
+          evaluatorMappings={selectedEvaluatorWithInputMapping}
+          evaluatorOutputConfigs={evaluatorOutputConfigs}
+        />
       </PlaygroundDatasetExamplesTableProvider>
     </Flex>
   );

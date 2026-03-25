@@ -1,15 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
 import { defaultKeymap } from "@codemirror/commands";
 import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
-import ReactCodeMirror, {
-  BasicSetupOptions,
-  EditorView,
-  keymap,
-} from "@uiw/react-codemirror";
+import type { BasicSetupOptions } from "@uiw/react-codemirror";
+import ReactCodeMirror, { EditorView, keymap } from "@uiw/react-codemirror";
 
-import { Field } from "@arizeai/components";
-
+import { Label } from "@phoenix/components";
 import { CodeWrap } from "@phoenix/components/code";
+import { fieldBaseCSS } from "@phoenix/components/core/field/styles";
 import { useTheme } from "@phoenix/contexts";
 
 type VariableEditorProps = {
@@ -37,12 +33,10 @@ const extensions = [
 ];
 
 /**
- * A mostly uncontrolled editor that re-mounts when the label changes.
+ * A controlled CodeMirror editor keyed by variable name.
  *
- * The re-mount ensures that value is reset to the initial value when the label (variable name) changes.
- *
- * This is necessary because controlled react-codemirror editors incessantly remount and reset
- * cursor position when value is updated.
+ * Re-mounts when the label (variable name) changes so the editor
+ * initializes with the correct value for the new variable.
  */
 export const VariableEditor = ({
   label,
@@ -50,33 +44,22 @@ export const VariableEditor = ({
   onChange,
 }: VariableEditorProps) => {
   const { theme } = useTheme();
-  const valueRef = useRef(defaultValue);
-  const [version, setVersion] = useState(0);
-  const [initialValue, setInitialValue] = useState(() => defaultValue);
-  useEffect(() => {
-    if (defaultValue == null) {
-      setInitialValue("");
-      setVersion((prev) => prev + 1);
-    }
-    valueRef.current = defaultValue;
-  }, [defaultValue]);
-  useEffect(() => {
-    setInitialValue(valueRef.current);
-    setVersion((prev) => prev + 1);
-  }, [label]);
+  const editorValue = defaultValue ?? "";
+  const editorKey = label ?? "";
   const codeMirrorTheme = theme === "light" ? githubLight : githubDark;
   return (
-    <Field label={label}>
-      <CodeWrap width="100%">
+    <div css={fieldBaseCSS}>
+      <Label>{label}</Label>
+      <CodeWrap style={{ width: "100%" }}>
         <ReactCodeMirror
-          key={version}
+          key={editorKey}
           theme={codeMirrorTheme}
           basicSetup={basicSetupOptions}
-          value={initialValue}
+          value={editorValue}
           extensions={extensions}
           onChange={onChange}
         />
       </CodeWrap>
-    </Field>
+    </div>
   );
 };

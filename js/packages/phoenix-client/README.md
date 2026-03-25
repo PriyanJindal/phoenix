@@ -12,9 +12,17 @@
     </div>
 </h1>
 
-![NPM](https://img.shields.io/npm/v/%40arizeai%2Fphoenix-client)
+<p align="center">
+    <a href="https://www.npmjs.com/package/@arizeai/phoenix-client">
+        <img src="https://img.shields.io/npm/v/%40arizeai%2Fphoenix-client" alt="NPM Version">
+    </a>
+    <a href="https://arize-ai.github.io/phoenix/">
+        <img src="https://img.shields.io/badge/docs-blue?logo=typescript&logoColor=white" alt="Documentation">
+    </a>
+    <img referrerpolicy="no-referrer-when-downgrade" src="https://static.scarf.sh/a.png?x-pxid=8e8e8b34-7900-43fa-a38f-1f070bd48c64&page=js/packages/phoenix-client/README.md" />
+</p>
 
-This package provides a TypeSript client for the [Arize Phoenix](https://github.com/Arize-ai/phoenix) API. It is still under active development and is subject to change.
+This package provides a TypeScript client for the [Arize Phoenix](https://github.com/Arize-ai/phoenix) API. It is still under active development and is subject to change.
 
 ## Installation
 
@@ -173,6 +181,362 @@ const prompt = await phoenix.GET("/v1/prompts/{prompt_identifier}/latest", {
 
 A comprehensive overview of the available endpoints and their parameters is available in the OpenAPI viewer within Phoenix, or in the [Phoenix OpenAPI spec](https://github.com/Arize-ai/phoenix/blob/main/schemas/openapi.json).
 
+## Datasets
+
+The `@arizeai/phoenix-client` package allows you to create and manage datasets, which are collections of examples used for experiments and evaluation.
+
+### Creating a Dataset
+
+You can create a dataset by providing a name, description, and an array of examples (each with `input`, `output`, and optional `metadata`).
+
+```ts
+import { createDataset } from "@arizeai/phoenix-client/datasets";
+
+const { datasetId } = await createDataset({
+  name: "questions",
+  description: "a simple dataset of questions",
+  examples: [
+    {
+      input: { question: "What is the capital of France" },
+      output: { answer: "Paris" },
+      metadata: {},
+    },
+    {
+      input: { question: "What is the capital of the USA" },
+      output: { answer: "Washington D.C." },
+      metadata: {},
+    },
+  ],
+});
+// You can now use datasetId to run experiments or add more examples
+```
+
+## Experiments
+
+The `@arizeai/phoenix-client` package provides an experiments API for running and evaluating tasks on datasets. This is useful for benchmarking models, evaluating outputs, and tracking experiment results in Phoenix.
+
+### Running an Experiment
+
+To run an experiment, you typically:
+
+1. Create a dataset (or use an existing one)
+2. Define a task function to run on each example
+3. Define one or more evaluators to score or label the outputs
+4. Run the experiment and inspect the results
+
+Below is a complete example:
+
+```ts
+import { createDataset } from "@arizeai/phoenix-client/datasets";
+import {
+  asExperimentEvaluator,
+  runExperiment,
+} from "@arizeai/phoenix-client/experiments";
+
+// 1. Create a dataset
+const { datasetId } = await createDataset({
+  name: "names-dataset",
+  description: "a simple dataset of names",
+  examples: [
+    {
+      input: { name: "John" },
+      output: { text: "Hello, John!" },
+      metadata: {},
+    },
+    {
+      input: { name: "Jane" },
+      output: { text: "Hello, Jane!" },
+      metadata: {},
+    },
+  ],
+});
+
+// 2. Define a task to run on each example
+const task = async (example) => `hello ${example.input.name}`;
+
+// 3. Define evaluators
+const evaluators = [
+  asExperimentEvaluator({
+    name: "matches",
+    kind: "CODE",
+    evaluate: async ({ output, expected }) => {
+      const matches = output === expected?.text;
+      return {
+        label: matches ? "matches" : "does not match",
+        score: matches ? 1 : 0,
+        explanation: matches
+          ? "output matches expected"
+          : "output does not match expected",
+        metadata: {},
+      };
+    },
+  }),
+  asExperimentEvaluator({
+    name: "contains-hello",
+    kind: "CODE",
+    evaluate: async ({ output }) => {
+      const matches = typeof output === "string" && output.includes("hello");
+      return {
+        label: matches ? "contains hello" : "does not contain hello",
+        score: matches ? 1 : 0,
+        explanation: matches
+          ? "output contains hello"
+          : "output does not contain hello",
+        metadata: {},
+      };
+    },
+  }),
+];
+
+// 4. Run the experiment
+const experiment = await runExperiment({
+  dataset: { datasetId },
+  task,
+  evaluators,
+});
+```
+
+> **Hint:** Tasks and evaluators are instrumented using [OpenTelemetry](https://opentelemetry.io/). You can view detailed traces of experiment runs and evaluations directly in the Phoenix UI for debugging and performance analysis.
+
+## Traces
+
+The `@arizeai/phoenix-client` package provides a `traces` export for retrieving trace data from Phoenix projects.
+
+### Fetching Traces
+
+Use `getTraces` to retrieve traces with optional filtering, sorting, and pagination.
+
+```ts
+import { getTraces } from "@arizeai/phoenix-client/traces";
+
+// Get the latest 10 traces
+const result = await getTraces({
+  project: { projectName: "my-project" },
+  limit: 10,
+});
+console.log(result.data); // array of trace objects
+
+// Filter by time range and include full span details
+const detailed = await getTraces({
+  project: { projectName: "my-project" },
+  startTime: "2026-03-01T00:00:00Z",
+  endTime: new Date(),
+  includeSpans: true,
+  sort: "latency_ms",
+  order: "desc",
+});
+
+// Filter by session
+const sessionTraces = await getTraces({
+  project: { projectName: "my-project" },
+  sessionId: "my-session-id",
+});
+```
+
+| Parameter      | Type                           | Description                                |
+| -------------- | ------------------------------ | ------------------------------------------ |
+| `project`      | `ProjectIdentifier`            | The project (by name or ID) — **required** |
+| `startTime`    | `Date \| string \| null`       | Inclusive lower bound on trace start time  |
+| `endTime`      | `Date \| string \| null`       | Exclusive upper bound on trace start time  |
+| `sort`         | `"start_time" \| "latency_ms"` | Sort field                                 |
+| `order`        | `"asc" \| "desc"`              | Sort direction                             |
+| `limit`        | `number`                       | Maximum number of traces to return         |
+| `cursor`       | `string \| null`               | Pagination cursor (Trace GlobalID)         |
+| `includeSpans` | `boolean`                      | Include full span details for each trace   |
+| `sessionId`    | `string \| string[] \| null`   | Filter traces by session identifier(s)     |
+
+### Pagination
+
+Use the `cursor` from a previous result to fetch the next page:
+
+```ts
+import { getTraces } from "@arizeai/phoenix-client/traces";
+
+let cursor: string | null = null;
+const allTraces = [];
+
+do {
+  const result = await getTraces({
+    project: { projectName: "my-project" },
+    limit: 50,
+    cursor,
+  });
+  allTraces.push(...result.data);
+  cursor = result.nextCursor ?? null;
+} while (cursor);
+```
+
+> **Note:** Requires Phoenix server >= 13.15.0.
+
+## Spans
+
+The `@arizeai/phoenix-client` package provides a `spans` export for querying spans with powerful filtering.
+
+### Fetching Spans
+
+Use `getSpans` to retrieve spans with filtering by kind, status, name, trace, and more.
+
+```ts
+import { getSpans } from "@arizeai/phoenix-client/spans";
+
+// Get recent spans
+const result = await getSpans({
+  project: { projectName: "my-project" },
+  limit: 100,
+});
+
+// Filter by span kind and status
+const errorLLMSpans = await getSpans({
+  project: { projectName: "my-project" },
+  spanKind: "LLM",
+  statusCode: "ERROR",
+});
+
+// Filter by name and trace
+const spans = await getSpans({
+  project: { projectName: "my-project" },
+  name: "chat_completion",
+  traceIds: ["trace-abc", "trace-def"],
+});
+
+// Root spans only
+const rootSpans = await getSpans({
+  project: { projectName: "my-project" },
+  parentId: null,
+});
+```
+
+| Parameter    | Type                                 | Description                                                     |
+| ------------ | ------------------------------------ | --------------------------------------------------------------- |
+| `project`    | `ProjectIdentifier`                  | The project (by name or ID) — **required**                      |
+| `startTime`  | `Date \| string \| null`             | Inclusive lower bound time                                      |
+| `endTime`    | `Date \| string \| null`             | Exclusive upper bound time                                      |
+| `limit`      | `number`                             | Maximum number of spans to return                               |
+| `cursor`     | `string \| null`                     | Pagination cursor (Span GlobalID)                               |
+| `traceIds`   | `string[] \| null`                   | Filter by trace ID(s)                                           |
+| `parentId`   | `string \| null`                     | Filter by parent span ID (`null` for root spans only)           |
+| `name`       | `string \| string[] \| null`         | Filter by span name(s)                                          |
+| `spanKind`   | `SpanKindFilter \| SpanKindFilter[]` | Filter by span kind (`LLM`, `CHAIN`, `TOOL`, `RETRIEVER`, etc.) |
+| `statusCode` | `SpanStatusCode \| SpanStatusCode[]` | Filter by status code (`OK`, `ERROR`, `UNSET`)                  |
+
+## Span Annotations
+
+The `spans` export also provides functions for managing span annotations — adding evaluations, feedback, and labels to spans.
+
+### Adding a Single Annotation
+
+```ts
+import { addSpanAnnotation } from "@arizeai/phoenix-client/spans";
+
+const result = await addSpanAnnotation({
+  spanAnnotation: {
+    spanId: "f8b1c3a2d4e5f678",
+    name: "correctness",
+    label: "correct",
+    score: 1.0,
+    explanation: "The response accurately answered the question",
+    annotatorKind: "HUMAN",
+  },
+  sync: true, // wait for the annotation ID to be returned
+});
+// result: { id: "annotation-id" } when sync: true, null when sync: false
+```
+
+### Logging Multiple Annotations
+
+```ts
+import { logSpanAnnotations } from "@arizeai/phoenix-client/spans";
+
+const results = await logSpanAnnotations({
+  spanAnnotations: [
+    {
+      spanId: "f8b1c3a2d4e5f678",
+      name: "relevance",
+      label: "relevant",
+      score: 0.95,
+      annotatorKind: "LLM",
+    },
+    {
+      spanId: "a1b2c3d4e5f67890",
+      name: "relevance",
+      label: "irrelevant",
+      score: 0.2,
+      annotatorKind: "LLM",
+    },
+  ],
+  sync: true,
+});
+// results: [{ id: "..." }, { id: "..." }]
+```
+
+### Fetching Span Annotations
+
+```ts
+import { getSpanAnnotations } from "@arizeai/phoenix-client/spans";
+
+const result = await getSpanAnnotations({
+  project: { projectName: "my-project" },
+  spanIds: ["f8b1c3a2d4e5f678", "a1b2c3d4e5f67890"],
+  includeAnnotationNames: ["relevance", "correctness"],
+  limit: 100,
+});
+console.log(result.data); // array of span annotation objects
+```
+
+| Parameter                | Type                | Description                                      |
+| ------------------------ | ------------------- | ------------------------------------------------ |
+| `project`                | `ProjectIdentifier` | The project (by name or ID) — **required**       |
+| `spanIds`                | `string[]`          | Span IDs to fetch annotations for — **required** |
+| `includeAnnotationNames` | `string[]`          | Only return annotations with these names         |
+| `excludeAnnotationNames` | `string[]`          | Exclude annotations with these names             |
+| `cursor`                 | `string \| null`    | Pagination cursor                                |
+| `limit`                  | `number`            | Maximum annotations to return                    |
+
+## Sessions
+
+The `@arizeai/phoenix-client` package provides a `sessions` export for managing conversation sessions and their annotations.
+
+### Fetching Sessions
+
+Use `listSessions` to list all sessions for a project, or `getSession` to retrieve a single session by ID.
+
+```ts
+import {
+  listSessions,
+  getSession,
+  addSessionAnnotation,
+} from "@arizeai/phoenix-client/sessions";
+
+// List all sessions for a project
+const sessions = await listSessions({
+  project: "my-project",
+});
+
+for (const session of sessions) {
+  console.log(
+    `Session: ${session.sessionId}, Traces: ${session.traces.length}`
+  );
+}
+
+// Get a single session by its ID
+const session = await getSession({ sessionId: "my-session-id" });
+console.log(session.traces); // array of trace summaries in the session
+```
+
+### Adding Session Annotations
+
+```ts
+await addSessionAnnotation({
+  sessionAnnotation: {
+    sessionId: "my-session-id",
+    name: "user-satisfaction",
+    label: "satisfied",
+    score: 0.9,
+    annotatorKind: "HUMAN",
+  },
+});
+```
+
 ## Examples
 
 To run examples, install dependencies using `pnpm` and run:
@@ -193,4 +557,19 @@ Compatibility Table:
 
 | Phoenix Client Version | Phoenix Server Version |
 | ---------------------- | ---------------------- |
+| ^2.0.0                 | ^9.0.0                 |
 | ^1.0.0                 | ^8.0.0                 |
+
+---
+
+## Community
+
+Join our community to connect with thousands of AI builders:
+
+- 🌍 Join our [Slack community](https://join.slack.com/t/arize-ai/shared_invite/zt-3r07iavnk-ammtATWSlF0pSrd1DsMW7g).
+- 📚 Read the [Phoenix documentation](https://arize.com/docs/phoenix).
+- 💡 Ask questions and provide feedback in the _#phoenix-support_ channel.
+- 🌟 Leave a star on our [GitHub](https://github.com/Arize-ai/phoenix).
+- 🐞 Report bugs with [GitHub Issues](https://github.com/Arize-ai/phoenix/issues).
+- 𝕏 Follow us on [𝕏](https://twitter.com/ArizePhoenix).
+- 🗺️ Check out our [roadmap](https://github.com/orgs/Arize-ai/projects/45) to see where we're heading next.

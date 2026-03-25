@@ -11,6 +11,7 @@ from typing import Any, Generic, Optional, TypeVar
 from authlib.jose import jwt
 from authlib.jose.errors import JoseError
 from sqlalchemy import Select, delete, select
+from starlette.datastructures import Secret
 
 from phoenix.auth import (
     JWT_ALGORITHM,
@@ -19,7 +20,7 @@ from phoenix.auth import (
 )
 from phoenix.config import get_env_enable_prometheus
 from phoenix.db import models
-from phoenix.db.enums import UserRole
+from phoenix.db.models import UserRoleName
 from phoenix.server.types import (
     AccessToken,
     AccessTokenAttributes,
@@ -50,7 +51,7 @@ class JwtStore:
     def __init__(
         self,
         db: DbSessionFactory,
-        secret: str,
+        secret: Secret,
         algorithm: str = JWT_ALGORITHM,
         sleep_seconds: int = 10,
         **kwargs: Any,
@@ -79,7 +80,7 @@ class JwtStore:
         try:
             payload = jwt.decode(
                 s=token,
-                key=self._secret,
+                key=str(self._secret),
             )
         except JoseError:
             return None
@@ -163,7 +164,7 @@ class JwtStore:
         for token_id in token_ids:
             if isinstance(token_id, PasswordResetTokenId):
                 password_reset_token_ids.append(token_id)
-            if isinstance(token_id, AccessTokenId):
+            elif isinstance(token_id, AccessTokenId):
                 access_token_ids.append(token_id)
             elif isinstance(token_id, RefreshTokenId):
                 refresh_token_ids.append(token_id)
@@ -181,10 +182,10 @@ class JwtStore:
         await gather(*coroutines)
 
     async def log_out(self, user_id: UserId) -> None:
-        for cls in (AccessTokenId, RefreshTokenId):
-            table = cls.table
-            stmt = delete(table).where(table.user_id == int(user_id)).returning(table.id)
-            async with self._db() as session:
+        async with self._db() as session:
+            for cls in (AccessTokenId, RefreshTokenId):
+                table = cls.table
+                stmt = delete(table).where(table.user_id == int(user_id)).returning(table.id)
                 async for id_ in await session.stream_scalars(stmt):
                     await self._evict(cls(id_))
 
@@ -231,7 +232,7 @@ class _Store(DaemonTask, Generic[_ClaimSetT, _TokenT, _TokenIdT, _RecordT], ABC)
     def __init__(
         self,
         db: DbSessionFactory,
-        secret: str,
+        secret: Secret,
         algorithm: str = JWT_ALGORITHM,
         sleep_seconds: int = 10,
         **kwargs: Any,
@@ -247,7 +248,7 @@ class _Store(DaemonTask, Generic[_ClaimSetT, _TokenT, _TokenIdT, _RecordT], ABC)
     def _encode(self, claim: ClaimSet) -> str:
         payload: dict[str, Any] = dict(jti=claim.token_id)
         header = {"alg": self._algorithm}
-        jwt_bytes: bytes = jwt.encode(header=header, payload=payload, key=self._secret)
+        jwt_bytes: bytes = jwt.encode(header=header, payload=payload, key=str(self._secret))
         return jwt_bytes.decode()
 
     async def get(self, token_id: _TokenIdT) -> Optional[_ClaimSetT]:
@@ -259,7 +260,7 @@ class _Store(DaemonTask, Generic[_ClaimSetT, _TokenT, _TokenIdT, _RecordT], ABC)
         if not record:
             return None
         token, role = record
-        _, claims = self._from_db(token, UserRole(role))
+        _, claims = self._from_db(token, role)
         self._claims[token_id] = claims
         return claims
 
@@ -276,7 +277,7 @@ class _Store(DaemonTask, Generic[_ClaimSetT, _TokenT, _TokenIdT, _RecordT], ABC)
             await session.execute(stmt)
 
     @abstractmethod
-    def _from_db(self, record: _RecordT, role: UserRole) -> tuple[_TokenIdT, _ClaimSetT]: ...
+    def _from_db(self, record: _RecordT, role: UserRoleName) -> tuple[_TokenIdT, _ClaimSetT]: ...
 
     @abstractmethod
     def _to_db(self, claims: _ClaimSetT) -> _RecordT: ...
@@ -299,12 +300,12 @@ class _Store(DaemonTask, Generic[_ClaimSetT, _TokenT, _TokenIdT, _RecordT], ABC)
                 await self._delete_expired_tokens(session)
             async with session.begin_nested():
                 async for record, role in await session.stream(self._update_stmt):
-                    token_id, claim_set = self._from_db(record, UserRole(role))
+                    token_id, claim_set = self._from_db(record, role)
                     claims[token_id] = claim_set
         self._claims = claims
 
     @cached_property
-    def _update_stmt(self) -> Select[tuple[_RecordT, str]]:
+    def _update_stmt(self) -> Select[tuple[_RecordT, UserRoleName]]:
         return (
             select(self._table, models.UserRole.name)
             .join_from(self._table, models.User)
@@ -313,7 +314,9 @@ class _Store(DaemonTask, Generic[_ClaimSetT, _TokenT, _TokenIdT, _RecordT], ABC)
 
     async def _delete_expired_tokens(self, session: Any) -> None:
         now = datetime.now(timezone.utc)
-        await session.execute(delete(self._table).where(self._table.expires_at < now))
+        # Per JWT RFC 7519 Section 4.1.4, tokens expire "on or after" the expiration time.
+        # Use <= to include tokens expiring at exactly this moment.
+        await session.execute(delete(self._table).where(self._table.expires_at <= now))
 
     async def _run(self) -> None:
         while self._running:
@@ -340,7 +343,7 @@ class _PasswordResetTokenStore(
     def _from_db(
         self,
         record: models.PasswordResetToken,
-        user_role: UserRole,
+        user_role: UserRoleName,
     ) -> tuple[PasswordResetTokenId, PasswordResetTokenClaims]:
         token_id = PasswordResetTokenId(record.id)
         return token_id, PasswordResetTokenClaims(
@@ -379,7 +382,7 @@ class _AccessTokenStore(
     def _from_db(
         self,
         record: models.AccessToken,
-        user_role: UserRole,
+        user_role: UserRoleName,
     ) -> tuple[AccessTokenId, AccessTokenClaims]:
         token_id = AccessTokenId(record.id)
         refresh_token_id = RefreshTokenId(record.refresh_token_id)
@@ -423,7 +426,7 @@ class _RefreshTokenStore(
     def _from_db(
         self,
         record: models.RefreshToken,
-        user_role: UserRole,
+        user_role: UserRoleName,
     ) -> tuple[RefreshTokenId, RefreshTokenClaims]:
         token_id = RefreshTokenId(record.id)
         return token_id, RefreshTokenClaims(
@@ -469,7 +472,7 @@ class _ApiKeyStore(
     def _from_db(
         self,
         record: models.ApiKey,
-        user_role: UserRole,
+        user_role: UserRoleName,
     ) -> tuple[ApiKeyId, ApiKeyClaims]:
         token_id = ApiKeyId(record.id)
         return token_id, ApiKeyClaims(

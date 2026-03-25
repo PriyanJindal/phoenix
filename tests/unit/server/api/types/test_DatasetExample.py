@@ -1,9 +1,8 @@
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-import pytz
 from sqlalchemy import insert
 from strawberry.relay import GlobalID
 
@@ -51,7 +50,7 @@ async def test_dataset_example_span_resolver(
     dataset_with_span_and_nonspan_examples: Any,
 ) -> None:
     query = """
-      query ($exampleId: GlobalID!) {
+      query ($exampleId: ID!) {
         example: node(id: $exampleId) {
           ... on DatasetExample {
             id
@@ -95,7 +94,7 @@ async def test_dataset_example_experiment_runs_resolver_returns_relevant_runs(
     example_with_experiment_runs: Any,
 ) -> None:
     query = """
-      query ($exampleId: GlobalID!) {
+      query ($exampleId: ID!) {
         example: node(id: $exampleId) {
           ... on DatasetExample {
             experimentRuns {
@@ -125,6 +124,16 @@ async def test_dataset_example_experiment_runs_resolver_returns_relevant_runs(
                 "edges": [
                     {
                         "run": {
+                            "id": str(GlobalID("ExperimentRun", str(1))),
+                            "traceId": None,
+                            "output": "experiment-1-run-1-output",
+                            "startTime": "2020-01-01T00:00:00+00:00",
+                            "endTime": "2020-01-01T00:01:00+00:00",
+                            "error": None,
+                        }
+                    },
+                    {
+                        "run": {
                             "id": str(GlobalID("ExperimentRun", str(2))),
                             "traceId": None,
                             "output": {"output": "experiment-2-run-1-output"},
@@ -133,6 +142,48 @@ async def test_dataset_example_experiment_runs_resolver_returns_relevant_runs(
                             "error": None,
                         }
                     },
+                ]
+            }
+        }
+    }
+
+
+async def test_dataset_example_experiment_runs_resolver_filters_by_experiment_ids(
+    gql_client: AsyncGraphQLClient,
+    example_with_experiment_runs: Any,
+) -> None:
+    query = """
+      query ($exampleId: ID!, $experimentIds: [ID!]) {
+        example: node(id: $exampleId) {
+          ... on DatasetExample {
+            experimentRuns(experimentIds: $experimentIds) {
+              edges {
+                run: node {
+                  id
+                  traceId
+                  output
+                  startTime
+                  endTime
+                  error
+                }
+              }
+            }
+          }
+        }
+      }
+    """
+    response = await gql_client.execute(
+        query=query,
+        variables={
+            "exampleId": str(GlobalID("DatasetExample", str(1))),
+            "experimentIds": [str(GlobalID("Experiment", str(1)))],
+        },
+    )
+    assert not response.errors
+    assert response.data == {
+        "example": {
+            "experimentRuns": {
+                "edges": [
                     {
                         "run": {
                             "id": str(GlobalID("ExperimentRun", str(1))),
@@ -320,8 +371,10 @@ async def example_with_experiment_runs(db: DbSessionFactory) -> None:
                 dataset_example_id=example_id,
                 output={"task_output": "experiment-1-run-1-output"},
                 repetition_number=1,
-                start_time=datetime(year=2020, month=1, day=1, hour=0, minute=0, tzinfo=pytz.utc),
-                end_time=datetime(year=2020, month=1, day=1, hour=0, minute=1, tzinfo=pytz.utc),
+                start_time=datetime(
+                    year=2020, month=1, day=1, hour=0, minute=0, tzinfo=timezone.utc
+                ),
+                end_time=datetime(year=2020, month=1, day=1, hour=0, minute=1, tzinfo=timezone.utc),
             )
         )
 
@@ -346,7 +399,9 @@ async def example_with_experiment_runs(db: DbSessionFactory) -> None:
                 dataset_example_id=example_id,
                 output={"task_output": {"output": "experiment-2-run-1-output"}},
                 repetition_number=1,
-                start_time=datetime(year=2020, month=1, day=1, hour=0, minute=0, tzinfo=pytz.utc),
-                end_time=datetime(year=2020, month=1, day=1, hour=0, minute=1, tzinfo=pytz.utc),
+                start_time=datetime(
+                    year=2020, month=1, day=1, hour=0, minute=0, tzinfo=timezone.utc
+                ),
+                end_time=datetime(year=2020, month=1, day=1, hour=0, minute=1, tzinfo=timezone.utc),
             )
         )

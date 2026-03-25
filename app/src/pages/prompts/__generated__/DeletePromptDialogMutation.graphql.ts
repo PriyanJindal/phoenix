@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5640b59927cdf88a318c10b1bdc553e1>>
+ * @generated SignedSource<<a7476295d22857c2bba427ce5e638e32>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -57,7 +57,14 @@ v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "createdAt",
+  "name": "id",
+  "storageKey": null
+},
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
   "storageKey": null
 };
 return {
@@ -144,20 +151,8 @@ return {
                         "name": "node",
                         "plural": false,
                         "selections": [
-                          {
-                            "alias": null,
-                            "args": null,
-                            "kind": "ScalarField",
-                            "name": "id",
-                            "storageKey": null
-                          },
-                          {
-                            "alias": null,
-                            "args": null,
-                            "kind": "ScalarField",
-                            "name": "name",
-                            "storageKey": null
-                          },
+                          (v3/*: any*/),
+                          (v4/*: any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -165,7 +160,6 @@ return {
                             "name": "description",
                             "storageKey": null
                           },
-                          (v3/*: any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -174,7 +168,34 @@ return {
                             "name": "version",
                             "plural": false,
                             "selections": [
+                              {
+                                "alias": null,
+                                "args": null,
+                                "kind": "ScalarField",
+                                "name": "createdAt",
+                                "storageKey": null
+                              },
                               (v3/*: any*/)
+                            ],
+                            "storageKey": null
+                          },
+                          {
+                            "alias": null,
+                            "args": null,
+                            "concreteType": "PromptLabel",
+                            "kind": "LinkedField",
+                            "name": "labels",
+                            "plural": true,
+                            "selections": [
+                              (v3/*: any*/),
+                              (v4/*: any*/),
+                              {
+                                "alias": null,
+                                "args": null,
+                                "kind": "ScalarField",
+                                "name": "color",
+                                "storageKey": null
+                              }
                             ],
                             "storageKey": null
                           }
@@ -202,7 +223,8 @@ return {
                             "kind": "ScalarField",
                             "name": "__typename",
                             "storageKey": null
-                          }
+                          },
+                          (v3/*: any*/)
                         ],
                         "storageKey": null
                       }
@@ -240,7 +262,10 @@ return {
               {
                 "alias": null,
                 "args": (v2/*: any*/),
-                "filters": null,
+                "filters": [
+                  "filter",
+                  "labelIds"
+                ],
                 "handle": "connection",
                 "key": "PromptsTable_prompts",
                 "kind": "LinkedHandle",
@@ -255,16 +280,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "3afd45452374727a72b967ee1cce1632",
+    "cacheID": "f37f369f2b729a5193d63006fe1ac7e2",
     "id": null,
     "metadata": {},
     "name": "DeletePromptDialogMutation",
     "operationKind": "mutation",
-    "text": "mutation DeletePromptDialogMutation(\n  $promptId: GlobalID!\n) {\n  deletePrompt(input: {promptId: $promptId}) {\n    query {\n      ...PromptsTable_prompts\n    }\n  }\n}\n\nfragment PromptsTable_prompts on Query {\n  prompts(first: 100) {\n    edges {\n      prompt: node {\n        id\n        name\n        description\n        createdAt\n        version {\n          createdAt\n        }\n      }\n      cursor\n      node {\n        __typename\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "mutation DeletePromptDialogMutation(\n  $promptId: ID!\n) {\n  deletePrompt(input: {promptId: $promptId}) {\n    query {\n      ...PromptsTable_prompts\n    }\n  }\n}\n\nfragment PromptsTable_prompts on Query {\n  prompts(first: 100) {\n    edges {\n      prompt: node {\n        id\n        name\n        description\n        version {\n          createdAt\n          id\n        }\n        labels {\n          id\n          name\n          color\n        }\n      }\n      cursor\n      node {\n        __typename\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "209a27a82eef96e2c39abfe579346bcc";
+(node as any).hash = "af218c6f8442ad552dd44771a2d55275";
 
 export default node;

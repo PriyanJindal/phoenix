@@ -1,63 +1,67 @@
-import React, { Key, Suspense, useCallback, useEffect, useState } from "react";
+import type { Key } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useMutation, useRelayEnvironment } from "react-relay";
+import type { GraphQLSubscriptionConfig, PayloadError } from "relay-runtime";
+import { graphql, requestSubscription } from "relay-runtime";
+
 import {
-  graphql,
-  GraphQLSubscriptionConfig,
-  PayloadError,
-  requestSubscription,
-} from "relay-runtime";
-
-import { Card } from "@arizeai/components";
-
-import { Loading, View } from "@phoenix/components";
+  Alert,
+  Card,
+  Flex,
+  Icon,
+  Icons,
+  ParagraphSkeleton,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+  TriggerWrap,
+  View,
+} from "@phoenix/components";
 import {
   ConnectedMarkdownBlock,
-  ConnectedMarkdownModeRadioGroup,
+  ConnectedMarkdownModeSelect,
   MarkdownDisplayProvider,
 } from "@phoenix/components/markdown";
-import { useNotifyError } from "@phoenix/contexts";
 import { useCredentialsContext } from "@phoenix/contexts/CredentialsContext";
 import {
   usePlaygroundContext,
   usePlaygroundStore,
 } from "@phoenix/contexts/PlaygroundContext";
 import { useChatMessageStyles } from "@phoenix/hooks/useChatMessageStyles";
-import {
-  ChatMessage,
-  generateMessageId,
-  PlaygroundInstance,
-} from "@phoenix/store";
-import { isStringKeyedObject, Mutable } from "@phoenix/typeUtils";
+import type { ChatMessage, PlaygroundRepetition } from "@phoenix/store";
+import { generateMessageId } from "@phoenix/store";
+import { isStringKeyedObject } from "@phoenix/typeUtils";
 import {
   getErrorMessagesFromRelayMutationError,
   getErrorMessagesFromRelaySubscriptionError,
 } from "@phoenix/utils/errorUtils";
 
-import PlaygroundOutputMutation, {
+import { ExperimentRepetitionSelector } from "../experiment/ExperimentRepetitionSelector";
+import type {
   PlaygroundOutputMutation as PlaygroundOutputMutationType,
   PlaygroundOutputMutation$data,
 } from "./__generated__/PlaygroundOutputMutation.graphql";
-import PlaygroundOutputSubscription, {
+import PlaygroundOutputMutation from "./__generated__/PlaygroundOutputMutation.graphql";
+import type {
   PlaygroundOutputSubscription as PlaygroundOutputSubscriptionType,
   PlaygroundOutputSubscription$data,
 } from "./__generated__/PlaygroundOutputSubscription.graphql";
+import PlaygroundOutputSubscription from "./__generated__/PlaygroundOutputSubscription.graphql";
 import { PlaygroundErrorWrap } from "./PlaygroundErrorWrap";
 import { PlaygroundOutputMoveButton } from "./PlaygroundOutputMoveButton";
-import {
-  PartialOutputToolCall,
-  PlaygroundToolCall,
-} from "./PlaygroundToolCall";
+import type { PartialOutputToolCall } from "./PlaygroundToolCall";
+import { PlaygroundToolCall } from "./PlaygroundToolCall";
 import { getChatCompletionInput, isChatMessages } from "./playgroundUtils";
 import { RunMetadataFooter } from "./RunMetadataFooter";
 import { TitleWithAlphabeticIndex } from "./TitleWithAlphabeticIndex";
-import { PlaygroundInstanceProps } from "./types";
+import type { PlaygroundInstanceProps } from "./types";
 
 interface PlaygroundOutputProps extends PlaygroundInstanceProps {}
 
 /**
  * A chat message with potentially partial tool calls, for when tool calls are being streamed back to the client
  */
-type PlaygroundOutputMessage = Omit<ChatMessage, "toolCalls"> & {
+type PlaygroundOutputMessageType = Omit<ChatMessage, "toolCalls"> & {
   toolCalls?: ChatMessage["toolCalls"] | readonly PartialOutputToolCall[];
 };
 
@@ -68,9 +72,19 @@ const getToolCallKey = (
 ): Key => {
   if (
     isStringKeyedObject(toolCall) &&
+    "id" in toolCall &&
     (typeof toolCall.id === "string" || typeof toolCall.id === "number")
   ) {
     return toolCall.id;
+  } else if (
+    isStringKeyedObject(toolCall) &&
+    "toolUse" in toolCall &&
+    isStringKeyedObject(toolCall.toolUse) &&
+    "toolUseId" in toolCall.toolUse &&
+    (typeof toolCall.toolUse.toolUseId === "string" ||
+      typeof toolCall.toolUse.toolUseId === "number")
+  ) {
+    return toolCall.toolUse.toolUseId;
   }
   return JSON.stringify(toolCall);
 };
@@ -78,28 +92,32 @@ const getToolCallKey = (
 function PlaygroundOutputMessage({
   message,
 }: {
-  message: PlaygroundOutputMessage;
+  message: PlaygroundOutputMessageType;
 }) {
   const { role, content, toolCalls } = message;
   const styles = useChatMessageStyles(role);
 
   return (
-    <Card
-      title={role}
-      {...styles}
-      variant="compact"
-      extra={<ConnectedMarkdownModeRadioGroup />}
-    >
+    <Card title={role} {...styles} extra={<ConnectedMarkdownModeSelect />}>
       {content != null && !Array.isArray(content) && (
         <ConnectedMarkdownBlock>{content}</ConnectedMarkdownBlock>
       )}
+
       {toolCalls && toolCalls.length > 0
         ? toolCalls.map((toolCall) => {
             return (
-              <PlaygroundToolCall
-                key={getToolCallKey(toolCall)}
-                toolCall={toolCall}
-              />
+              <View
+                key={`tool-call-${getToolCallKey(toolCall)}`}
+                paddingX="size-200"
+                paddingY="size-200"
+                borderTopWidth="thin"
+                borderTopColor="blue-500"
+              >
+                <PlaygroundToolCall
+                  key={getToolCallKey(toolCall)}
+                  toolCall={toolCall}
+                />
+              </View>
             );
           })
         : null}
@@ -108,23 +126,23 @@ function PlaygroundOutputMessage({
 }
 
 function PlaygroundOutputContent({
-  content,
+  output,
   partialToolCalls,
 }: {
-  content: OutputContent;
+  output: PlaygroundRepetition["output"];
   partialToolCalls: readonly PartialOutputToolCall[];
 }) {
-  if (isChatMessages(content)) {
-    return content.map((message, index) => {
+  if (isChatMessages(output)) {
+    return output.map((message, index) => {
       return <PlaygroundOutputMessage key={index} message={message} />;
     });
   }
-  if (typeof content === "string" || partialToolCalls.length > 0) {
+  if (typeof output === "string" || partialToolCalls.length > 0) {
     return (
       <PlaygroundOutputMessage
         message={{
           id: generateMessageId(),
-          content,
+          content: output ?? undefined,
           role: "ai",
           toolCalls: partialToolCalls,
         }}
@@ -134,200 +152,218 @@ function PlaygroundOutputContent({
   return "click run to see output";
 }
 
-type OutputContent = PlaygroundInstance["output"];
-
 export function PlaygroundOutput(props: PlaygroundOutputProps) {
   const instanceId = props.playgroundInstanceId;
   const instances = usePlaygroundContext((state) => state.instances);
+  const instance = instances.find((instance) => instance.id === instanceId);
+  if (!instance) {
+    throw new Error(`No instance found for id ${instanceId}`);
+  }
+  if (instance.template.__type !== "chat") {
+    throw new Error("We only support chat templates for now");
+  }
   const streaming = usePlaygroundContext((state) => state.streaming);
   const credentials = useCredentialsContext((state) => state);
   const index = usePlaygroundContext((state) =>
     state.instances.findIndex((instance) => instance.id === instanceId)
   );
-  const instance = instances.find((instance) => instance.id === instanceId);
-  const updateInstance = usePlaygroundContext((state) => state.updateInstance);
-  const [outputError, setOutputError] = useState<{
-    title: string;
-    message?: string;
-  } | null>(null);
+  const {
+    appendRepetitionOutput,
+    setSelectedRepetitionNumber,
+    setRepetitionSpanId,
+    setRepetitionError,
+    setRepetitionStatus,
+    setRepetitionToolCalls,
+    addRepetitionPartialToolCall,
+    clearRepetitions,
+    markPlaygroundInstanceComplete,
+  } = usePlaygroundContext((state) => ({
+    appendRepetitionOutput: state.appendRepetitionOutput,
+    setSelectedRepetitionNumber: state.setSelectedRepetitionNumber,
+    setRepetitionSpanId: state.setRepetitionSpanId,
+    setRepetitionError: state.setRepetitionError,
+    setRepetitionStatus: state.setRepetitionStatus,
+    setRepetitionToolCalls: state.setRepetitionToolCalls,
+    addRepetitionPartialToolCall: state.addRepetitionPartialToolCall,
+    clearRepetitions: state.clearRepetitions,
+    markPlaygroundInstanceComplete: state.markPlaygroundInstanceComplete,
+  }));
 
-  const markPlaygroundInstanceComplete = usePlaygroundContext(
-    (state) => state.markPlaygroundInstanceComplete
-  );
   const environment = useRelayEnvironment();
-
   const playgroundStore = usePlaygroundStore();
 
-  if (!instance) {
-    throw new Error(`No instance found for id ${instanceId}`);
-  }
-
-  if (instance.template.__type !== "chat") {
-    throw new Error("We only support chat templates for now");
-  }
-
-  const [loading, setLoading] = useState(false);
+  const numInstanceRepetitions = Object.keys(instance.repetitions).length;
+  const numRepetitionErrors = Object.values(instance.repetitions).filter(
+    (output) => output?.error != null
+  ).length;
+  const selectedRepetitionNumber = instance.selectedRepetitionNumber;
+  const selectedRepetition = instance.repetitions[selectedRepetitionNumber];
+  const selectedRepetitionError = selectedRepetition?.error ?? null;
+  const selectedRepetitionToolCalls = Object.values(
+    selectedRepetition?.toolCalls ?? {}
+  );
+  const selectedRepetitionSpanId = selectedRepetition?.spanId;
+  const selectedRepetitionSuccessfullyCompleted =
+    selectedRepetition?.status === "finished" &&
+    selectedRepetition?.error == null;
 
   const [generateChatCompletion] = useMutation<PlaygroundOutputMutationType>(
     PlaygroundOutputMutation
   );
 
-  const hasRunId = instance?.activeRunId != null;
-  const notifyErrorToast = useNotifyError();
-
-  const notifyError = useCallback(
-    ({ title, message, ...rest }: Parameters<typeof notifyErrorToast>[0]) => {
-      setOutputError({ title, message });
-      notifyErrorToast({
-        title,
-        message,
-        ...rest,
-      });
-    },
-    [notifyErrorToast]
+  const runInProgress = instances.some(
+    (instance) => instance.activeRunId != null
   );
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const [outputContent, setOutputContent] = useState<OutputContent>(
-    instance.output
-  );
-  const [toolCalls, setToolCalls] = useState<readonly PartialOutputToolCall[]>(
-    []
-  );
-
-  const onNext = useCallback(
+  const handleChatCompletionSubscriptionPayload = useCallback(
     ({ chatCompletion }: PlaygroundOutputSubscription$data) => {
-      setLoading(false);
       if (chatCompletion.__typename === "TextChunk") {
         const content = chatCompletion.content;
-        setOutputContent((prev) => {
-          const newOutput = prev != null ? prev + content : content;
-          return newOutput;
-        });
+        if (content == null || chatCompletion.repetitionNumber == null) {
+          return;
+        }
+        setRepetitionStatus(
+          instanceId,
+          chatCompletion.repetitionNumber,
+          "streamInProgress"
+        );
+        appendRepetitionOutput(
+          instanceId,
+          chatCompletion.repetitionNumber,
+          content
+        );
         return;
       } else if (chatCompletion.__typename === "ToolCallChunk") {
-        setToolCalls((toolCalls) => {
-          let toolCallExists = false;
-          const updated = toolCalls.map((toolCall) => {
-            if (toolCall.id === chatCompletion.id) {
-              toolCallExists = true;
-              return {
-                ...toolCall,
-                function: {
-                  ...toolCall.function,
-                  arguments:
-                    toolCall.function.arguments +
-                    chatCompletion.function.arguments,
-                },
-              };
-            } else {
-              return toolCall;
-            }
-          });
-          if (!toolCallExists) {
-            updated.push({
-              id: chatCompletion.id,
-              function: {
-                name: chatCompletion.function.name,
-                arguments: chatCompletion.function.arguments,
-              },
-            });
-          }
-          return updated;
-        });
-        return;
-      }
-      if (
-        chatCompletion.__typename === "ChatCompletionSubscriptionResult" &&
-        chatCompletion.span != null
-      ) {
-        updateInstance({
+        const chatCompletionId = chatCompletion.id;
+        const chatCompletionFunction = chatCompletion.function;
+        if (
+          chatCompletionFunction == null ||
+          chatCompletionId == null ||
+          chatCompletion.repetitionNumber == null
+        ) {
+          return;
+        }
+        setRepetitionStatus(
           instanceId,
-          patch: {
-            spanId: chatCompletion.span.id,
-          },
-          dirty: null,
-        });
+          chatCompletion.repetitionNumber,
+          "streamInProgress"
+        );
+        addRepetitionPartialToolCall(
+          instanceId,
+          chatCompletion.repetitionNumber,
+          {
+            id: chatCompletionId,
+            function: {
+              name: chatCompletionFunction.name,
+              arguments: chatCompletionFunction.arguments,
+            },
+          }
+        );
+      }
+      if (chatCompletion.__typename === "ChatCompletionSubscriptionResult") {
+        if (chatCompletion.repetitionNumber == null) {
+          return;
+        }
+        setRepetitionStatus(
+          instanceId,
+          chatCompletion.repetitionNumber,
+          "finished"
+        );
+        if (chatCompletion.span != null) {
+          setRepetitionSpanId(
+            instanceId,
+            chatCompletion.repetitionNumber,
+            chatCompletion.span.id
+          );
+        }
         return;
       }
       if (chatCompletion.__typename === "ChatCompletionSubscriptionError") {
-        markPlaygroundInstanceComplete(props.playgroundInstanceId);
-        if (chatCompletion.message != null) {
-          notifyError({
-            title: "Chat completion failed",
-            message: chatCompletion.message,
-          });
+        if (chatCompletion.repetitionNumber == null) {
+          return;
         }
+        setRepetitionStatus(
+          instanceId,
+          chatCompletion.repetitionNumber,
+          "finished"
+        );
+        setRepetitionError(instanceId, chatCompletion.repetitionNumber, {
+          title: "Chat completion failed",
+          message: chatCompletion.message,
+        });
       }
     },
     [
+      addRepetitionPartialToolCall,
       instanceId,
-      markPlaygroundInstanceComplete,
-      notifyError,
-      props.playgroundInstanceId,
-      updateInstance,
+      appendRepetitionOutput,
+      setRepetitionSpanId,
+      setRepetitionStatus,
+      setRepetitionError,
     ]
   );
 
-  const onCompleted = useCallback(
+  const handleChatCompletionMutationPayload = useCallback(
     (
       response: PlaygroundOutputMutation$data,
       errors: PayloadError[] | null
     ) => {
-      setLoading(false);
       markPlaygroundInstanceComplete(props.playgroundInstanceId);
-      updateInstance({
-        instanceId,
-        patch: {
-          spanId: response.chatCompletion.span.id,
-        },
-        dirty: null,
+      if (errors != null && errors.length > 0) {
+        setApiError(errors[0].message);
+        return;
+      }
+      const instance = playgroundStore
+        .getState()
+        .instances.find((inst) => inst.id === instanceId);
+      if (instance == null) {
+        return;
+      }
+      response.chatCompletion.repetitions.forEach((repetition) => {
+        const repetitionNumber = repetition.repetitionNumber;
+        setRepetitionStatus(instanceId, repetitionNumber, "finished");
+        if (repetition.content != null) {
+          appendRepetitionOutput(
+            instanceId,
+            repetitionNumber,
+            repetition.content
+          );
+        }
+        if (repetition.toolCalls.length > 0) {
+          setRepetitionToolCalls(instanceId, repetitionNumber, [
+            ...repetition.toolCalls,
+          ]);
+        }
+        if (repetition.span != null) {
+          setRepetitionSpanId(instanceId, repetitionNumber, repetition.span.id);
+        }
+        if (repetition.errorMessage != null) {
+          setRepetitionError(instanceId, repetitionNumber, {
+            title: "Chat completion failed",
+            message: repetition.errorMessage,
+          });
+        }
       });
-      if (errors) {
-        notifyError({
-          title: "Chat completion failed",
-          message: errors[0].message,
-        });
-        return;
-      }
-      if (response.chatCompletion.errorMessage != null) {
-        notifyError({
-          title: "Chat completion failed",
-          message: response.chatCompletion.errorMessage,
-        });
-        return;
-      }
-      setOutputContent(response.chatCompletion.content ?? undefined);
-      setToolCalls(response.chatCompletion.toolCalls);
     },
     [
       instanceId,
       markPlaygroundInstanceComplete,
-      notifyError,
+      setRepetitionToolCalls,
+      playgroundStore,
       props.playgroundInstanceId,
-      updateInstance,
+      appendRepetitionOutput,
+      setRepetitionSpanId,
+      setRepetitionStatus,
+      setRepetitionError,
     ]
   );
 
-  const cleanup = useCallback(() => {
-    setOutputContent(undefined);
-    setToolCalls([]);
-    setOutputError(null);
-    updateInstance({
-      instanceId,
-      patch: {
-        spanId: null,
-      },
-      dirty: null,
-    });
-  }, [instanceId, updateInstance]);
-
   useEffect(() => {
-    if (!hasRunId) {
-      setLoading(false);
+    if (!runInProgress) {
       return;
     }
-    setLoading(true);
-    cleanup();
+    setApiError(null);
     const input = getChatCompletionInput({
       playgroundStore,
       instanceId,
@@ -343,28 +379,32 @@ export function PlaygroundOutput(props: PlaygroundOutputProps) {
           },
           onNext: (response) => {
             if (response) {
-              onNext(response);
+              handleChatCompletionSubscriptionPayload(response);
             }
           },
           onCompleted: () => {
-            setLoading(false);
             markPlaygroundInstanceComplete(props.playgroundInstanceId);
           },
           onError: (error) => {
-            setLoading(false);
             markPlaygroundInstanceComplete(props.playgroundInstanceId);
+            const instance = playgroundStore
+              .getState()
+              .instances.find((inst) => inst.id === instanceId);
+            if (instance != null) {
+              Object.keys(instance.repetitions).forEach((repetitionNumber) => {
+                setRepetitionStatus(
+                  instanceId,
+                  parseInt(repetitionNumber),
+                  "finished"
+                );
+              });
+            }
             const errorMessages =
               getErrorMessagesFromRelaySubscriptionError(error);
             if (errorMessages != null && errorMessages.length > 0) {
-              notifyError({
-                title: "Failed to get output",
-                message: errorMessages.join("\n"),
-              });
+              setApiError(errorMessages.join("\n"));
             } else {
-              notifyError({
-                title: "Failed to get output",
-                message: error.message,
-              });
+              setApiError(error.message);
             }
           },
         };
@@ -376,94 +416,135 @@ export function PlaygroundOutput(props: PlaygroundOutputProps) {
       variables: {
         input,
       },
-      onCompleted,
+      onCompleted: handleChatCompletionMutationPayload,
       onError(error) {
-        setLoading(false);
         markPlaygroundInstanceComplete(props.playgroundInstanceId);
+        clearRepetitions(instanceId);
         const errorMessages = getErrorMessagesFromRelayMutationError(error);
         if (errorMessages != null && errorMessages.length > 0) {
-          notifyError({
-            title: "Failed to get output",
-            message: errorMessages.join("\n"),
-          });
+          setApiError(errorMessages.join("\n"));
         } else {
-          notifyError({
-            title: "Failed to get output",
-            message: error.message,
-          });
+          setApiError(error.message);
         }
       },
     });
 
     return disposable.dispose;
   }, [
-    cleanup,
     credentials,
     environment,
     generateChatCompletion,
-    hasRunId,
     instanceId,
+    clearRepetitions,
     markPlaygroundInstanceComplete,
-    notifyError,
-    onCompleted,
-    onNext,
+    handleChatCompletionMutationPayload,
+    handleChatCompletionSubscriptionPayload,
+    runInProgress,
     playgroundStore,
     props.playgroundInstanceId,
+    setRepetitionStatus,
     streaming,
-    updateInstance,
   ]);
 
   return (
     <Card
       title={<TitleWithAlphabeticIndex index={index} title="Output" />}
       extra={
-        outputContent != null || toolCalls?.length > 0 ? (
+        <Flex direction="row" gap="size-150" alignItems="center">
+          {numInstanceRepetitions > 1 && numRepetitionErrors > 0 && (
+            <TooltipTrigger>
+              <TriggerWrap>
+                <Icon svg={<Icons.AlertTriangleOutline />} color="danger" />
+              </TriggerWrap>
+              <Tooltip>
+                <Text>{`${numRepetitionErrors} repetition ${numRepetitionErrors > 1 ? "s" : ""} failed`}</Text>
+              </Tooltip>
+            </TooltipTrigger>
+          )}
+          {numInstanceRepetitions > 1 && (
+            <ExperimentRepetitionSelector
+              repetitionNumber={selectedRepetitionNumber}
+              totalRepetitions={numInstanceRepetitions}
+              setRepetitionNumber={(n) => {
+                let repetitionNumber: number;
+                if (typeof n === "function") {
+                  repetitionNumber = n(selectedRepetitionNumber);
+                } else {
+                  repetitionNumber = n;
+                }
+                setSelectedRepetitionNumber(instanceId, repetitionNumber);
+              }}
+            />
+          )}
           <PlaygroundOutputMoveButton
-            outputContent={outputContent}
-            toolCalls={toolCalls as Mutable<typeof toolCalls>}
+            isDisabled={!selectedRepetitionSuccessfullyCompleted}
+            output={selectedRepetition?.output}
+            toolCalls={selectedRepetitionToolCalls}
             instance={instance}
-            cleanupOutput={cleanup}
+            cleanupOutput={() => {
+              clearRepetitions(instanceId);
+            }}
           />
-        ) : null
+        </Flex>
       }
-      titleSeparator
-      collapsible
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
     >
-      {loading ? (
-        <View padding="size-200">
-          <Loading message="Running..." />
-        </View>
-      ) : outputError ? (
-        <View padding="size-200">
-          <PlaygroundErrorWrap>{outputError.message}</PlaygroundErrorWrap>
-        </View>
-      ) : (
-        <>
-          <View padding="size-200">
-            <MarkdownDisplayProvider>
-              <PlaygroundOutputContent
-                content={outputContent}
-                partialToolCalls={toolCalls}
-              />
-            </MarkdownDisplayProvider>
-          </View>
-          <Suspense>
-            {instance.spanId ? (
-              <RunMetadataFooter spanId={instance.spanId} />
-            ) : null}
-          </Suspense>
-        </>
-      )}
+      {(() => {
+        switch (true) {
+          case selectedRepetition?.status === "pending":
+            return (
+              <View padding="size-200">
+                <ParagraphSkeleton lines={4} />
+              </View>
+            );
+          case selectedRepetitionError != null:
+            return (
+              <View padding="size-200">
+                <PlaygroundErrorWrap>
+                  {selectedRepetitionError.message}
+                </PlaygroundErrorWrap>
+              </View>
+            );
+          default:
+            return (
+              <>
+                {apiError && (
+                  <View padding="size-200">
+                    <Alert
+                      variant="danger"
+                      dismissable
+                      onDismissClick={() => setApiError(null)}
+                    >
+                      {apiError}
+                    </Alert>
+                  </View>
+                )}
+                <View padding="size-200">
+                  <MarkdownDisplayProvider>
+                    <PlaygroundOutputContent
+                      output={selectedRepetition?.output ?? null}
+                      partialToolCalls={selectedRepetitionToolCalls}
+                    />
+                  </MarkdownDisplayProvider>
+                </View>
+                <Suspense>
+                  {selectedRepetitionSpanId ? (
+                    <RunMetadataFooter spanId={selectedRepetitionSpanId} />
+                  ) : null}
+                </Suspense>
+              </>
+            );
+        }
+      })()}
     </Card>
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 graphql`
   subscription PlaygroundOutputSubscription($input: ChatCompletionInput!) {
     chatCompletion(input: $input) {
       __typename
+      repetitionNumber
       ... on TextChunk {
         content
       }
@@ -486,20 +567,24 @@ graphql`
   }
 `;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 graphql`
   mutation PlaygroundOutputMutation($input: ChatCompletionInput!) {
     chatCompletion(input: $input) {
       __typename
-      content
-      errorMessage
-      span {
-        id
-      }
-      toolCalls {
-        id
-        function {
-          name
-          arguments
+      repetitions {
+        repetitionNumber
+        content
+        errorMessage
+        span {
+          id
+        }
+        toolCalls {
+          id
+          function {
+            name
+            arguments
+          }
         }
       }
     }

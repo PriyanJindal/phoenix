@@ -1,20 +1,35 @@
-import React from "react";
+import { css } from "@emotion/react";
 import { Controller, useForm } from "react-hook-form";
 
 import {
+  Alert,
   Button,
+  DialogFooter,
   FieldError,
-  Flex,
   Form,
   Input,
   Label,
   Text,
   TextArea,
   TextField,
-  View,
 } from "@phoenix/components";
 import { CodeEditorFieldWrapper, JSONEditor } from "@phoenix/components/code";
 import { isJSONObjectString } from "@phoenix/utils/jsonUtils";
+
+const formCSS = css`
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+`;
+
+const formBodyCSS = css`
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--global-dimension-size-200);
+`;
 
 export type DatasetFormParams = {
   name: string;
@@ -30,6 +45,8 @@ export function DatasetForm({
   isSubmitting,
   submitButtonText,
   formMode,
+  errorMessage,
+  onCancel,
 }: {
   datasetName?: string | null;
   datasetDescription?: string | null;
@@ -38,12 +55,15 @@ export function DatasetForm({
   isSubmitting: boolean;
   submitButtonText: string;
   formMode: "create" | "edit";
+  errorMessage?: string | null;
+  onCancel?: () => void;
 }) {
   const {
     control,
     handleSubmit,
     formState: { isDirty },
   } = useForm<DatasetFormParams>({
+    mode: "onChange",
     defaultValues: {
       name: datasetName ?? "Dataset " + new Date().toISOString(),
       description: datasetDescription ?? "",
@@ -52,8 +72,13 @@ export function DatasetForm({
   });
 
   return (
-    <Form>
-      <View padding="size-200">
+    <Form onSubmit={handleSubmit(onSubmit)} css={formCSS}>
+      <div css={formBodyCSS}>
+        {errorMessage && (
+          <Alert variant="danger" banner>
+            {errorMessage}
+          </Alert>
+        )}
         <Controller
           name="name"
           control={control}
@@ -116,10 +141,9 @@ export function DatasetForm({
           }}
           render={({
             field: { onChange, onBlur, value },
-            fieldState: { invalid, error },
+            fieldState: { error },
           }) => (
             <CodeEditorFieldWrapper
-              validationState={invalid ? "invalid" : "valid"}
               label={"metadata"}
               errorMessage={error?.message}
               description={`A JSON object containing metadata for the dataset`}
@@ -128,31 +152,27 @@ export function DatasetForm({
             </CodeEditorFieldWrapper>
           )}
         />
-      </View>
-      <View
-        paddingEnd="size-200"
-        paddingTop="size-100"
-        paddingBottom="size-100"
-        borderTopColor="light"
-        borderTopWidth="thin"
-      >
-        <Flex direction="row" justifyContent="end">
+      </div>
+      <DialogFooter>
+        {onCancel && (
           <Button
-            // Only allow submission if the form is dirty for edits
-            // When creating allow the user to click create without any changes as the form will be prefilled with valid values
-            isDisabled={
-              (formMode === "edit" ? !isDirty : false) || isSubmitting
-            }
-            variant={isDirty ? "primary" : "default"}
-            size="S"
-            onPress={() => {
-              handleSubmit(onSubmit)();
-            }}
+            variant="default"
+            size="M"
+            onPress={onCancel}
+            isDisabled={isSubmitting}
           >
-            {submitButtonText}
+            Cancel
           </Button>
-        </Flex>
-      </View>
+        )}
+        <Button
+          isDisabled={(formMode === "edit" ? !isDirty : false) || isSubmitting}
+          variant={isDirty ? "primary" : "default"}
+          size="M"
+          type="submit"
+        >
+          {submitButtonText}
+        </Button>
+      </DialogFooter>
     </Form>
   );
 }

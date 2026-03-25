@@ -1,10 +1,9 @@
-import React, { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useFragment } from "react-relay";
 import { graphql } from "relay-runtime";
 
-import { Card } from "@arizeai/components";
-
 import {
+  Card,
   CopyToClipboardButton,
   Disclosure,
   DisclosureGroup,
@@ -15,14 +14,15 @@ import {
   View,
 } from "@phoenix/components";
 import {
-  CodeLanguage,
   CodeLanguageRadioGroup,
   PythonBlock,
   TypeScriptBlock,
 } from "@phoenix/components/code";
+import { usePreferencesContext } from "@phoenix/contexts";
+import type { ProgrammingLanguage } from "@phoenix/types/code";
 import { assertUnreachable } from "@phoenix/typeUtils";
 
-import { PromptCodeExportCard__main$key } from "./__generated__/PromptCodeExportCard__main.graphql";
+import type { PromptCodeExportCard__main$key } from "./__generated__/PromptCodeExportCard__main.graphql";
 import {
   mapPromptToClientSnippet,
   mapPromptToSDKSnippet,
@@ -33,7 +33,12 @@ export function PromptCodeExportCard({
 }: {
   promptVersion: PromptCodeExportCard__main$key;
 }) {
-  const [language, setLanguage] = useState<CodeLanguage>("Python");
+  const { programmingLanguage, setProgrammingLanguage } = usePreferencesContext(
+    (state) => ({
+      programmingLanguage: state.programmingLanguage,
+      setProgrammingLanguage: state.setProgrammingLanguage,
+    })
+  );
   const data = useFragment<PromptCodeExportCard__main$key>(
     graphql`
       fragment PromptCodeExportCard__main on PromptVersion {
@@ -42,10 +47,27 @@ export function PromptCodeExportCard({
         modelName
         modelProvider
         responseFormat {
-          definition
+          jsonSchema {
+            name
+            description
+            schema
+            strict
+          }
         }
         tools {
-          definition
+          tools {
+            function {
+              name
+              description
+              parameters
+              strict
+            }
+          }
+          toolChoice {
+            type
+            functionName
+          }
+          disableParallelToolCalls
         }
         template {
           __typename
@@ -90,22 +112,27 @@ export function PromptCodeExportCard({
     promptVersion
   );
   const sdkSnippet = useMemo(
-    () => mapPromptToSDKSnippet({ promptVersion: data, language }),
-    [data, language]
+    () =>
+      mapPromptToSDKSnippet({
+        promptVersion: data,
+        language: programmingLanguage,
+      }),
+    [data, programmingLanguage]
   );
   const clientSnippet = useMemo(() => {
-    return mapPromptToClientSnippet({ promptVersion: data, language });
-  }, [data, language]);
+    return mapPromptToClientSnippet({
+      promptVersion: data,
+      language: programmingLanguage,
+    });
+  }, [data, programmingLanguage]);
   return (
     <Card
       title="Code"
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
       extra={
         <Flex gap="size-100" alignItems="center">
           <CodeLanguageRadioGroup
-            language={language}
-            onChange={setLanguage}
+            language={programmingLanguage}
+            onChange={setProgrammingLanguage}
             size="S"
           />
         </Flex>
@@ -133,7 +160,7 @@ export function PromptCodeExportCard({
                 </Text>
               </View>
             ) : (
-              <CodeBlock language={language} value={sdkSnippet} />
+              <CodeBlock language={programmingLanguage} value={sdkSnippet} />
             )}
           </DisclosurePanel>
         </Disclosure>
@@ -160,7 +187,7 @@ export function PromptCodeExportCard({
                 </Text>
               </View>
             ) : (
-              <CodeBlock language={language} value={clientSnippet} />
+              <CodeBlock language={programmingLanguage} value={clientSnippet} />
             )}
           </DisclosurePanel>
         </Disclosure>
@@ -173,7 +200,7 @@ function CodeBlock({
   language,
   value,
 }: {
-  language: CodeLanguage;
+  language: ProgrammingLanguage;
   value: string;
 }) {
   switch (language) {

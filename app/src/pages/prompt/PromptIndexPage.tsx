@@ -1,21 +1,29 @@
-import React from "react";
 import { Heading } from "react-aria-components";
-import { graphql, useFragment } from "react-relay";
+import { graphql, useFragment, usePreloadedQuery } from "react-relay";
 
 import { Flex, Text, View } from "@phoenix/components";
+import { JSONBlock } from "@phoenix/components/code";
+import { PromptChatMessagesCard } from "@phoenix/components/prompt/PromptChatMessagesCard";
+import { PromptLabelConfigButton } from "@phoenix/pages/prompt/PromptLabelConfigButton";
+import { PromptLabels } from "@phoenix/pages/prompt/PromptLabels";
 import { PromptModelConfigurationCard } from "@phoenix/pages/prompt/PromptModelConfigurationCard";
 
-import { PromptIndexPage__aside$key } from "./__generated__/PromptIndexPage__aside.graphql";
-import { PromptIndexPage__main$key } from "./__generated__/PromptIndexPage__main.graphql";
+import type { PromptIndexPage__aside$key } from "./__generated__/PromptIndexPage__aside.graphql";
+import type { PromptIndexPage__main$key } from "./__generated__/PromptIndexPage__main.graphql";
+import type { promptLoaderQuery as promptLoaderQueryType } from "./__generated__/promptLoaderQuery.graphql";
 import { EditPromptButton } from "./EditPromptButton";
-import { PromptChatMessagesCard } from "./PromptChatMessagesCard";
 import { PromptCodeExportCard } from "./PromptCodeExportCard";
 import { PromptLatestVersionsList } from "./PromptLatestVersionsList";
+import { promptLoaderQuery } from "./promptLoader";
 import { usePromptIdLoader } from "./usePromptIdLoader";
 
 export function PromptIndexPage() {
   const loaderData = usePromptIdLoader();
-  return <PromptIndexPageContent prompt={loaderData.prompt} />;
+  const data = usePreloadedQuery<promptLoaderQueryType>(
+    promptLoaderQuery,
+    loaderData.queryRef
+  );
+  return <PromptIndexPageContent prompt={data.prompt} />;
 }
 
 export function PromptIndexPageContent({
@@ -85,9 +93,13 @@ function PromptIndexPageAside({
   const data = useFragment(
     graphql`
       fragment PromptIndexPage__aside on Prompt {
+        id
+        name
         description
+        metadata
         ...PromptLatestVersionsListFragment
         ...EditPromptButton_data
+        ...PromptLabels
       }
     `,
     prompt
@@ -97,10 +109,10 @@ function PromptIndexPageAside({
     <View
       flex="none"
       width={400}
-      borderStartColor="dark"
+      borderStartColor="default"
       borderStartWidth="thin"
     >
-      <View paddingStart="size-200" paddingEnd="size-200">
+      <View padding="size-200">
         <Flex
           direction="row"
           justifyContent="space-between"
@@ -113,6 +125,32 @@ function PromptIndexPageAside({
         <Text color={hasDescription ? "text-900" : "text-700"}>
           {data.description || "No Description"}
         </Text>
+        <section>
+          <Flex
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Heading level={3}>Labels</Heading>
+            <PromptLabelConfigButton promptId={data.id} />
+          </Flex>
+          <PromptLabels prompt={data} />
+        </section>
+        <section>
+          <Flex
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Heading level={3}>Metadata</Heading>
+            <EditPromptButton prompt={data} />
+          </Flex>
+          <JSONBlock
+            value={
+              data.metadata ? JSON.stringify(data.metadata, null, 2) : "{}"
+            }
+          />
+        </section>
         <section>
           <Heading level={3}>Latest Versions</Heading>
           <PromptLatestVersionsList prompt={data} />

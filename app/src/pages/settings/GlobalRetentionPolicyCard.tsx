@@ -1,12 +1,12 @@
-import React, { useCallback } from "react";
+import { css } from "@emotion/react";
+import { useCallback, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
-import { css } from "@emotion/react";
-
-import { Card } from "@arizeai/components";
 
 import {
+  Alert,
   Button,
+  Card,
   FieldError,
   Flex,
   Form,
@@ -17,13 +17,13 @@ import {
   Text,
   View,
 } from "@phoenix/components";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
-import { GlobalRetentionPolicyCardMutation } from "@phoenix/pages/settings/__generated__/GlobalRetentionPolicyCardMutation.graphql";
-import { GlobalRetentionPolicyCardQuery } from "@phoenix/pages/settings/__generated__/GlobalRetentionPolicyCardQuery.graphql";
+import { useNotifySuccess } from "@phoenix/contexts";
+import type { GlobalRetentionPolicyCardMutation } from "@phoenix/pages/settings/__generated__/GlobalRetentionPolicyCardMutation.graphql";
+import type { GlobalRetentionPolicyCardQuery } from "@phoenix/pages/settings/__generated__/GlobalRetentionPolicyCardQuery.graphql";
 
 export const GlobalRetentionPolicyCard = () => {
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   const data = useLazyLoadQuery<GlobalRetentionPolicyCardQuery>(
     graphql`
       query GlobalRetentionPolicyCardQuery {
@@ -120,24 +120,16 @@ export const GlobalRetentionPolicyCard = () => {
           }
         },
         onError: () => {
-          notifyError({
-            title: "Failed to update default retention policy",
-            expireMs: 5000,
-          });
+          setError("Failed to update default retention policy");
         },
       });
     },
-    [id, notifyError, notifySuccess, updateGlobalRetentionPolicy, reset]
+    [id, notifySuccess, updateGlobalRetentionPolicy, reset]
   );
 
   return (
-    <Card
-      title="Default Project Retention Policy"
-      variant="compact"
-      bodyStyle={{
-        padding: 0,
-      }}
-    >
+    <Card title="Default Project Retention Policy">
+      {error && <Alert variant="danger">{error}</Alert>}
       <View padding="size-200">
         <Flex direction="row" gap="size-200" justifyContent="space-between">
           <View paddingTop="size-100">
@@ -205,7 +197,7 @@ export const GlobalRetentionPolicyCard = () => {
         paddingX="size-200"
         paddingY="size-100"
         borderTopWidth="thin"
-        borderColor="dark"
+        borderColor="default"
       >
         <Flex direction="row" justifyContent="end">
           <Link to="/settings/data">All Retention Policies</Link>

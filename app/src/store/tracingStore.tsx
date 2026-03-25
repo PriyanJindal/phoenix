@@ -1,11 +1,16 @@
-import { ColumnSizingState, Updater } from "@tanstack/react-table";
-import { create, StateCreator } from "zustand";
+import type { ColumnSizingState, Updater } from "@tanstack/react-table";
+import type { StateCreator } from "zustand";
+import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-import { ProjectTab } from "@phoenix/pages/project/constants";
+import type { ProjectTab } from "@phoenix/pages/project/constants";
 
 type VisibilityState = Record<string, boolean>;
 export interface TracingProps {
+  /**
+   * The project ID for this tracing context
+   */
+  projectId: string;
   /**
    * Map of the column id to the visibility state
    */
@@ -53,35 +58,51 @@ export type CreateTracingStoreProps = {
 } & Partial<TracingProps>;
 
 export const createTracingStore = (initialProps: CreateTracingStoreProps) => {
-  const tracingStore: StateCreator<TracingState> = (set) => ({
-    ...initialProps,
+  const tracingStore: StateCreator<
+    TracingState,
+    [["zustand/devtools", unknown]]
+  > = (set) => ({
+    projectId: initialProps.projectId,
     columnVisibility: {
       metadata: false,
+      spanId: false,
+      traceId: false,
     },
     columnSizing: {
       metadata: 200,
     },
     annotationColumnVisibility: {},
     setColumnVisibility: (columnVisibility) => {
-      set({ columnVisibility });
+      set({ columnVisibility }, false, { type: "setColumnVisibility" });
     },
     setAnnotationColumnVisibility: (annotationColumnVisibility) => {
-      set({ annotationColumnVisibility });
+      set({ annotationColumnVisibility }, false, {
+        type: "setAnnotationColumnVisibility",
+      });
     },
     setColumnSizing: (columnSizing) => {
       if (typeof columnSizing === "function") {
-        set((state) => ({
-          columnSizing: columnSizing(state.columnSizing),
-        }));
+        set(
+          (state) => ({
+            columnSizing: columnSizing(state.columnSizing),
+          }),
+          false,
+          { type: "setColumnSizing" }
+        );
       } else {
-        set({ columnSizing });
+        set({ columnSizing }, false, { type: "setColumnSizing" });
       }
     },
   });
   return create<TracingState>()(
-    persist(devtools(tracingStore), {
-      name: makeTracingStoreKey(initialProps),
-    })
+    persist(
+      devtools(tracingStore, {
+        name: "tracingStore",
+      }),
+      {
+        name: makeTracingStoreKey(initialProps),
+      }
+    )
   );
 };
 

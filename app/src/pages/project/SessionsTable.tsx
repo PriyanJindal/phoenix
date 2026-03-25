@@ -1,4 +1,17 @@
-/* eslint-disable react/prop-types */
+import { css } from "@emotion/react";
+import type {
+  ColumnDef,
+  ExpandedState,
+  SortingState,
+  Table,
+} from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  getExpandedRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import React, {
   startTransition,
   useEffect,
@@ -8,50 +21,63 @@ import React, {
 } from "react";
 import { graphql, usePaginationFragment } from "react-relay";
 import { useNavigate } from "react-router";
-import {
-  ColumnDef,
-  ExpandedState,
-  flexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getSortedRowModel,
-  SortingState,
-  Table,
-  useReactTable,
-} from "@tanstack/react-table";
-import { css } from "@emotion/react";
 
-import { Icon, Icons, View } from "@phoenix/components";
+import {
+  ContextualHelp,
+  CopyToClipboardButton,
+  Flex,
+  Heading,
+  Icon,
+  Icons,
+  Text,
+  View,
+} from "@phoenix/components";
+import { MeanScore } from "@phoenix/components/annotation/MeanScore";
+import { SessionAnnotationSummaryGroupTokens } from "@phoenix/components/annotation/SessionAnnotationSummaryGroup";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
 import { selectableTableCSS } from "@phoenix/components/table/styles";
 import { TimestampCell } from "@phoenix/components/table/TimestampCell";
 import { LatencyText } from "@phoenix/components/trace/LatencyText";
+import { SessionTokenCosts } from "@phoenix/components/trace/SessionTokenCosts";
+import { SessionTokenCount } from "@phoenix/components/trace/SessionTokenCount";
 import { useStreamState } from "@phoenix/contexts/StreamStateContext";
 import { useTracingContext } from "@phoenix/contexts/TracingContext";
+import { SummaryValueLabels } from "@phoenix/pages/project/AnnotationSummary";
 
-import { IntCell, TextCell } from "../../components/table";
-import { TokenCount } from "../../components/trace/TokenCount";
-
-import { SessionsTable_sessions$key } from "./__generated__/SessionsTable_sessions.graphql";
 import {
-  ProjectSessionColumn,
-  SessionsTableQuery,
-} from "./__generated__/SessionsTableQuery.graphql";
+  CellWithControlsWrap,
+  IntCell,
+  TextCell,
+} from "../../components/table";
+import type { SessionsTable_sessions$key } from "./__generated__/SessionsTable_sessions.graphql";
+import type { SessionsTableQuery } from "./__generated__/SessionsTableQuery.graphql";
 import { DEFAULT_PAGE_SIZE } from "./constants";
+import { SessionColumnSelector } from "./SessionColumnSelector";
 import { useSessionSearchContext } from "./SessionSearchContext";
 import { SessionSearchField } from "./SessionSearchField";
 import { SessionsTableEmpty } from "./SessionsTableEmpty";
 import { spansTableCSS } from "./styles";
+import {
+  DEFAULT_SESSION_SORT,
+  getGqlSessionSort,
+  makeAnnotationColumnId,
+} from "./tableUtils";
 type SessionsTableProps = {
   project: SessionsTable_sessions$key;
 };
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
+const defaultColumnSettings = {
+  minSize: 100,
+} satisfies Partial<ColumnDef<unknown>>;
+
 const TableBody = <T extends { id: string }>({
   table,
 }: {
   table: Table<T>;
 }) => {
+  "use no memo";
   const navigate = useNavigate();
   return (
     <tbody>
@@ -59,7 +85,7 @@ const TableBody = <T extends { id: string }>({
         return (
           <tr
             key={row.id}
-            onClick={() => navigate(`${encodeURIComponent(row.id)}`)}
+            onClick={() => navigate(`${encodeURIComponent(row.original.id)}`)}
           >
             {row.getVisibleCells().map((cell) => {
               return (
@@ -96,7 +122,7 @@ export function SessionsTable(props: SessionsTableProps) {
   // we need a reference to the scrolling element for pagination logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const { filterIoSubstring } = useSessionSearchContext();
+  const { filterIoSubstringOrSessionId } = useSessionSearchContext();
   const { fetchKey } = useStreamState();
   const { data, loadNext, hasNext, isLoadingNext, refetch } =
     usePaginationFragment<SessionsTableQuery, SessionsTable_sessions$key>(
@@ -111,14 +137,17 @@ export function SessionsTable(props: SessionsTableProps) {
             defaultValue: { col: startTime, dir: desc }
           }
           filterIoSubstring: { type: "String", defaultValue: null }
+          sessionId: { type: "String", defaultValue: null }
         ) {
           name
+          ...SessionColumnSelector_annotations
           sessions(
             first: $first
             after: $after
             sort: $sort
             filterIoSubstring: $filterIoSubstring
             timeRange: $timeRange
+            sessionId: $sessionId
           ) @connection(key: "SessionsTable_sessions") {
             edges {
               session: node {
@@ -134,12 +163,56 @@ export function SessionsTable(props: SessionsTableProps) {
                   value
                 }
                 tokenUsage {
-                  prompt
-                  completion
                   total
                 }
                 traceLatencyMsP50: traceLatencyMsQuantile(probability: 0.5)
                 traceLatencyMsP99: traceLatencyMsQuantile(probability: 0.99)
+                costSummary {
+                  total {
+                    cost
+                  }
+                }
+                sessionAnnotations {
+                  id
+                  name
+                  label
+                  score
+                  annotatorKind
+                  user {
+                    username
+                    profilePictureUrl
+                  }
+                }
+                sessionAnnotationSummaries {
+                  labelFractions {
+                    fraction
+                    label
+                  }
+                  meanScore
+                  name
+                }
+                project {
+                  id
+                  annotationConfigs {
+                    edges {
+                      node {
+                        ... on AnnotationConfigBase {
+                          annotationType
+                        }
+                        ... on CategoricalAnnotationConfig {
+                          id
+                          name
+                          optimizationDirection
+                          values {
+                            label
+                            score
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                ...SessionAnnotationSummaryGroup
               }
             }
           }
@@ -151,15 +224,104 @@ export function SessionsTable(props: SessionsTableProps) {
     return data.sessions.edges.map(({ session }) => ({
       ...session,
       tokenCountTotal: session.tokenUsage.total,
+      costTotal: session.costSummary?.total?.cost ?? null,
     }));
   }, [data.sessions]);
   type TableRow = (typeof tableData)[number];
+
+  const annotationColumnVisibility = useTracingContext(
+    (state) => state.annotationColumnVisibility
+  );
+  const visibleAnnotationColumnNames = useMemo(() => {
+    return Object.keys(annotationColumnVisibility).filter(
+      (name) => annotationColumnVisibility[name]
+    );
+  }, [annotationColumnVisibility]);
+
+  const dynamicAnnotationColumns: ColumnDef<TableRow>[] =
+    visibleAnnotationColumnNames.map((name) => {
+      return {
+        header: name,
+        columns: [
+          {
+            header: `labels`,
+            accessorKey: makeAnnotationColumnId(name, "label"),
+            cell: ({ row }) => {
+              const annotation = row.original.sessionAnnotationSummaries.find(
+                (annotation) => annotation.name === name
+              );
+              if (!annotation) {
+                return null;
+              }
+              return (
+                <SummaryValueLabels
+                  name={name}
+                  labelFractions={annotation.labelFractions}
+                />
+              );
+            },
+          } as ColumnDef<TableRow>,
+          {
+            header: `mean score`,
+            accessorKey: makeAnnotationColumnId(name, "score"),
+            cell: ({ row }) => {
+              const annotation = row.original.sessionAnnotationSummaries.find(
+                (annotation) => annotation.name === name
+              );
+              if (!annotation) {
+                return null;
+              }
+              return <MeanScore value={annotation.meanScore} fallback={null} />;
+            },
+          } as ColumnDef<TableRow>,
+        ],
+      };
+    });
+
+  const annotationColumns: ColumnDef<TableRow>[] = [
+    {
+      header: () => (
+        <Flex direction="row" gap="size-50" alignItems="center">
+          <span>annotations</span>
+          <ContextualHelp>
+            <Heading level={3} weight="heavy">
+              Annotations
+            </Heading>
+            <Text>
+              Evaluations and human annotations logged via the API or set via
+              the UI.
+            </Text>
+          </ContextualHelp>
+        </Flex>
+      ),
+      id: "annotations",
+      accessorKey: "sessionAnnotations",
+      enableSorting: false,
+      cell: ({ row }) => {
+        return <SessionAnnotationSummaryGroupTokens session={row.original} />;
+      },
+    },
+    ...dynamicAnnotationColumns,
+  ];
+
   const columns: ColumnDef<TableRow>[] = [
     {
       header: "session id",
       accessorKey: "sessionId",
       enableSorting: false,
-      cell: TextCell,
+      cell: ({ getValue }) => {
+        const value = getValue() as string | null;
+        if (!value) return <>{"--"}</>;
+        return (
+          <CellWithControlsWrap
+            controls={<CopyToClipboardButton text={value} />}
+          >
+            <Truncate>
+              <Text>{value}</Text>
+            </Truncate>
+          </CellWithControlsWrap>
+        );
+      },
     },
     {
       header: "first input",
@@ -173,6 +335,7 @@ export function SessionsTable(props: SessionsTableProps) {
       enableSorting: false,
       cell: TextCell,
     },
+    ...annotationColumns,
     {
       header: "start time",
       accessorKey: "startTime",
@@ -214,19 +377,34 @@ export function SessionsTable(props: SessionsTableProps) {
       accessorKey: "tokenCountTotal",
       enableSorting: true,
       minSize: 80,
-      cell: ({ row, getValue }) => {
+      cell: ({ getValue, row }) => {
         const value = getValue();
         if (value == null || typeof value !== "number") {
           return "--";
         }
-        const { prompt, completion } = row.original.tokenUsage;
+        const session = row.original;
         return (
-          <TokenCount
+          <SessionTokenCount
             tokenCountTotal={value as number}
-            tokenCountPrompt={prompt || 0}
-            tokenCountCompletion={completion || 0}
+            nodeId={session.id}
+            size="S"
           />
         );
+      },
+    },
+    {
+      header: "total cost",
+      accessorKey: "costSummary.total.cost",
+      id: "costTotal",
+      enableSorting: true,
+      minSize: 80,
+      cell: ({ row, getValue }) => {
+        const value = getValue();
+        if (value === null || typeof value !== "number") {
+          return "--";
+        }
+        const session = row.original;
+        return <SessionTokenCosts totalCost={value} nodeId={session.id} />;
       },
     },
     {
@@ -241,20 +419,16 @@ export function SessionsTable(props: SessionsTableProps) {
     startTransition(() => {
       refetch(
         {
-          sort: sort
-            ? {
-                col: sort.id as ProjectSessionColumn,
-                dir: sort.desc ? "desc" : "asc",
-              }
-            : { col: "startTime", dir: "desc" },
+          sort: sort ? getGqlSessionSort(sort) : DEFAULT_SESSION_SORT,
           after: null,
           first: PAGE_SIZE,
-          filterIoSubstring: filterIoSubstring,
+          filterIoSubstring: filterIoSubstringOrSessionId,
+          sessionId: filterIoSubstringOrSessionId,
         },
         { fetchPolicy: "store-and-network" }
       );
     });
-  }, [sorting, refetch, filterIoSubstring, fetchKey]);
+  }, [sorting, refetch, filterIoSubstringOrSessionId, fetchKey]);
   const fetchMoreOnBottomReached = React.useCallback(
     (containerRefElement?: HTMLDivElement | null) => {
       if (containerRefElement) {
@@ -286,6 +460,7 @@ export function SessionsTable(props: SessionsTableProps) {
       columnVisibility,
       columnSizing,
     },
+    defaultColumn: defaultColumnSettings,
     columnResizeMode: "onChange",
     onColumnSizingChange: setColumnSizing,
     enableSubRowSelection: false,
@@ -293,10 +468,13 @@ export function SessionsTable(props: SessionsTableProps) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
-    getRowId: (row) => row.id,
   });
   const rows = table.getRowModel().rows;
   const isEmpty = rows.length === 0;
+  const computedColumns = table.getAllColumns().filter((column) => {
+    // Filter out columns that are eval groupings
+    return column.columns.length === 0;
+  });
   const { columnSizingInfo, columnSizing: columnSizingState } =
     table.getState();
   const getFlatHeaders = table.getFlatHeaders;
@@ -318,7 +496,7 @@ export function SessionsTable(props: SessionsTableProps) {
     }
     return colSizes;
     // Disabled lint as per tanstack docs linked above
-    // eslint-disable-next-line react-compiler/react-compiler
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getFlatHeaders, columnSizingInfo, columnSizingState, colLength]);
   return (
@@ -328,11 +506,16 @@ export function SessionsTable(props: SessionsTableProps) {
         paddingBottom="size-100"
         paddingStart="size-200"
         paddingEnd="size-200"
-        borderBottomColor="grey-300"
+        borderBottomColor="default"
         borderBottomWidth="thin"
         flex="none"
       >
-        <SessionSearchField />
+        <Flex direction="row" gap="size-100" width="100%" alignItems="center">
+          <View flex="1 1 auto">
+            <SessionSearchField />
+          </View>
+          <SessionColumnSelector columns={computedColumns} query={data} />
+        </Flex>
       </View>
       <div
         css={css`
@@ -355,6 +538,7 @@ export function SessionsTable(props: SessionsTableProps) {
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
+                    colSpan={header.colSpan}
                     style={{
                       width: `calc(var(--header-${header.id}-size) * 1px)`,
                     }}
@@ -365,9 +549,7 @@ export function SessionsTable(props: SessionsTableProps) {
                         <div
                           data-sortable={header.column.getCanSort()}
                           {...{
-                            className: header.column.getCanSort()
-                              ? "cursor-pointer"
-                              : "",
+                            className: header.column.getCanSort() ? "sort" : "",
                             onClick: header.column.getToggleSortingHandler(),
                             style: {
                               left: header.getStart(),
@@ -375,10 +557,12 @@ export function SessionsTable(props: SessionsTableProps) {
                             },
                           }}
                         >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                          <Truncate maxWidth="100%">
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                          </Truncate>
                           {header.column.getIsSorted() ? (
                             <Icon
                               className="sort-icon"

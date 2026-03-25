@@ -1,29 +1,31 @@
-import React, { useState } from "react";
-import { useFragment } from "react-relay";
+import { css } from "@emotion/react";
+import { useFragment, usePreloadedQuery } from "react-relay";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { graphql } from "relay-runtime";
-import { css } from "@emotion/react";
-
-import { DialogContainer } from "@arizeai/components";
 
 import {
   Button,
   Counter,
+  DialogTrigger,
   Flex,
-  Heading,
   Icon,
   Icons,
   LazyTabPanel,
   Link,
+  LinkButton,
+  Modal,
+  ModalOverlay,
+  PageHeader,
   Tab,
   TabList,
   Tabs,
   Text,
-  View,
 } from "@phoenix/components";
 import { ClonePromptDialog } from "@phoenix/pages/prompt/ClonePromptDialog";
 
-import { PromptLayout__main$key } from "./__generated__/PromptLayout__main.graphql";
+import type { PromptLayout__main$key } from "./__generated__/PromptLayout__main.graphql";
+import type { promptLoaderQuery as promptLoaderQueryType } from "./__generated__/promptLoaderQuery.graphql";
+import { promptLoaderQuery } from "./promptLoader";
 import { usePromptIdLoader } from "./usePromptIdLoader";
 
 const mainCSS = css`
@@ -31,7 +33,7 @@ const mainCSS = css`
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  .ac-tabs {
+  .tabs {
     flex: 1 1 auto;
     overflow: hidden;
     display: flex;
@@ -39,7 +41,7 @@ const mainCSS = css`
     div[role="tablist"] {
       flex: none;
     }
-    .ac-tabs__pane-container {
+    .tabs__pane-container {
       flex: 1 1 auto;
       display: flex;
       flex-direction: column;
@@ -55,8 +57,12 @@ const mainCSS = css`
 `;
 
 export function PromptLayout() {
-  const [dialog, setDialog] = useState<React.ReactNode | null>(null);
   const loaderData = usePromptIdLoader();
+  const preloadedData = usePreloadedQuery<promptLoaderQueryType>(
+    promptLoaderQuery,
+    loaderData.queryRef
+  );
+
   const navigate = useNavigate();
   const { pathname } = useLocation();
   let defaultTab = "prompt";
@@ -72,6 +78,7 @@ export function PromptLayout() {
         id
         name
         description
+        metadata
         sourcePrompt {
           id
           name
@@ -85,74 +92,65 @@ export function PromptLayout() {
         }
       }
     `,
-    loaderData.prompt
+    preloadedData.prompt
   );
 
   return (
     <main css={mainCSS}>
-      <View
-        paddingStart="size-200"
-        paddingEnd="size-200"
-        paddingTop="size-100"
-        paddingBottom="size-100"
-        flex="none"
-      >
-        <Flex
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <Flex direction="column">
-            <Heading level={1}>{loaderData.prompt.name}</Heading>
-            {data.sourcePrompt && (
-              <Text color="text-700">
-                cloned from{" "}
-                <Link to={`/prompts/${data.sourcePrompt.id}`}>
-                  {data.sourcePrompt.name}
-                </Link>
-              </Text>
-            )}
-          </Flex>
-
-          <Flex direction="row" gap="size-100">
-            <Button
-              size="S"
-              leadingVisual={<Icon svg={<Icons.DuplicateIcon />} />}
-              onPress={() => {
-                setDialog(
+      <PageHeader
+        title={data.name}
+        subTitle={
+          data.sourcePrompt && (
+            <Text color="text-700">
+              cloned from{" "}
+              <Link to={`/prompts/${data.sourcePrompt.id}`}>
+                {data.sourcePrompt.name}
+              </Link>
+            </Text>
+          )
+        }
+        extra={
+          <Flex direction="row" gap="size-100" justifyContent="end">
+            <DialogTrigger>
+              <Button
+                size="M"
+                leadingVisual={<Icon svg={<Icons.GitBranchOutline />} />}
+              >
+                Clone
+              </Button>
+              <ModalOverlay>
+                <Modal size="M">
                   <ClonePromptDialog
                     promptId={data.id}
                     promptName={data.name}
                     promptDescription={data.description ?? undefined}
-                    setDialog={setDialog}
+                    promptMetadata={data.metadata ?? undefined}
                   />
-                );
-              }}
+                </Modal>
+              </ModalOverlay>
+            </DialogTrigger>
+            <LinkButton
+              variant="primary"
+              leadingVisual={<Icon svg={<Icons.PlayCircleOutline />} />}
+              to={`/playground?promptId=${encodeURIComponent(data.id)}`}
+              size="M"
+              aria-label="Open this Prompt in Playground"
             >
-              Clone
-            </Button>
-            <Button
-              size="S"
-              leadingVisual={<Icon svg={<Icons.Edit2Outline />} />}
-              onPress={() => {
-                navigate(`/prompts/${loaderData.prompt.id}/playground`);
-              }}
-            >
-              Edit in Playground
-            </Button>
+              Playground
+            </LinkButton>
           </Flex>
-        </Flex>
-      </View>
+        }
+      />
       <Tabs
         defaultSelectedKey={defaultTab}
         onSelectionChange={(key) => {
           let url: string;
           if (key === "versions") {
-            url = `/prompts/${loaderData.prompt.id}/versions`;
+            url = `/prompts/${data.id}/versions`;
           } else if (key === "config") {
-            url = `/prompts/${loaderData.prompt.id}/config`;
+            url = `/prompts/${data.id}/config`;
           } else {
-            url = `/prompts/${loaderData.prompt.id}`;
+            url = `/prompts/${data.id}`;
           }
           navigate(url);
         }}
@@ -174,9 +172,6 @@ export function PromptLayout() {
           <Outlet />
         </LazyTabPanel>
       </Tabs>
-      <DialogContainer onDismiss={() => setDialog(null)}>
-        {dialog}
-      </DialogContainer>
     </main>
   );
 }

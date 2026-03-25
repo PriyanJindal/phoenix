@@ -1,15 +1,10 @@
 import {
   getTestAnthropicToolCall,
-  getTestAnthropicToolDefinition,
   getTestOpenAIToolCall,
-  getTestOpenAIToolDefinition,
 } from "@phoenix/schemas/__tests__/fixtures";
 
-import {
-  convertInstanceToolsToProvider,
-  convertMessageToolCallsToProvider,
-} from "../playgroundStoreUtils";
-import { ChatMessage, Tool } from "../types";
+import { convertMessageToolCallsToProvider } from "../playgroundStoreUtils";
+import type { ChatMessage } from "../types";
 
 type TestName = string;
 type ToolCallConversionTestTuple<T extends ModelProvider> = [
@@ -113,6 +108,38 @@ describe("convertMessageToolCallsToProvider", () => {
         [{ test: "test" }],
       ],
     ],
+    DEEPSEEK: [
+      [
+        "return tools as they are for deepseek",
+        "DEEPSEEK",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    XAI: [
+      [
+        "return tools as they are for xai",
+        "XAI",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    OLLAMA: [
+      [
+        "return tools as they are for ollama",
+        "OLLAMA",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    AWS: [
+      [
+        "return tools as they are for aws bedrock",
+        "AWS",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
     AZURE_OPENAI: [
       [
         "convert from anthropic to openai",
@@ -168,314 +195,60 @@ describe("convertMessageToolCallsToProvider", () => {
         [{ test: "test" }],
       ],
     ],
+    CEREBRAS: [
+      [
+        "return tools as they are for cerebras",
+        "CEREBRAS",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    FIREWORKS: [
+      [
+        "return tools as they are for fireworks",
+        "FIREWORKS",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    GROQ: [
+      [
+        "return tools as they are for groq",
+        "GROQ",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    MOONSHOT: [
+      [
+        "return tools as they are for moonshot",
+        "MOONSHOT",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    PERPLEXITY: [
+      [
+        "return tools as they are for perplexity",
+        "PERPLEXITY",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
+    TOGETHER: [
+      [
+        "return tools as they are for together",
+        "TOGETHER",
+        [{ test: "test" }],
+        [{ test: "test" }],
+      ],
+    ],
   };
 
   test.for(Object.values(ProviderToToolTestMap).flat())(
     "should %s",
     ([_testName, provider, toolCalls, expected]) => {
       const result = convertMessageToolCallsToProvider({ provider, toolCalls });
-      expect(result).toStrictEqual(expected);
-    }
-  );
-});
-
-type ToolDefinitionConversionTestTuple<T extends ModelProvider> = [
-  TestName,
-  T,
-  Tool[],
-  Tool[],
-];
-
-type ToolDefinitionConversionTestMap = {
-  [P in ModelProvider]: ToolDefinitionConversionTestTuple<P>[];
-};
-
-describe("convertMessageToolCallsToProvider", () => {
-  const ProviderToToolTestMap: ToolDefinitionConversionTestMap = {
-    ANTHROPIC: [
-      [
-        "convert from openai to anthropic",
-        "ANTHROPIC",
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-        [
-          {
-            id: 1,
-            definition: getTestAnthropicToolDefinition({
-              name: "my test func",
-              description: "This is a test function",
-              input_schema: {
-                type: "object",
-                properties: {
-                  test: {
-                    type: "string",
-                  },
-                },
-              },
-            }),
-          },
-        ],
-      ],
-      [
-        "return anthropic as is if it is already anthropic",
-        "ANTHROPIC",
-        [
-          {
-            id: 1,
-            definition: getTestAnthropicToolDefinition({
-              name: "my test func",
-              description: "This is a test function",
-              input_schema: {
-                type: "object",
-                properties: {
-                  test: {
-                    type: "string",
-                  },
-                },
-              },
-            }),
-          },
-        ],
-        [
-          {
-            id: 1,
-            definition: getTestAnthropicToolDefinition({
-              name: "my test func",
-              description: "This is a test function",
-              input_schema: {
-                type: "object",
-                properties: {
-                  test: {
-                    type: "string",
-                  },
-                },
-              },
-            }),
-          },
-        ],
-      ],
-      [
-        "return tools as they are if unknown schema for anthropic",
-        "ANTHROPIC",
-        [{ id: 1, definition: { test: "test" } }],
-        [{ id: 1, definition: { test: "test" } }],
-      ],
-    ],
-    OPENAI: [
-      [
-        "convert from anthropic to openai",
-        "OPENAI",
-        [
-          {
-            id: 1,
-            definition: getTestAnthropicToolDefinition({
-              name: "my test func",
-              description: "This is a test function",
-              input_schema: {
-                type: "object",
-                properties: {
-                  test: {
-                    type: "string",
-                  },
-                },
-              },
-            }),
-          },
-        ],
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-      ],
-      [
-        "return openai as is if it is already openai",
-        "OPENAI",
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-      ],
-      [
-        "return tools as they are if unknown schema for azure_openai",
-        "OPENAI",
-        [{ id: 1, definition: { test: "test" } }],
-        [{ id: 1, definition: { test: "test" } }],
-      ],
-    ],
-    AZURE_OPENAI: [
-      [
-        "convert from anthropic to openai",
-        "AZURE_OPENAI",
-        [
-          {
-            id: 1,
-            definition: getTestAnthropicToolDefinition({
-              name: "my test func",
-              description: "This is a test function",
-              input_schema: {
-                type: "object",
-                properties: {
-                  test: {
-                    type: "string",
-                  },
-                },
-              },
-            }),
-          },
-        ],
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-      ],
-      [
-        "return openai as is if it is already azure_openai",
-        "AZURE_OPENAI",
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-        [
-          {
-            id: 1,
-            definition: getTestOpenAIToolDefinition({
-              function: {
-                name: "my test func",
-                description: "This is a test function",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    test: {
-                      type: "string",
-                    },
-                  },
-                },
-              },
-            }),
-          },
-        ],
-      ],
-      [
-        "return tools as they are if unknown schema for azure_openai",
-        "AZURE_OPENAI",
-        [{ id: 1, definition: { test: "test" } }],
-        [{ id: 1, definition: { test: "test" } }],
-      ],
-    ],
-    // TODO(apowell): #5348 Add Google tool tests
-    GOOGLE: [
-      [
-        "return tools as they are for google",
-        "GOOGLE",
-        [{ id: 1, definition: { test: "test" } }],
-        [{ id: 1, definition: { test: "test" } }],
-      ],
-    ],
-  };
-
-  test.for(Object.values(ProviderToToolTestMap).flat())(
-    "should %s",
-    ([_testName, provider, tools, expected]) => {
-      const result = convertInstanceToolsToProvider({
-        provider,
-        instanceTools: tools,
-      });
       expect(result).toStrictEqual(expected);
     }
   );

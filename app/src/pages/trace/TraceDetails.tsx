@@ -1,45 +1,50 @@
-import React, { PropsWithChildren, Suspense, useMemo } from "react";
-import { graphql, useLazyLoadQuery } from "react-relay";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { useParams, useSearchParams } from "react-router";
 import { css } from "@emotion/react";
+import type { PropsWithChildren } from "react";
+import { Suspense, useMemo } from "react";
+import { Focusable } from "react-aria";
+import { graphql, useLazyLoadQuery } from "react-relay";
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+} from "react-resizable-panels";
+import { useSearchParams } from "react-router";
+import invariant from "tiny-invariant";
 
-import { Flex, LinkButton, Loading, Text, View } from "@phoenix/components";
+import {
+  Flex,
+  LinkButton,
+  Loading,
+  RichTooltip,
+  Text,
+  TooltipArrow,
+  TooltipTrigger,
+  View,
+} from "@phoenix/components";
 import { compactResizeHandleCSS } from "@phoenix/components/resize";
 import { LatencyText } from "@phoenix/components/trace/LatencyText";
 import { SpanStatusCodeIcon } from "@phoenix/components/trace/SpanStatusCodeIcon";
-import { TraceTree } from "@phoenix/components/trace/TraceTree";
 import { useSpanStatusCodeColor } from "@phoenix/components/trace/useSpanStatusCodeColor";
 import { SELECTED_SPAN_NODE_ID_PARAM } from "@phoenix/constants/searchParams";
+import { costFormatter } from "@phoenix/utils/numberFormatUtils";
 
-import {
+import { RichTokenBreakdown } from "../../components/RichTokenCostBreakdown";
+import type {
   TraceDetailsQuery,
   TraceDetailsQuery$data,
 } from "./__generated__/TraceDetailsQuery.graphql";
+import { ConnectedTraceTree } from "./ConnectedTraceTree";
 import { SpanDetails } from "./SpanDetails";
 import { TraceHeaderRootSpanAnnotations } from "./TraceHeaderRootSpanAnnotations";
 
-type Span = NonNullable<
+type RootSpan = NonNullable<
   TraceDetailsQuery$data["project"]["trace"]
->["spans"]["edges"][number]["span"];
+>["rootSpans"]["edges"][number]["span"];
 
-/**
- * A root span is defined to be a span whose parent span is not in our collection.
- * But if more than one such span exists, return null.
- */
-function findRootSpan(spansList: Span[]): Span | null {
-  // If there is a span whose parent is null, then it is the root span.
-  const rootSpan = spansList.find((span) => span.parentId == null);
-  if (rootSpan) return rootSpan;
-  // Otherwise we need to find all spans whose parent span is not in our collection.
-  const spanIds = new Set(spansList.map((span) => span.spanId));
-  const rootSpans = spansList.filter(
-    (span) => span.parentId != null && !spanIds.has(span.parentId)
-  );
-  // If only one such span exists, then return it, otherwise, return null.
-  if (rootSpans.length === 1) return rootSpans[0];
-  return null;
-}
+type CostSummary = NonNullable<
+  TraceDetailsQuery$data["project"]["trace"]
+>["costSummary"];
 
 export type TraceDetailsProps = {
   traceId: string;
@@ -54,41 +59,38 @@ export function TraceDetails(props: TraceDetailsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const data = useLazyLoadQuery<TraceDetailsQuery>(
     graphql`
-      query TraceDetailsQuery($traceId: ID!, $id: GlobalID!) {
+      query TraceDetailsQuery($traceId: ID!, $id: ID!) {
         project: node(id: $id) {
           ... on Project {
             trace(traceId: $traceId) {
               projectSessionId
-              spans(first: 1000) {
+              ...ConnectedTraceTree
+              rootSpans: spans(
+                first: 1
+                rootSpansOnly: true
+                orphanSpanAsRootSpan: true
+              ) {
                 edges {
                   span: node {
+                    statusCode
                     id
                     spanId
-                    name
-                    spanKind
-                    statusCode
-                    startTime
                     parentId
-                    latencyMs
-                    tokenCountTotal
-                    tokenCountPrompt
-                    tokenCountCompletion
-                    spanAnnotationSummaries {
-                      labels
-                      count
-                      labelCount
-                      labelFractions {
-                        fraction
-                        label
-                      }
-                      name
-                      scoreCount
-                      meanScore
-                    }
                   }
                 }
               }
               latencyMs
+              costSummary {
+                prompt {
+                  cost
+                }
+                completion {
+                  cost
+                }
+                total {
+                  cost
+                }
+              }
             }
           }
         }
@@ -99,15 +101,23 @@ export function TraceDetails(props: TraceDetailsProps) {
       fetchPolicy: "store-and-network",
     }
   );
+  invariant(data.project.trace, "Trace is required to view the trace details");
   const traceLatencyMs =
     data.project.trace?.latencyMs != null ? data.project.trace.latencyMs : null;
-  const spansList: Span[] = useMemo(() => {
-    const gqlSpans = data.project.trace?.spans.edges || [];
+  const costSummary = data?.project?.trace?.costSummary;
+  const rootSpans: RootSpan[] = useMemo(() => {
+    const gqlSpans = data.project.trace?.rootSpans.edges || [];
     return gqlSpans.map((node) => node.span);
   }, [data]);
   const urlSpanNodeId = searchParams.get(SELECTED_SPAN_NODE_ID_PARAM);
-  const selectedSpanNodeId = urlSpanNodeId ?? spansList[0].id;
-  const rootSpan = useMemo(() => findRootSpan(spansList), [spansList]);
+  invariant(rootSpans.length > 0, "At least one root must be resolvable");
+  const rootSpan = rootSpans[0];
+  const selectedSpanNodeId = urlSpanNodeId ?? rootSpan.id;
+
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: "trace-details-layout",
+    storage: localStorage,
+  });
 
   return (
     <main
@@ -119,22 +129,25 @@ export function TraceDetails(props: TraceDetailsProps) {
       `}
     >
       <TraceHeader
+        projectId={projectId}
         rootSpan={rootSpan}
         latencyMs={traceLatencyMs}
+        costSummary={costSummary}
         sessionId={data.project.trace?.projectSessionId}
       />
-      <PanelGroup
-        direction="horizontal"
-        autoSaveId="trace-panel-group"
+      <Group
+        orientation="horizontal"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
         css={css`
           flex: 1 1 auto;
           overflow: hidden;
         `}
       >
-        <Panel defaultSize={30} minSize={5}>
+        <Panel id="trace-tree" defaultSize="30%" minSize="5%">
           <ScrollingPanelContent>
-            <TraceTree
-              spans={spansList}
+            <ConnectedTraceTree
+              trace={data.project.trace}
               selectedSpanNodeId={selectedSpanNodeId}
               onSpanClick={(span) => {
                 setSearchParams(
@@ -148,8 +161,8 @@ export function TraceDetails(props: TraceDetailsProps) {
             />
           </ScrollingPanelContent>
         </Panel>
-        <PanelResizeHandle css={compactResizeHandleCSS} />
-        <Panel>
+        <Separator css={compactResizeHandleCSS} />
+        <Panel id="span-details">
           <ScrollingTabsWrapper>
             {selectedSpanNodeId ? (
               <Suspense fallback={<Loading />}>
@@ -158,7 +171,7 @@ export function TraceDetails(props: TraceDetailsProps) {
             ) : null}
           </ScrollingTabsWrapper>
         </Panel>
-      </PanelGroup>
+      </Group>
     </main>
   );
 }
@@ -166,13 +179,16 @@ export function TraceDetails(props: TraceDetailsProps) {
 function TraceHeader({
   rootSpan,
   latencyMs,
+  costSummary,
   sessionId,
+  projectId,
 }: {
-  rootSpan: Span | null;
+  rootSpan: RootSpan | null;
   latencyMs: number | null;
+  costSummary?: CostSummary | null;
   sessionId?: string | null;
+  projectId: string;
 }) {
-  const { projectId } = useParams();
   const { statusCode } = rootSpan ?? {
     statusCode: "UNSET",
   };
@@ -183,7 +199,7 @@ function TraceHeader({
       paddingBottom="size-150"
       paddingX="size-200"
       borderBottomWidth="thin"
-      borderBottomColor="dark"
+      borderBottomColor="default"
     >
       <Flex
         direction="row"
@@ -205,6 +221,40 @@ function TraceHeader({
               </Text>
             </Flex>
           </Text>
+        </Flex>
+        <Flex direction="column">
+          <Text elementType="h3" size="S" color="text-700">
+            Total Cost
+          </Text>
+          <TooltipTrigger delay={0}>
+            <Focusable>
+              <Text size="L" role="button">
+                {costFormatter(costSummary?.total?.cost ?? 0)}
+              </Text>
+            </Focusable>
+            <RichTooltip placement="bottom">
+              <TooltipArrow />
+              <View width="size-3600">
+                <RichTokenBreakdown
+                  valueLabel="cost"
+                  totalValue={costSummary?.total?.cost ?? 0}
+                  formatter={costFormatter}
+                  segments={[
+                    {
+                      name: "Prompt",
+                      value: costSummary?.prompt?.cost ?? 0,
+                      color: "rgba(254, 119, 99, 1)",
+                    },
+                    {
+                      name: "Completion",
+                      value: costSummary?.completion?.cost ?? 0,
+                      color: "rgba(98, 104, 239, 1)",
+                    },
+                  ]}
+                />
+              </View>
+            </RichTooltip>
+          </TooltipTrigger>
         </Flex>
         <Flex direction="column">
           <Text elementType="h3" size="S" color="text-700">
@@ -248,15 +298,15 @@ function ScrollingTabsWrapper({ children }: PropsWithChildren) {
       css={css`
         height: 100%;
         overflow: hidden;
-        .ac-tabs {
+        .tabs {
           height: 100%;
           overflow: hidden;
-          .ac-tabs__extra {
+          .tabs__extra {
             width: 100%;
-            padding-right: var(--ac-global-dimension-size-200);
-            padding-bottom: var(--ac-global-dimension-size-50);
+            padding-right: var(--global-dimension-size-200);
+            padding-bottom: var(--global-dimension-size-50);
           }
-          .ac-tabs__pane-container {
+          .tabs__pane-container {
             min-height: 100%;
             height: 100%;
             overflow-y: auto;

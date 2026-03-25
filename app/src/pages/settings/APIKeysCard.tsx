@@ -1,33 +1,35 @@
-import React, { ReactNode, Suspense, useCallback, useState } from "react";
-import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 import { getLocalTimeZone } from "@internationalized/date";
-
-import { DialogContainer, TabbedCard } from "@arizeai/components";
+import { Suspense, useCallback, useState } from "react";
+import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 
 import {
+  Alert,
   Button,
+  Card,
+  DialogTrigger,
   Icon,
   Icons,
   LazyTabPanel,
   Loading,
+  Modal,
+  ModalOverlay,
   Tab,
   TabList,
   Tabs,
   View,
 } from "@phoenix/components";
+import type { APIKeyFormParams } from "@phoenix/components/auth";
 import {
-  APIKeyFormParams,
   CreateAPIKeyDialog,
   OneTimeAPIKeyDialog,
 } from "@phoenix/components/auth";
-import { useNotifyError } from "@phoenix/contexts";
 
-import { APIKeysCardCreateSystemAPIKeyMutation } from "./__generated__/APIKeysCardCreateSystemAPIKeyMutation.graphql";
-import { APIKeysCardQuery } from "./__generated__/APIKeysCardQuery.graphql";
+import type { APIKeysCardCreateSystemAPIKeyMutation } from "./__generated__/APIKeysCardCreateSystemAPIKeyMutation.graphql";
+import type { APIKeysCardQuery } from "./__generated__/APIKeysCardQuery.graphql";
 import { SystemAPIKeysTable } from "./SystemAPIKeysTable";
 import { UserAPIKeysTable } from "./UserAPIKeysTable";
 
-function APIKeysCardContent() {
+function APIKeysCardContent({ fetchKey }: { fetchKey: number }) {
   const query = useLazyLoadQuery<APIKeysCardQuery>(
     graphql`
       query APIKeysCardQuery {
@@ -36,7 +38,7 @@ function APIKeysCardContent() {
       }
     `,
     {},
-    { fetchPolicy: "network-only" }
+    { fetchPolicy: "network-only", fetchKey }
   );
 
   return (
@@ -56,11 +58,12 @@ function APIKeysCardContent() {
 }
 
 export function APIKeysCard() {
-  const [dialog, setDialog] = useState<ReactNode>(null);
-  const notifyError = useNotifyError();
-  const showOneTimeAPIKeyDialog = (jwt: string) => {
-    setDialog(<OneTimeAPIKeyDialog jwt={jwt} />);
-  };
+  const [showCreateAPIKeyDialog, setShowCreateAPIKeyDialog] = useState(false);
+  const [showOneTimeAPIKeyJwt, setShowOneTimeAPIKeyJwt] = useState<
+    string | null
+  >(null);
+  const [fetchKey, setFetchKey] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const [commit, isCommitting] =
     useMutation<APIKeysCardCreateSystemAPIKeyMutation>(graphql`
@@ -70,11 +73,7 @@ export function APIKeysCard() {
         $expiresAt: DateTime = null
       ) {
         createSystemApiKey(
-          input: {
-            name: $name
-            description: $description
-            expiresAt: $expiresAt
-          }
+          input: { name: $name, description: $description, expiresAt: $expiresAt }
         ) {
           jwt
           query {
@@ -96,43 +95,48 @@ export function APIKeysCard() {
             data.expiresAt?.toDate(getLocalTimeZone()).toISOString() || null,
         },
         onCompleted: (response) => {
-          showOneTimeAPIKeyDialog(response.createSystemApiKey.jwt);
+          setFetchKey((prev) => prev + 1);
+          setShowCreateAPIKeyDialog(false);
+          setShowOneTimeAPIKeyJwt(response.createSystemApiKey.jwt);
         },
         onError: (error) => {
-          notifyError({
-            title: "Error creating system key",
-            message: error.message,
-          });
+          setError(error.message);
         },
       });
     },
-    [commit, notifyError]
+    [commit]
   );
-  const showCreateSystemAPIKeyDialog = () => {
-    setDialog(
-      <CreateAPIKeyDialog
-        onSubmit={onSubmit}
-        isCommitting={isCommitting}
-        defaultName="System"
-      />
-    );
-  };
 
   return (
     <div>
-      <TabbedCard
+      <Card
+        titleSeparator={false}
         title="API Keys"
-        variant="compact"
         extra={
-          <Button
-            size="S"
-            leadingVisual={<Icon svg={<Icons.PlusCircleOutline />} />}
-            onPress={showCreateSystemAPIKeyDialog}
+          <DialogTrigger
+            isOpen={showCreateAPIKeyDialog}
+            onOpenChange={() => setShowCreateAPIKeyDialog(false)}
           >
-            System Key
-          </Button>
+            <Button
+              size="S"
+              onPress={() => setShowCreateAPIKeyDialog(true)}
+              leadingVisual={<Icon svg={<Icons.PlusCircleOutline />} />}
+            >
+              System Key
+            </Button>
+            <ModalOverlay>
+              <Modal size="M">
+                <CreateAPIKeyDialog
+                  onSubmit={onSubmit}
+                  isCommitting={isCommitting}
+                  defaultName="System"
+                />
+              </Modal>
+            </ModalOverlay>
+          </DialogTrigger>
         }
       >
+        {error && <Alert variant="danger">{error}</Alert>}
         <Suspense
           fallback={
             <View padding="size-100">
@@ -140,16 +144,19 @@ export function APIKeysCard() {
             </View>
           }
         >
-          <APIKeysCardContent />
+          <APIKeysCardContent fetchKey={fetchKey} />
         </Suspense>
-      </TabbedCard>
-      <DialogContainer
-        onDismiss={() => {
-          setDialog(null);
-        }}
+      </Card>
+      <DialogTrigger
+        isOpen={!!showOneTimeAPIKeyJwt}
+        onOpenChange={() => setShowOneTimeAPIKeyJwt(null)}
       >
-        {dialog}
-      </DialogContainer>
+        <ModalOverlay>
+          <Modal size="L">
+            <OneTimeAPIKeyDialog jwt={showOneTimeAPIKeyJwt ?? ""} />
+          </Modal>
+        </ModalOverlay>
+      </DialogTrigger>
     </div>
   );
 }

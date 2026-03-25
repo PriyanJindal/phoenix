@@ -1,6 +1,6 @@
-import React, { useMemo } from "react";
-import { graphql, useFragment } from "react-relay";
 import { css } from "@emotion/react";
+import { useMemo } from "react";
+import { graphql, useFragment } from "react-relay";
 
 import {
   Disclosure,
@@ -13,11 +13,7 @@ import {
   View,
 } from "@phoenix/components";
 import { JSONBlock } from "@phoenix/components/code";
-import { PromptTools__main$key } from "@phoenix/pages/prompt/__generated__/PromptTools__main.graphql";
-import {
-  findToolDefinitionDescription,
-  findToolDefinitionName,
-} from "@phoenix/schemas/toolSchemas";
+import type { PromptTools__main$key } from "@phoenix/pages/prompt/__generated__/PromptTools__main.graphql";
 import { safelyStringifyJSON } from "@phoenix/utils/jsonUtils";
 
 type ToolDefinitionItem = {
@@ -31,11 +27,18 @@ export function PromptTools({
 }: {
   promptVersion: PromptTools__main$key;
 }) {
-  const { tools } = useFragment<PromptTools__main$key>(
+  const { tools: toolsData } = useFragment<PromptTools__main$key>(
     graphql`
       fragment PromptTools__main on PromptVersion {
         tools {
-          definition
+          tools {
+            function {
+              name
+              description
+              parameters
+              strict
+            }
+          }
         }
       }
     `,
@@ -43,15 +46,17 @@ export function PromptTools({
   );
 
   const items: ToolDefinitionItem[] = useMemo(() => {
-    return tools.map((tool, i) => {
-      const definition = tool.definition;
+    if (!toolsData) return [];
+    return toolsData.tools.map((tool, i) => {
+      const fn = tool.function;
+      const definition = { type: "function", function: fn };
       return {
-        name: findToolDefinitionName(definition) || `Tool ${i + 1}`,
-        description: findToolDefinitionDescription(definition) || undefined,
+        name: fn.name || `Tool ${i + 1}`,
+        description: fn.description || undefined,
         definition: safelyStringifyJSON(definition, null, 2).json || "{}",
       };
     });
-  }, [tools]);
+  }, [toolsData]);
 
   if (items.length === 0) {
     return (
@@ -74,9 +79,9 @@ export function PromptTools({
       <DisclosureGroup
         css={css`
           & {
-            > .ac-disclosure:last-child {
+            > .disclosure:last-child {
               &[data-expanded="true"] {
-                border-bottom: 1px solid var(--ac-global-border-color-default);
+                border-bottom: 1px solid var(--global-border-color-default);
               }
             }
           }

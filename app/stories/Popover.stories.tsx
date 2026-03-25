@@ -1,18 +1,17 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
+import type { DialogTriggerProps } from "@phoenix/components";
 import {
   Button,
   Dialog,
   DialogTrigger,
-  DialogTriggerProps,
   Popover,
   PopoverArrow,
   View,
 } from "@phoenix/components";
 
 const meta: Meta = {
-  title: "Popover",
+  title: "Core/Overlays/Popover",
   component: Popover,
   parameters: {
     layout: "centered",
@@ -33,4 +32,6 @@ const Template: StoryFn<DialogTriggerProps> = (args) => (
   </DialogTrigger>
 );
 
-export const Default = Template.bind({});
+export const Default = {
+  render: Template,
+};

@@ -1,57 +1,87 @@
-import React, { Suspense, useCallback, useMemo } from "react";
+import { css } from "@emotion/react";
+import { Suspense, useCallback, useMemo } from "react";
+import { graphql, usePreloadedQuery } from "react-relay";
 import { Outlet, useLoaderData, useLocation, useNavigate } from "react-router";
 import invariant from "tiny-invariant";
-import { css } from "@emotion/react";
-
-import { ActionMenu, Item } from "@arizeai/components";
 
 import {
-  Button,
   Counter,
   Flex,
-  Icon,
-  Icons,
+  Heading,
   LazyTabPanel,
   Loading,
+  PageHeader,
   Tab,
   TabList,
   Tabs,
-  Text,
-  View,
+  Token,
 } from "@phoenix/components";
-import { useNotifySuccess } from "@phoenix/contexts";
-import {
-  DatasetProvider,
-  useDatasetContext,
-} from "@phoenix/contexts/DatasetContext";
-import { datasetLoader } from "@phoenix/pages/dataset/datasetLoader";
-import { prependBasename } from "@phoenix/utils/routingUtils";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
+import { DatasetLabelConfigButton } from "@phoenix/components/dataset";
+import { DatasetProvider } from "@phoenix/contexts/DatasetContext";
+import type { datasetLoader } from "@phoenix/pages/dataset/datasetLoader";
 
-import type { datasetLoaderQuery$data } from "./__generated__/datasetLoaderQuery.graphql";
-import { AddDatasetExampleButton } from "./AddDatasetExampleButton";
-import { DatasetCodeDropdown } from "./DatasetCodeDropdown";
-import { DatasetHistoryButton } from "./DatasetHistoryButton";
-import { RunExperimentButton } from "./RunExperimentButton";
+import type {
+  DatasetPageQuery,
+  DatasetPageQuery$data,
+} from "./__generated__/DatasetPageQuery.graphql";
+import { DatasetDownloadMenu } from "./DatasetDownloadMenu";
+import { RunDatasetExperimentButton } from "./RunDatasetExperimentButton";
+
+export const DatasetPageQueryNode = graphql`
+  query DatasetPageQuery($id: ID!) {
+    dataset: node(id: $id) {
+      id
+      ... on Dataset {
+        id
+        name
+        description
+        exampleCount
+        experimentCount
+        evaluatorCount
+        labels {
+          id
+          name
+          color
+        }
+        latestVersions: versions(first: 1, sort: { col: createdAt, dir: desc }) {
+          edges {
+            version: node {
+              id
+              description
+              createdAt
+            }
+          }
+        }
+      }
+    }
+  }
+`;
 
 export function DatasetPage() {
   const loaderData = useLoaderData<typeof datasetLoader>();
   invariant(loaderData, "loaderData is required");
+  const data = usePreloadedQuery<DatasetPageQuery>(
+    DatasetPageQueryNode,
+    loaderData.queryRef
+  );
+
   const latestVersion = useMemo(() => {
-    const versions = loaderData.dataset.latestVersions;
+    const versions = data.dataset.latestVersions;
     if (versions?.edges && versions.edges.length) {
       return versions.edges[0].version;
     }
     return null;
-  }, [loaderData]);
+  }, [data]);
 
   return (
     <DatasetProvider
-      datasetId={loaderData.dataset.id}
-      datasetName={loaderData.dataset.name as string}
+      datasetId={data.dataset.id}
+      datasetName={data.dataset.name as string}
       latestVersion={latestVersion}
     >
       <Suspense fallback={<Loading />}>
-        <DatasetPageContent dataset={loaderData["dataset"]} />
+        <DatasetPageContent dataset={data.dataset} />
       </Suspense>
     </DatasetProvider>
   );
@@ -62,7 +92,7 @@ const mainCSS = css`
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  .ac-tabs {
+  .tabs {
     flex: 1 1 auto;
     overflow: hidden;
     display: flex;
@@ -70,7 +100,7 @@ const mainCSS = css`
     div[role="tablist"] {
       flex: none;
     }
-    .ac-tabs__pane-container {
+    .tabs__pane-container {
       flex: 1 1 auto;
       display: flex;
       flex-direction: column;
@@ -85,24 +115,46 @@ const mainCSS = css`
   }
 `;
 
+const TABS_CONFIG = {
+  0: "experiments",
+  1: "examples",
+  2: "evaluators",
+  3: "versions",
+} as const;
+
+const TABS_LIST = Object.values(TABS_CONFIG);
+
+type TabName = (typeof TABS_LIST)[number];
+
+function isTabName(name: unknown): name is TabName {
+  return typeof name === "string" && (TABS_LIST as string[]).includes(name);
+}
+
+function getTabIndexFromPathname(pathname: string): number {
+  // Check all path segments for a valid tab name
+  // This handles nested routes like /datasets/:id/examples/:exampleId
+  const segments = pathname.split("/");
+  for (const segment of segments) {
+    if (isTabName(segment)) {
+      return TABS_LIST.indexOf(segment);
+    }
+  }
+  return 0;
+}
+
 function DatasetPageContent({
   dataset,
 }: {
-  dataset: datasetLoaderQuery$data["dataset"];
+  dataset: DatasetPageQuery$data["dataset"];
 }) {
   const datasetId = dataset.id;
-  const refreshLatestVersion = useDatasetContext(
-    (state) => state.refreshLatestVersion
-  );
-  const notifySuccess = useNotifySuccess();
 
   const navigate = useNavigate();
   const onTabChange = useCallback(
     (tabIndex: number) => {
-      if (tabIndex === 0) {
-        navigate(`/datasets/${datasetId}/experiments`);
-      } else if (tabIndex === 1) {
-        navigate(`/datasets/${datasetId}/examples`);
+      if (TABS_CONFIG[tabIndex as keyof typeof TABS_CONFIG]) {
+        const path = TABS_CONFIG[tabIndex as keyof typeof TABS_CONFIG];
+        navigate(`/datasets/${datasetId}/${path}`);
       }
     },
     [navigate, datasetId]
@@ -110,103 +162,50 @@ function DatasetPageContent({
 
   // Set the initial tab
   const location = useLocation();
-  const initialIndex = location.pathname.includes("examples") ? 1 : 0;
+  const initialIndex = getTabIndexFromPathname(location.pathname);
   return (
     <main css={mainCSS}>
-      <View
-        paddingStart="size-200"
-        paddingEnd="size-200"
-        paddingTop="size-200"
-        paddingBottom="size-50"
-        flex="none"
-      >
-        <Flex
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <Flex direction="column" justifyContent="space-between">
-            <Flex direction="row" gap="size-200" alignItems="center">
-              {/* TODO(datasets): Add an icon here to make the UI cohesive */}
-              {/* <Icon svg={<Icons.DatabaseOutline />} /> */}
-              <Flex direction="column">
-                <Text elementType="h1" size="L" weight="heavy">
-                  {dataset.name}
-                </Text>
-                <Text color="text-700">{dataset.description || "--"}</Text>
-              </Flex>
-            </Flex>
+      <PageHeader
+        title={
+          <Flex direction="row" gap="size-100" alignItems="center">
+            <Heading level={1}>{dataset.name}</Heading>
+            {dataset.labels && dataset.labels.length > 0 && (
+              <ul
+                css={css`
+                  display: flex;
+                  flex-direction: row;
+                  gap: var(--global-dimension-size-100);
+                  min-width: 0;
+                  flex-wrap: wrap;
+                `}
+              >
+                {dataset.labels.map((label) => (
+                  <li key={label.id}>
+                    <Token color={label.color}>
+                      <Truncate maxWidth={200} title={label.name}>
+                        {label.name}
+                      </Truncate>
+                    </Token>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Flex>
-          <Flex direction="row" gap="size-100">
-            <ActionMenu
-              align="end"
-              icon={<Icon svg={<Icons.DownloadOutline />} />}
-              onAction={(action) => {
-                switch (action) {
-                  case "csv":
-                    window.open(
-                      prependBasename(`/v1/datasets/${dataset.id}/csv`),
-                      "_blank"
-                    );
-                    break;
-                  case "openai-ft":
-                    window.open(
-                      prependBasename(
-                        `/v1/datasets/${dataset.id}/jsonl/openai_ft`
-                      ),
-                      "_blank"
-                    );
-                    break;
-                  case "openai-evals":
-                    window.open(
-                      prependBasename(
-                        `/v1/datasets/${dataset.id}/jsonl/openai_evals`
-                      ),
-                      "_blank"
-                    );
-                    break;
-                }
-              }}
-            >
-              <Item key="csv">Download CSV</Item>
-              <Item key="openai-ft">Download OpenAI Fine-Tuning JSONL</Item>
-              <Item key="openai-evals">Download OpenAI Evals JSONL</Item>
-            </ActionMenu>
-            <DatasetHistoryButton datasetId={dataset.id} />
-            <DatasetCodeDropdown />
-            <RunExperimentButton />
-            <Button
-              leadingVisual={<Icon svg={<Icons.PlayCircleOutline />} />}
-              onPress={() => {
-                navigate(`/playground?datasetId=${dataset.id}`);
-              }}
-            >
-              Playground
-            </Button>
-            <AddDatasetExampleButton
-              datasetId={dataset.id}
-              onAddExampleCompleted={() => {
-                notifySuccess({
-                  title: "Example added",
-                  message:
-                    "The example has been added successfully and the version has been updated.",
-                });
-                refreshLatestVersion();
-              }}
-            />
+        }
+        subTitle={dataset.description || "--"}
+        extra={
+          <Flex direction="row" gap="size-100" alignItems="center">
+            <DatasetDownloadMenu datasetId={dataset.id} />
+            <DatasetLabelConfigButton datasetId={dataset.id} />
+            <RunDatasetExperimentButton variant="primary" size="M" />
           </Flex>
-        </Flex>
-      </View>
+        }
+      />
       <Tabs
-        defaultSelectedKey={initialIndex === 0 ? "experiments" : "examples"}
+        selectedKey={TABS_LIST[initialIndex]}
         onSelectionChange={(key) => {
-          switch (key) {
-            case "experiments":
-              onTabChange(0);
-              break;
-            case "examples":
-              onTabChange(1);
-              break;
+          if (isTabName(key)) {
+            onTabChange(TABS_LIST.indexOf(key));
           }
         }}
       >
@@ -217,6 +216,10 @@ function DatasetPageContent({
           <Tab id="examples">
             Examples <Counter>{dataset.exampleCount}</Counter>
           </Tab>
+          <Tab id="evaluators">
+            Evaluators <Counter>{dataset.evaluatorCount}</Counter>
+          </Tab>
+          <Tab id="versions">Versions</Tab>
         </TabList>
         <LazyTabPanel id="experiments">
           <Suspense>
@@ -224,6 +227,16 @@ function DatasetPageContent({
           </Suspense>
         </LazyTabPanel>
         <LazyTabPanel id="examples">
+          <Suspense>
+            <Outlet />
+          </Suspense>
+        </LazyTabPanel>
+        <LazyTabPanel id="evaluators">
+          <Suspense>
+            <Outlet />
+          </Suspense>
+        </LazyTabPanel>
+        <LazyTabPanel id="versions">
           <Suspense>
             <Outlet />
           </Suspense>

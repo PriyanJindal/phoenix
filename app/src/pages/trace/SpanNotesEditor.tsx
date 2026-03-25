@@ -1,7 +1,7 @@
-import React, { startTransition, useEffect, useRef, useState } from "react";
+import { css } from "@emotion/react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { FocusScope } from "react-aria";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
-import { css } from "@emotion/react";
 
 import { Flex, View } from "@phoenix/components";
 import {
@@ -11,8 +11,8 @@ import {
 } from "@phoenix/components/chat";
 import { FocusHotkey } from "@phoenix/components/FocusHotkey";
 
-import { SpanNotesEditorAddNoteMutation } from "./__generated__/SpanNotesEditorAddNoteMutation.graphql";
-import { SpanNotesEditorQuery } from "./__generated__/SpanNotesEditorQuery.graphql";
+import type { SpanNotesEditorAddNoteMutation } from "./__generated__/SpanNotesEditorAddNoteMutation.graphql";
+import type { SpanNotesEditorQuery } from "./__generated__/SpanNotesEditorQuery.graphql";
 
 type SpanNotesEditorProps = {
   spanNodeId: string;
@@ -27,8 +27,8 @@ const notesListCSS = css`
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--ac-global-dimension-size-100);
-  padding: var(--ac-global-dimension-size-100);
+  gap: var(--global-dimension-size-100);
+  padding: var(--global-dimension-size-100);
   box-sizing: border-box;
   li {
     width: 100%;
@@ -40,7 +40,7 @@ export function SpanNotesEditor(props: SpanNotesEditorProps) {
   const notesEndRef = useRef<HTMLDivElement>(null);
   const data = useLazyLoadQuery<SpanNotesEditorQuery>(
     graphql`
-      query SpanNotesEditorQuery($spanNodeId: GlobalID!) {
+      query SpanNotesEditorQuery($spanNodeId: ID!) {
         viewer {
           id
           username

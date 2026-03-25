@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<aae6ff6a9bc28d31790dc70aa6d100c5>>
+ * @generated SignedSource<<a7e46202b2920e34af6610ddfcd1af98>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -19,7 +19,15 @@ export type UserAPIKeysTableQuery = {
   variables: UserAPIKeysTableQuery$variables;
 };
 
-const node: ConcreteRequest = {
+const node: ConcreteRequest = (function(){
+var v0 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+};
+return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
@@ -49,13 +57,7 @@ const node: ConcreteRequest = {
         "name": "userApiKeys",
         "plural": true,
         "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "id",
-            "storageKey": null
-          },
+          (v0/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -96,9 +98,10 @@ const node: ConcreteRequest = {
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "email",
+                "name": "username",
                 "storageKey": null
-              }
+              },
+              (v0/*: any*/)
             ],
             "storageKey": null
           }
@@ -108,15 +111,16 @@ const node: ConcreteRequest = {
     ]
   },
   "params": {
-    "cacheID": "e70d413b072841dff8565a332590a549",
+    "cacheID": "86a98c02f3430470a286f0553511e8ed",
     "id": null,
     "metadata": {},
     "name": "UserAPIKeysTableQuery",
     "operationKind": "query",
-    "text": "query UserAPIKeysTableQuery {\n  ...UserAPIKeysTableFragment\n}\n\nfragment UserAPIKeysTableFragment on Query {\n  userApiKeys {\n    id\n    name\n    description\n    createdAt\n    expiresAt\n    user {\n      email\n    }\n  }\n}\n"
+    "text": "query UserAPIKeysTableQuery {\n  ...UserAPIKeysTableFragment\n}\n\nfragment UserAPIKeysTableFragment on Query {\n  userApiKeys {\n    id\n    name\n    description\n    createdAt\n    expiresAt\n    user {\n      username\n      id\n    }\n  }\n}\n"
   }
 };
+})();
 
-(node as any).hash = "c2b3a579bcb0ba915523ecb35cae3b44";
+(node as any).hash = "720721b1409e41ca6fc2994af7784a18";
 
 export default node;

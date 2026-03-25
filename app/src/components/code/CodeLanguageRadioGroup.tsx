@@ -1,26 +1,15 @@
-import React from "react";
-
 import { ToggleButton, ToggleButtonGroup } from "@phoenix/components";
-import { SizingProps } from "@phoenix/components/types";
-
-export type CodeLanguage = "Python" | "TypeScript";
-
-const codeLanguages: CodeLanguage[] = ["Python", "TypeScript"];
-
-/**
- * TypeGuard for the code language
- */
-function isCodeLanguage(l: unknown): l is CodeLanguage {
-  return typeof l === "string" && codeLanguages.includes(l as CodeLanguage);
-}
+import type { SizingProps } from "@phoenix/components/core/types";
+import type { ProgrammingLanguage } from "@phoenix/types/code";
+import { isProgrammingLanguage } from "@phoenix/types/code";
 
 export function CodeLanguageRadioGroup({
   language,
   onChange,
   size,
 }: {
-  language: CodeLanguage;
-  onChange: (language: CodeLanguage) => void;
+  language: ProgrammingLanguage;
+  onChange: (language: ProgrammingLanguage) => void;
 } & SizingProps) {
   return (
     <ToggleButtonGroup
@@ -32,7 +21,7 @@ export function CodeLanguageRadioGroup({
           return;
         }
         const language = v.keys().next().value;
-        if (isCodeLanguage(language)) {
+        if (isProgrammingLanguage(language)) {
           onChange(language);
         } else {
           throw new Error(`Unknown language: ${language}`);

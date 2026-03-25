@@ -1,9 +1,8 @@
 from unittest import mock
 
 import pytest
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Request
 
-from phoenix.db.enums import UserRole
 from phoenix.server.authorization import require_admin
 from phoenix.server.bearer_auth import PhoenixSystemUser, PhoenixUser
 from phoenix.server.types import AccessTokenId, UserClaimSet, UserId, UserTokenAttributes
@@ -15,7 +14,7 @@ def test_require_admin_allows_admin() -> None:
     claims = UserClaimSet(
         subject=user_id,
         token_id=AccessTokenId(1),
-        attributes=UserTokenAttributes(user_role=UserRole.ADMIN),
+        attributes=UserTokenAttributes(user_role="ADMIN"),
     )
     req.user = PhoenixUser(user_id, claims)
     # Should not raise
@@ -36,12 +35,12 @@ def test_require_admin_denies_non_admin() -> None:
     claims = UserClaimSet(
         subject=user_id,
         token_id=AccessTokenId(1),
-        attributes=UserTokenAttributes(user_role=UserRole.MEMBER),
+        attributes=UserTokenAttributes(user_role="MEMBER"),
     )
     req.user = PhoenixUser(user_id, claims)
     with pytest.raises(HTTPException) as exc_info:
         require_admin(req)
-    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
+    assert exc_info.value.status_code == 403
     assert "Only admin or system users" in str(exc_info.value.detail)
 
 
@@ -50,4 +49,4 @@ def test_require_admin_denies_no_user() -> None:
     req.user = None
     with pytest.raises(HTTPException) as exc_info:
         require_admin(req)
-    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
+    assert exc_info.value.status_code == 403

@@ -1,13 +1,18 @@
 import { createContext, useContext } from "react";
-import { graphql, PreloadedQuery } from "react-relay";
+import type { PreloadedQuery } from "react-relay";
+import { graphql } from "react-relay";
 
-import { ProjectPageQueriesProjectConfigQuery as ProjectPageProjectConfigQueryType } from "./__generated__/ProjectPageQueriesProjectConfigQuery.graphql";
-import { ProjectPageQueriesSessionsQuery as ProjectPageSessionsQueryType } from "./__generated__/ProjectPageQueriesSessionsQuery.graphql";
-import { ProjectPageQueriesSpansQuery as ProjectPageSpansQueryType } from "./__generated__/ProjectPageQueriesSpansQuery.graphql";
-import { ProjectPageQueriesTracesQuery as ProjectPageTracesQueryType } from "./__generated__/ProjectPageQueriesTracesQuery.graphql";
+import type { ProjectPageQueriesProjectConfigQuery as ProjectPageProjectConfigQueryType } from "./__generated__/ProjectPageQueriesProjectConfigQuery.graphql";
+import type { ProjectPageQueriesSessionsQuery as ProjectPageSessionsQueryType } from "./__generated__/ProjectPageQueriesSessionsQuery.graphql";
+import type { ProjectPageQueriesSpansQuery as ProjectPageSpansQueryType } from "./__generated__/ProjectPageQueriesSpansQuery.graphql";
+import type { ProjectPageQueriesTracesQuery as ProjectPageTracesQueryType } from "./__generated__/ProjectPageQueriesTracesQuery.graphql";
 export const ProjectPageQueriesTracesQuery = graphql`
-  query ProjectPageQueriesTracesQuery($id: GlobalID!, $timeRange: TimeRange!) {
+  query ProjectPageQueriesTracesQuery($id: ID!, $timeRange: TimeRange!) {
     project: node(id: $id) {
+      ... on Project {
+        name
+        traceCount
+      }
       ...TracesTable_spans
     }
   }
@@ -15,21 +20,22 @@ export const ProjectPageQueriesTracesQuery = graphql`
 
 export const ProjectPageQueriesSpansQuery = graphql`
   query ProjectPageQueriesSpansQuery(
-    $id: GlobalID!
+    $id: ID!
     $timeRange: TimeRange!
     $orphanSpanAsRootSpan: Boolean!
   ) {
     project: node(id: $id) {
+      ... on Project {
+        name
+        spanCount: recordCount
+      }
       ...SpansTable_spans
     }
   }
 `;
 
 export const ProjectPageQueriesSessionsQuery = graphql`
-  query ProjectPageQueriesSessionsQuery(
-    $id: GlobalID!
-    $timeRange: TimeRange!
-  ) {
+  query ProjectPageQueriesSessionsQuery($id: ID!, $timeRange: TimeRange!) {
     project: node(id: $id) {
       ...SessionsTable_sessions
     }
@@ -37,7 +43,7 @@ export const ProjectPageQueriesSessionsQuery = graphql`
 `;
 
 export const ProjectPageQueriesProjectConfigQuery = graphql`
-  query ProjectPageQueriesProjectConfigQuery($id: GlobalID!) {
+  query ProjectPageQueriesProjectConfigQuery($id: ID!) {
     project: node(id: $id) {
       id
       ...ProjectConfigPage_projectConfigCard

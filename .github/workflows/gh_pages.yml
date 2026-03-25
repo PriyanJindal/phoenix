@@ -40,20 +40,24 @@ jobs:
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
-          version: 10.2.0
+          package_json_file: js/package.json
       - name: setup pnpm config
         run: pnpm config set store-dir $PNPM_CACHE_FOLDER
       - name: Install Dependencies
         working-directory: ./js
         run: pnpm install --frozen-lockfile -r
-      - name: Build
+      - name: Build Packages
         working-directory: ./js
         run: |
-          pnpm run -r docs
+          pnpm run --filter "./packages/**" -r build
+      - name: Build Docs
+        working-directory: ./js
+        run: |
+          pnpm run docs:generate
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "./js/packages/phoenix-client/docs"
+          path: "./js/docs"
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

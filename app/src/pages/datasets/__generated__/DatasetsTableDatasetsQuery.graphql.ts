@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7dbe6879fa6a0a2e73f9af5ea5b3dc98>>
+ * @generated SignedSource<<5d9f3410b4b6309b11bc9169ff7f6cb6>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,13 +11,20 @@
 import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type DatasetColumn = "createdAt" | "name";
+export type DatasetFilterColumn = "name";
 export type SortDir = "asc" | "desc";
+export type DatasetFilter = {
+  col?: DatasetFilterColumn | null;
+  filterLabels?: ReadonlyArray<string> | null;
+  value?: string | null;
+};
 export type DatasetSort = {
   col: DatasetColumn;
   dir: SortDir;
 };
 export type DatasetsTableDatasetsQuery$variables = {
   after?: string | null;
+  filter?: DatasetFilter | null;
   first?: number | null;
   sort?: DatasetSort | null;
 };
@@ -35,6 +42,11 @@ var v0 = [
     "defaultValue": null,
     "kind": "LocalArgument",
     "name": "after"
+  },
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "filter"
   },
   {
     "defaultValue": 100,
@@ -58,6 +70,11 @@ v1 = [
   },
   {
     "kind": "Variable",
+    "name": "filter",
+    "variableName": "filter"
+  },
+  {
+    "kind": "Variable",
     "name": "first",
     "variableName": "first"
   },
@@ -66,7 +83,21 @@ v1 = [
     "name": "sort",
     "variableName": "sort"
   }
-];
+],
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+};
 return {
   "fragment": {
     "argumentDefinitions": (v0/*: any*/),
@@ -113,20 +144,8 @@ return {
                 "name": "node",
                 "plural": false,
                 "selections": [
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "id",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "name",
-                    "storageKey": null
-                  },
+                  (v2/*: any*/),
+                  (v3/*: any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -160,6 +179,33 @@ return {
                     "args": null,
                     "kind": "ScalarField",
                     "name": "experimentCount",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "evaluatorCount",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "DatasetLabel",
+                    "kind": "LinkedField",
+                    "name": "labels",
+                    "plural": true,
+                    "selections": [
+                      (v2/*: any*/),
+                      (v3/*: any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "color",
+                        "storageKey": null
+                      }
+                    ],
                     "storageKey": null
                   },
                   {
@@ -214,7 +260,8 @@ return {
         "alias": null,
         "args": (v1/*: any*/),
         "filters": [
-          "sort"
+          "sort",
+          "filter"
         ],
         "handle": "connection",
         "key": "DatasetsTable_datasets",
@@ -224,16 +271,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "5ac1688f54e51f9bb3247c83e23d98fb",
+    "cacheID": "9df01fa59001c105742e8dd32aea0fdc",
     "id": null,
     "metadata": {},
     "name": "DatasetsTableDatasetsQuery",
     "operationKind": "query",
-    "text": "query DatasetsTableDatasetsQuery(\n  $after: String = null\n  $first: Int = 100\n  $sort: DatasetSort = {col: createdAt, dir: desc}\n) {\n  ...DatasetsTable_datasets_dWkdd\n}\n\nfragment DatasetsTable_datasets_dWkdd on Query {\n  datasets(first: $first, after: $after, sort: $sort) {\n    edges {\n      node {\n        id\n        name\n        description\n        metadata\n        createdAt\n        exampleCount\n        experimentCount\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query DatasetsTableDatasetsQuery(\n  $after: String = null\n  $filter: DatasetFilter = null\n  $first: Int = 100\n  $sort: DatasetSort = {col: createdAt, dir: desc}\n) {\n  ...DatasetsTable_datasets_3JsJJ3\n}\n\nfragment DatasetsTable_datasets_3JsJJ3 on Query {\n  datasets(first: $first, after: $after, sort: $sort, filter: $filter) {\n    edges {\n      node {\n        id\n        name\n        description\n        metadata\n        createdAt\n        exampleCount\n        experimentCount\n        evaluatorCount\n        labels {\n          id\n          name\n          color\n        }\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "fa378bc7ec26f5e877e6cf90e5ee553d";
+(node as any).hash = "fc083cc2fa596e206fe47bd613f159aa";
 
 export default node;

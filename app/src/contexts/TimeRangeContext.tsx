@@ -1,12 +1,3 @@
-import React, {
-  createContext,
-  ReactNode,
-  startTransition,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
 import {
   addDays,
   addHours,
@@ -20,6 +11,15 @@ import {
   subDays,
   subHours,
 } from "date-fns";
+import type { ReactNode } from "react";
+import {
+  createContext,
+  startTransition,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
 import { assertUnreachable } from "@phoenix/typeUtils";
 

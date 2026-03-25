@@ -9,6 +9,7 @@ import psutil
 from prometheus_client import (
     Counter,
     Gauge,
+    Histogram,
     Summary,
     start_http_server,
 )
@@ -36,14 +37,19 @@ CPU_METRIC = Gauge(
     name="cpu_usage_percent",
     documentation="CPU usage percent",
 )
-BULK_LOADER_INSERTION_TIME = Summary(
-    name="bulk_loader_insertion_time_seconds_summary",
-    documentation="Summary of database insertion time (seconds)",
+BULK_LOADER_SPAN_INSERTION_TIME = Histogram(
+    namespace="phoenix",
+    name="bulk_loader_span_insertion_time_seconds",
+    documentation="Histogram of span database insertion time (seconds)",
+    buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 180.0],  # 500ms to 3min
 )
-BULK_LOADER_SPAN_INSERTIONS = Counter(
-    name="bulk_loader_span_insertions_total",
-    documentation="Total count of bulk loader span insertions",
+
+BULK_LOADER_SPAN_EXCEPTIONS = Counter(
+    namespace="phoenix",
+    name="bulk_loader_span_exceptions_total",
+    documentation="Total count of span insertion exceptions",
 )
+
 BULK_LOADER_EVALUATION_INSERTIONS = Counter(
     name="bulk_loader_evaluation_insertions_total",
     documentation="Total count of bulk loader evaluation insertions",
@@ -71,6 +77,59 @@ JWT_STORE_TOKENS_ACTIVE = Gauge(
 JWT_STORE_API_KEYS_ACTIVE = Gauge(
     name="jwt_store_api_keys_active",
     documentation="Current number of API keys in the JWT store",
+)
+
+DB_DISK_USAGE_BYTES = Gauge(
+    name="database_disk_usage_bytes",
+    documentation="Current database disk usage in bytes",
+)
+DB_DISK_USAGE_RATIO = Gauge(
+    name="database_disk_usage_ratio",
+    documentation="Current database disk usage as ratio of allocated capacity (0-1)",
+)
+DB_INSERTIONS_BLOCKED = Gauge(
+    name="database_insertions_blocked",
+    documentation="Whether database insertions are currently blocked due to disk usage "
+    "(1 = blocked, 0 = not blocked)",
+)
+DB_DISK_USAGE_WARNING_EMAILS_SENT = Counter(
+    name="database_disk_usage_warning_emails_sent_total",
+    documentation="Total count of database disk usage warning emails sent",
+)
+DB_DISK_USAGE_WARNING_EMAIL_ERRORS = Counter(
+    name="database_disk_usage_warning_email_errors_total",
+    documentation="Total count of database disk usage warning email send errors",
+)
+
+SPAN_QUEUE_REJECTIONS = Counter(
+    namespace="phoenix",
+    name="span_queue_rejections_total",
+    documentation="Total count of requests rejected due to span queue being full",
+)
+
+SPAN_QUEUE_SIZE = Gauge(
+    namespace="phoenix",
+    name="span_queue_size",
+    documentation="Current number of spans in the processing queue",
+)
+
+BULK_LOADER_LAST_ACTIVITY = Gauge(
+    namespace="phoenix",
+    name="bulk_loader_last_activity_timestamp_seconds",
+    documentation="Unix timestamp when bulk loader last processed items",
+)
+
+RETENTION_SWEEPER_LAST_RUN = Gauge(
+    namespace="phoenix",
+    name="retention_sweeper_last_run_seconds",
+    documentation="Unix timestamp (seconds since epoch) of the last retention sweeper run",
+)
+
+RETENTION_POLICY_EXECUTIONS = Counter(
+    namespace="phoenix",
+    name="retention_policy_executions_total",
+    documentation="Total number of retention policy executions",
+    labelnames=["status"],
 )
 
 
@@ -210,6 +269,7 @@ def estimate_cpu_usage_percent() -> Optional[float]:
             except Exception:
                 pass
         return psutil.cpu_percent(interval=None)
+    return None
 
 
 @lru_cache(maxsize=1)

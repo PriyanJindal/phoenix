@@ -1,10 +1,15 @@
-import React, { CSSProperties, ReactNode } from "react";
 import { css } from "@emotion/react";
+import type { CSSProperties, ReactNode } from "react";
 
-import { HelpTooltip, TooltipTrigger, TriggerWrap } from "@arizeai/components";
-
-import { Flex, Text, View } from "@phoenix/components";
-import { Truncate } from "@phoenix/components/utility/Truncate";
+import {
+  Flex,
+  RichTooltip,
+  Text,
+  TooltipTrigger,
+  TriggerWrap,
+  View,
+} from "@phoenix/components";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
 import { toPythonPrimitiveStr } from "@phoenix/utils/pythonUtils";
 
 import { useSpanFilterCondition } from "./SpanFilterConditionContext";
@@ -44,9 +49,9 @@ export function MetadataTooltip({
   }));
 
   return (
-    <TooltipTrigger delay={500} offset={3}>
+    <TooltipTrigger delay={500}>
       <TriggerWrap>{children}</TriggerWrap>
-      <HelpTooltip UNSAFE_style={{ minWidth: width }}>
+      <RichTooltip offset={3} width={width}>
         <Flex direction="row" wrap="nowrap" gap="size-100">
           <Flex flexBasis="40%">
             <Flex direction="column" gap="size-100" width="100%">
@@ -55,11 +60,11 @@ export function MetadataTooltip({
                 css={css`
                   display: flex;
                   flex-direction: column;
-                  gap: var(--ac-global-dimension-size-100);
+                  gap: var(--global-dimension-size-100);
                   overflow-y: auto;
                   max-height: 200px;
                   scrollbar-gutter: stable;
-                  padding-right: var(--ac-global-dimension-size-50);
+                  padding-right: var(--global-dimension-size-50);
                 `}
               >
                 {entries.map(({ key, value }) => (
@@ -93,7 +98,7 @@ export function MetadataTooltip({
             </Flex>
           </Flex>
           <View
-            borderColor="dark"
+            borderColor="default"
             paddingStart="size-200"
             paddingEnd="size-100"
             marginStart="size-200"
@@ -106,8 +111,8 @@ export function MetadataTooltip({
                 css={css`
                   display: flex;
                   flex-direction: row;
-                  gap: var(--ac-global-dimension-size-100);
-                  padding: var(--ac-global-dimension-size-50) 0;
+                  gap: var(--global-dimension-size-100);
+                  padding: var(--global-dimension-size-50) 0;
                   flex-wrap: wrap;
                 `}
               >
@@ -121,15 +126,14 @@ export function MetadataTooltip({
                       }}
                       css={css`
                         all: unset;
-                        color: var(--ac-global-text-color-900);
-                        border: 1px solid var(--ac-global-color-grey-300);
+                        color: var(--global-text-color-900);
+                        border: 1px solid var(--global-color-gray-300);
                         border-radius: 4px;
-                        padding: var(--ac-global-dimension-size-50)
-                          var(--ac-global-dimension-size-100);
+                        padding: var(--global-dimension-size-50) var(--global-dimension-size-100);
                         cursor: pointer;
                         transition: background-color 0.2s;
                         &:hover {
-                          background-color: var(--ac-global-color-gray-300);
+                          background-color: var(--global-color-gray-300);
                         }
                       `}
                     >
@@ -141,7 +145,7 @@ export function MetadataTooltip({
             </Flex>
           </View>
         </Flex>
-      </HelpTooltip>
+      </RichTooltip>
     </TooltipTrigger>
   );
 }

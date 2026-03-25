@@ -1,27 +1,37 @@
-import React, { useMemo, useState } from "react";
-import { graphql, useFragment } from "react-relay";
-import {
+import { css } from "@emotion/react";
+import type {
   CellContext,
   ColumnDef,
+  RowSelectionState,
+} from "@tanstack/react-table";
+import {
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
-  RowSelectionState,
   useReactTable,
 } from "@tanstack/react-table";
-import { css } from "@emotion/react";
+import React, { useMemo, useState } from "react";
+import { graphql, useFragment } from "react-relay";
 
-import { Tooltip, TooltipTrigger, TriggerWrap } from "@arizeai/components";
-
-import { Flex, Icon, Icons, Text, Token } from "@phoenix/components";
+import {
+  Flex,
+  Icon,
+  Icons,
+  Text,
+  Token,
+  Tooltip,
+  TooltipArrow,
+  TooltipTrigger,
+  TriggerWrap,
+} from "@phoenix/components";
 import { AnnotationLabel } from "@phoenix/components/annotation";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
 import { IndeterminateCheckboxCell } from "@phoenix/components/table/IndeterminateCheckboxCell";
 import { tableCSS } from "@phoenix/components/table/styles";
 import { TableEmpty } from "@phoenix/components/table/TableEmpty";
-import { Truncate } from "@phoenix/components/utility/Truncate";
-import { AnnotationConfigTableFragment$key } from "@phoenix/pages/settings/__generated__/AnnotationConfigTableFragment.graphql";
+import type { AnnotationConfigTableFragment$key } from "@phoenix/pages/settings/__generated__/AnnotationConfigTableFragment.graphql";
 import { AnnotationConfigSelectionToolbar } from "@phoenix/pages/settings/AnnotationConfigSelectionToolbar";
-import { AnnotationConfig } from "@phoenix/pages/settings/types";
+import type { AnnotationConfig } from "@phoenix/pages/settings/types";
 
 const columns = [
   {
@@ -31,10 +41,10 @@ const columns = [
     cell: ({ row }: CellContext<AnnotationConfig, unknown>) => (
       <IndeterminateCheckboxCell
         {...{
-          checked: row.getIsSelected(),
-          disabled: !row.getCanSelect(),
-          indeterminate: row.getIsSomeSelected(),
-          onChange: row.getToggleSelectedHandler(),
+          isSelected: row.getIsSelected(),
+          isDisabled: !row.getCanSelect(),
+          isIndeterminate: row.getIsSomeSelected(),
+          onChange: row.toggleSelected,
         }}
       />
     ),
@@ -105,11 +115,7 @@ const columns = [
           if (row.values.length > 5) {
             tokens = [
               ...tokens.slice(-4),
-              <TooltipTrigger
-                key="ellipsis"
-                delay={64}
-                placement="bottom right"
-              >
+              <TooltipTrigger key="ellipsis" delay={64}>
                 <TriggerWrap>
                   <Token
                     key="ellipsis"
@@ -120,7 +126,8 @@ const columns = [
                     + {row.values.length - 5} more
                   </Token>
                 </TriggerWrap>
-                <Tooltip>
+                <Tooltip placement="bottom right">
+                  <TooltipArrow />
                   {row.values
                     .map((value: { label: string }) => value.label)
                     .join(", ")}
@@ -166,6 +173,7 @@ export const AnnotationConfigTable = ({
     }?: { onCompleted?: () => void; onError?: () => void }
   ) => void;
 }) => {
+  "use no memo";
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const data = useFragment(
     graphql`
@@ -210,6 +218,7 @@ export const AnnotationConfigTable = ({
     () => data.annotationConfigs.edges.map((edge) => edge.annotationConfig),
     [data.annotationConfigs.edges]
   ) as AnnotationConfig[]; // cast to AnnotationConfig[] because otherwise 'name' and 'annotationType' are optional
+  // eslint-disable-next-line react-hooks-js/incompatible-library
   const table = useReactTable({
     data: configs,
     columns,
@@ -253,9 +262,7 @@ export const AnnotationConfigTable = ({
                   {header.isPlaceholder ? null : (
                     <div
                       {...{
-                        className: header.column.getCanSort()
-                          ? "cursor-pointer"
-                          : "",
+                        className: header.column.getCanSort() ? "sort" : "",
                         onClick: header.column.getToggleSortingHandler(),
                         style: {
                           left: header.getStart(),

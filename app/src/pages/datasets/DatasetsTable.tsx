@@ -1,5 +1,18 @@
-import React, {
+import { css } from "@emotion/react";
+import type {
+  CellContext,
+  ColumnDef,
+  SortingState,
+} from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import {
   startTransition,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -7,25 +20,33 @@ import React, {
 } from "react";
 import { graphql, usePaginationFragment } from "react-relay";
 import { useNavigate } from "react-router";
-import {
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-import { css } from "@emotion/react";
 
-import { Icon, Icons, Link } from "@phoenix/components";
-import { CompactJSONCell } from "@phoenix/components/table";
-import { selectableTableCSS } from "@phoenix/components/table/styles";
+import {
+  CopyToClipboardButton,
+  Flex,
+  Icon,
+  Icons,
+  Link,
+  LinkButton,
+  Token,
+} from "@phoenix/components";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
+import { StopPropagation } from "@phoenix/components/StopPropagation";
+import {
+  CellWithControlsWrap,
+  CompactJSONCell,
+} from "@phoenix/components/table";
+import {
+  getCommonPinningStyles,
+  selectableTableCSS,
+} from "@phoenix/components/table/styles";
 import { TableEmptyWrap } from "@phoenix/components/table/TableEmptyWrap";
 import { TimestampCell } from "@phoenix/components/table/TimestampCell";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
-import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
+import { useNotifySuccess, useViewerCanModify } from "@phoenix/contexts";
+import { makeSafeColumnId } from "@phoenix/utils/tableUtils";
 
-import { DatasetsTable_datasets$key } from "./__generated__/DatasetsTable_datasets.graphql";
-import {
+import type { DatasetsTable_datasets$key } from "./__generated__/DatasetsTable_datasets.graphql";
+import type {
   DatasetSort,
   DatasetsTableDatasetsQuery,
 } from "./__generated__/DatasetsTableDatasetsQuery.graphql";
@@ -33,8 +54,14 @@ import { DatasetActionMenu } from "./DatasetActionMenu";
 import { DatasetsEmpty } from "./DatasetsEmpty";
 const PAGE_SIZE = 100;
 
+const defaultColumnSettings = {
+  minSize: 100,
+} satisfies Partial<ColumnDef<unknown>>;
+
 type DatasetsTableProps = {
   query: DatasetsTable_datasets$key;
+  filter: string;
+  labelFilter?: string[];
 };
 
 function toGqlSort(sort: SortingState[number]): DatasetSort {
@@ -49,12 +76,14 @@ function toGqlSort(sort: SortingState[number]): DatasetSort {
 }
 
 export function DatasetsTable(props: DatasetsTableProps) {
+  "use no memo";
+  const { filter, labelFilter } = props;
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnSizing, setColumnSizing] = useState({});
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
   const { data, loadNext, hasNext, isLoadingNext, refetch } =
     usePaginationFragment<
       DatasetsTableDatasetsQuery,
@@ -66,12 +95,10 @@ export function DatasetsTable(props: DatasetsTableProps) {
         @argumentDefinitions(
           after: { type: "String", defaultValue: null }
           first: { type: "Int", defaultValue: 100 }
-          sort: {
-            type: "DatasetSort"
-            defaultValue: { col: createdAt, dir: desc }
-          }
+          sort: { type: "DatasetSort", defaultValue: { col: createdAt, dir: desc } }
+          filter: { type: "DatasetFilter", defaultValue: null }
         ) {
-          datasets(first: $first, after: $after, sort: $sort)
+          datasets(first: $first, after: $after, sort: $sort, filter: $filter)
             @connection(key: "DatasetsTable_datasets") {
             edges {
               node {
@@ -82,6 +109,12 @@ export function DatasetsTable(props: DatasetsTableProps) {
                 createdAt
                 exampleCount
                 experimentCount
+                evaluatorCount
+                labels {
+                  id
+                  name
+                  color
+                }
               }
             }
           }
@@ -93,7 +126,7 @@ export function DatasetsTable(props: DatasetsTableProps) {
     () => data.datasets.edges.map((edge) => edge.node),
     [data]
   );
-  const fetchMoreOnBottomReached = React.useCallback(
+  const fetchMoreOnBottomReached = useCallback(
     (containerRefElement?: HTMLDivElement | null) => {
       if (containerRefElement) {
         const { scrollHeight, scrollTop, clientHeight } = containerRefElement;
@@ -103,29 +136,92 @@ export function DatasetsTable(props: DatasetsTableProps) {
           !isLoadingNext &&
           hasNext
         ) {
-          loadNext(PAGE_SIZE);
+          loadNext(PAGE_SIZE, {
+            UNSTABLE_extraVariables: {
+              filter:
+                filter || labelFilter?.length
+                  ? {
+                      col: "name",
+                      value: filter || "",
+                      ...(labelFilter?.length
+                        ? { filterLabels: labelFilter }
+                        : {}),
+                    }
+                  : null,
+            },
+          });
         }
       }
     },
-    [hasNext, isLoadingNext, loadNext]
+    [hasNext, isLoadingNext, loadNext, filter, labelFilter]
   );
-  const table = useReactTable({
-    columns: [
+  const canModify = useViewerCanModify();
+  const columns = useMemo(() => {
+    const cols: ColumnDef<(typeof tableData)[number]>[] = [
       {
         header: "name",
         accessorKey: "name",
-        cell: ({ row }) => {
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => {
           const hasExperiments = row.original.experimentCount > 0;
           const to = hasExperiments
             ? `${row.original.id}/experiments`
             : `${row.original.id}/examples`;
-          return <Link to={to}>{row.original.name}</Link>;
+          return (
+            <CellWithControlsWrap
+              controls={<CopyToClipboardButton text={row.original.name} />}
+            >
+              <Truncate>
+                <Link to={to}>{row.original.name}</Link>
+              </Truncate>
+            </CellWithControlsWrap>
+          );
+        },
+      },
+      {
+        header: "labels",
+        accessorKey: "labels",
+        enableSorting: false,
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => {
+          return (
+            <ul
+              css={css`
+                display: flex;
+                flex-direction: row;
+                gap: var(--global-dimension-size-100);
+                min-width: 0;
+                flex-wrap: wrap;
+              `}
+            >
+              {row.original.labels.map((label) => (
+                <li key={label.id}>
+                  <Token color={label.color}>
+                    <Truncate maxWidth={200} title={label.name}>
+                      {label.name}
+                    </Truncate>
+                  </Token>
+                </li>
+              ))}
+            </ul>
+          );
         },
       },
       {
         header: "description",
         accessorKey: "description",
         enableSorting: false,
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => (
+          <span
+            css={css`
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              display: block;
+            `}
+            title={row.original.description ?? undefined}
+          >
+            {row.original.description}
+          </span>
+        ),
       },
       {
         header: "created at",
@@ -133,20 +229,49 @@ export function DatasetsTable(props: DatasetsTableProps) {
         cell: TimestampCell,
       },
       {
-        header: "example count",
+        header: "examples",
         accessorKey: "exampleCount",
         enableSorting: false,
         meta: {
-          textAlign: "right",
+          textAlign: "right" as const,
         },
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => (
+          <StopPropagation>
+            <Link to={`${row.original.id}/examples`}>
+              {row.original.exampleCount}
+            </Link>
+          </StopPropagation>
+        ),
       },
       {
-        header: "experiment count",
+        header: "experiments",
         accessorKey: "experimentCount",
         enableSorting: false,
         meta: {
-          textAlign: "right",
+          textAlign: "right" as const,
         },
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => (
+          <StopPropagation>
+            <Link to={`${row.original.id}/experiments`}>
+              {row.original.experimentCount}
+            </Link>
+          </StopPropagation>
+        ),
+      },
+      {
+        header: "evaluators",
+        accessorKey: "evaluatorCount",
+        enableSorting: false,
+        meta: {
+          textAlign: "right" as const,
+        },
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => (
+          <StopPropagation>
+            <Link to={`${row.original.id}/evaluators`}>
+              {row.original.evaluatorCount}
+            </Link>
+          </StopPropagation>
+        ),
       },
       {
         header: "metadata",
@@ -154,60 +279,98 @@ export function DatasetsTable(props: DatasetsTableProps) {
         enableSorting: false,
         cell: CompactJSONCell,
       },
-      {
+    ];
+    if (canModify) {
+      cols.push({
         header: "",
         id: "actions",
         enableSorting: false,
-        size: 10,
-        cell: ({ row }) => {
+        size: 150,
+        cell: ({ row }: CellContext<(typeof tableData)[number], unknown>) => {
           return (
-            <DatasetActionMenu
-              datasetId={row.original.id}
-              datasetName={row.original.name}
-              datasetDescription={row.original.description}
-              datasetMetadata={row.original.metadata}
-              onDatasetEdit={() => {
-                notifySuccess({
-                  title: "Dataset updated",
-                  message: `${row.original.name} has been successfully updated.`,
-                });
-                refetch({}, { fetchPolicy: "store-and-network" });
-              }}
-              onDatasetEditError={(error) => {
-                const formattedError =
-                  getErrorMessagesFromRelayMutationError(error);
-                notifyError({
-                  title: "Dataset update failed",
-                  message: formattedError?.[0] ?? error.message,
-                });
-              }}
-              onDatasetDelete={() => {
-                notifySuccess({
-                  title: "Dataset deleted",
-                  message: `${row.original.name} has been successfully deleted.`,
-                });
-                refetch({}, { fetchPolicy: "store-and-network" });
-              }}
-              onDatasetDeleteError={(error) => {
-                const formattedError =
-                  getErrorMessagesFromRelayMutationError(error);
-                notifyError({
-                  title: "Dataset deletion failed",
-                  message: formattedError?.[0] ?? error.message,
-                });
-              }}
-            />
+            <Flex direction="row" gap="size-100" alignItems="center">
+              <StopPropagation>
+                <LinkButton
+                  size="S"
+                  to={`/playground?datasetId=${row.original.id}`}
+                  leadingVisual={<Icon svg={<Icons.PlayCircleOutline />} />}
+                  aria-label="Open dataset in Playground"
+                >
+                  Playground
+                </LinkButton>
+              </StopPropagation>
+              <DatasetActionMenu
+                datasetId={row.original.id}
+                datasetName={row.original.name}
+                datasetDescription={row.original.description}
+                datasetMetadata={row.original.metadata}
+                onDatasetEdit={() => {
+                  notifySuccess({
+                    title: "Dataset updated",
+                    message: `${row.original.name} has been successfully updated.`,
+                  });
+                  refetch(
+                    {
+                      filter:
+                        filter || labelFilter?.length
+                          ? {
+                              col: "name",
+                              value: filter || "",
+                              ...(labelFilter?.length
+                                ? { filterLabels: labelFilter }
+                                : {}),
+                            }
+                          : null,
+                    },
+                    { fetchPolicy: "store-and-network" }
+                  );
+                }}
+                onDatasetDelete={() => {
+                  notifySuccess({
+                    title: "Dataset deleted",
+                    message: `${row.original.name} has been successfully deleted.`,
+                  });
+                  refetch(
+                    {
+                      filter:
+                        filter || labelFilter?.length
+                          ? {
+                              col: "name",
+                              value: filter || "",
+                              ...(labelFilter?.length
+                                ? { filterLabels: labelFilter }
+                                : {}),
+                            }
+                          : null,
+                    },
+                    { fetchPolicy: "store-and-network" }
+                  );
+                }}
+              />
+            </Flex>
           );
         },
-      },
-    ],
+      });
+    }
+    return cols;
+  }, [filter, labelFilter, notifySuccess, refetch, canModify]);
+
+  const table = useReactTable({
+    columns,
     data: tableData,
     state: {
       sorting,
+      columnSizing,
+      columnPinning: {
+        right: ["actions"],
+      },
     },
+    defaultColumn: defaultColumnSettings,
+    columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
+    onColumnSizingChange: setColumnSizing,
     manualSorting: true,
   });
 
@@ -221,13 +384,45 @@ export function DatasetsTable(props: DatasetsTableProps) {
           sort: sort ? toGqlSort(sort) : { col: "createdAt", dir: "desc" },
           after: null,
           first: PAGE_SIZE,
+          filter:
+            filter || labelFilter?.length
+              ? {
+                  col: "name",
+                  value: filter || "",
+                  ...(labelFilter?.length ? { filterLabels: labelFilter } : {}),
+                }
+              : null,
         },
         { fetchPolicy: "store-and-network" }
       );
     });
-  }, [sorting, refetch]);
+  }, [sorting, refetch, filter, labelFilter]);
   const rows = table.getRowModel().rows;
   const isEmpty = rows.length === 0;
+
+  const { columnSizingInfo, columnSizing: columnSizingState } =
+    table.getState();
+  const getFlatHeaders = table.getFlatHeaders;
+
+  /**
+   * Calculate all column sizes at once as CSS variables for performance
+   * @see https://tanstack.com/table/v8/docs/framework/react/examples/column-resizing-performant
+   */
+  const columnSizeVars = useMemo(() => {
+    const headers = getFlatHeaders();
+    const colSizes: { [key: string]: number } = {};
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i]!;
+      colSizes[`--header-${makeSafeColumnId(header.id)}-size`] =
+        header.getSize();
+      colSizes[`--col-${makeSafeColumnId(header.column.id)}-size`] =
+        header.column.getSize();
+    }
+    return colSizes;
+    // Disabled lint as per tanstack docs linked above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getFlatHeaders, columnSizingInfo, columnSizingState]);
+
   return (
     <div
       css={css`
@@ -237,44 +432,81 @@ export function DatasetsTable(props: DatasetsTableProps) {
       onScroll={(e) => fetchMoreOnBottomReached(e.target as HTMLDivElement)}
       ref={tableContainerRef}
     >
-      <table css={selectableTableCSS}>
+      <table
+        data-testid="datasets-table"
+        css={selectableTableCSS}
+        style={{
+          ...columnSizeVars,
+          width: table.getTotalSize(),
+          minWidth: "100%",
+        }}
+      >
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th colSpan={header.colSpan} key={header.id}>
-                  {header.isPlaceholder ? null : (
-                    <div
-                      {...{
-                        className: header.column.getCanSort()
-                          ? "cursor-pointer"
-                          : "",
-                        onClick: header.column.getToggleSortingHandler(),
-                        style: {
-                          textAlign: header.column.columnDef.meta?.textAlign,
-                        },
-                      }}
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                      {header.column.getIsSorted() ? (
-                        <Icon
-                          className="sort-icon"
-                          svg={
-                            header.column.getIsSorted() === "asc" ? (
-                              <Icons.ArrowUpFilled />
-                            ) : (
-                              <Icons.ArrowDownFilled />
-                            )
-                          }
+              {headerGroup.headers.map((header) => {
+                const sortDir = header.column.getIsSorted();
+                return (
+                  <th
+                    colSpan={header.colSpan}
+                    key={header.id}
+                    aria-sort={
+                      sortDir === "asc"
+                        ? "ascending"
+                        : sortDir === "desc"
+                          ? "descending"
+                          : header.column.getCanSort()
+                            ? "none"
+                            : undefined
+                    }
+                    style={{
+                      width: `calc(var(--header-${makeSafeColumnId(header.id)}-size) * 1px)`,
+                      ...getCommonPinningStyles(header.column),
+                    }}
+                  >
+                    {header.isPlaceholder ? null : (
+                      <>
+                        <div
+                          {...{
+                            className: header.column.getCanSort() ? "sort" : "",
+                            onClick: header.column.getToggleSortingHandler(),
+                            style: {
+                              textAlign:
+                                header.column.columnDef.meta?.textAlign,
+                            },
+                          }}
+                        >
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                          {header.column.getIsSorted() ? (
+                            <Icon
+                              className="sort-icon"
+                              svg={
+                                header.column.getIsSorted() === "asc" ? (
+                                  <Icons.ArrowUpFilled />
+                                ) : (
+                                  <Icons.ArrowDownFilled />
+                                )
+                              }
+                            />
+                          ) : null}
+                        </div>
+                        <div
+                          {...{
+                            onMouseDown: header.getResizeHandler(),
+                            onTouchStart: header.getResizeHandler(),
+                            className: `resizer ${
+                              header.column.getIsResizing() ? "isResizing" : ""
+                            }`,
+                          }}
                         />
-                      ) : null}
-                    </div>
-                  )}
-                </th>
-              ))}
+                      </>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           ))}
         </thead>
@@ -297,10 +529,16 @@ export function DatasetsTable(props: DatasetsTableProps) {
                   }}
                 >
                   {row.getVisibleCells().map((cell) => {
+                    const colSizeVar = `--col-${makeSafeColumnId(cell.column.id)}-size`;
                     return (
                       <td
                         key={cell.id}
                         align={cell.column.columnDef.meta?.textAlign}
+                        style={{
+                          width: `calc(var(${colSizeVar}) * 1px)`,
+                          maxWidth: `calc(var(${colSizeVar}) * 1px)`,
+                          ...getCommonPinningStyles(cell.column),
+                        }}
                       >
                         {flexRender(
                           cell.column.columnDef.cell,

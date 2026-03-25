@@ -7,6 +7,10 @@ import httpx
 
 from phoenix.client.__generated__ import v1
 from phoenix.client.utils.encode_path_param import encode_path_param
+from phoenix.client.utils.server_requirements import (
+    AsyncServerVersionGuard,
+    ServerVersionGuard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,25 +18,53 @@ logger = logging.getLogger(__name__)
 class Projects:
     """Client for interacting with the Projects API endpoints.
 
-    This class provides synchronous methods for creating, retrieving, updating, and deleting projects.
+    This class provides synchronous methods for creating, retrieving, updating,
+    and deleting projects.
 
-    Example:
-        ```python
-        from phoenix.client import Client
+    Examples:
+        Basic project operations::
 
-        client = Client()
-        projects = client.projects.list()
-        project = client.projects.get(project_id="UHJvamVjdDoy")
-        ```
-    """  # noqa: E501
+            from phoenix.client import Client
+            client = Client()
 
-    def __init__(self, client: httpx.Client) -> None:
+            # List all projects
+            projects = client.projects.list()
+            for project in projects:
+                print(f"Project: {project['name']}")
+
+            # Get a specific project
+            project = client.projects.get(project_id="UHJvamVjdDoy")
+            print(f"Project name: {project['name']}")
+
+            # Create a new project
+            new_project = client.projects.create(
+                name="My Project",
+                description="A description of my project"
+            )
+
+            # Update a project
+            updated_project = client.projects.update(
+                project_id=new_project["id"],
+                description="Updated description"
+            )
+
+            # Delete a project
+            client.projects.delete(project_id=new_project["id"])
+    """
+
+    def __init__(
+        self,
+        client: httpx.Client,
+        *,
+        _guard: ServerVersionGuard | None = None,
+    ) -> None:
         """Initialize the Projects client.
 
         Args:
-            client: The httpx client to use for making requests.
+            client (httpx.Client): The httpx client to use for making requests.
         """
         self._client = client
+        self._guard = _guard or ServerVersionGuard(client)
 
     def get(
         self,
@@ -43,8 +75,8 @@ class Projects:
         """Get a project by ID or name.
 
         Args:
-            project_id: The ID of the project to retrieve.
-            project_name: The name of the project to retrieve.
+            project_id (Optional[str]): The ID of the project to retrieve.
+            project_name (Optional[str]): The name of the project to retrieve.
 
         Returns:
             The project with the specified ID or name.
@@ -53,17 +85,17 @@ class Projects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid or if neither project_id nor project_name is provided.
 
-        Example:
-            ```python
-            from phoenix.client import Client
+        Example::
 
+            from phoenix.client import Client
             client = Client()
+
             # Get by ID
             project = client.projects.get(project_id="UHJvamVjdDoy")
+
             # Get by name
             project = client.projects.get(project_name="My Project")
             print(f"Project name: {project['name']}")
-            ```
         """  # noqa: E501
         if not project_id and not project_name:
             raise ValueError("Either project_id or project_name must be provided.")
@@ -91,15 +123,14 @@ class Projects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid.
 
-        Example:
-            ```python
-            from phoenix.client import Client
+        Example::
 
+            from phoenix.client import Client
             client = Client()
+
             projects = client.projects.list()
             for project in projects:
                 print(f"Project name: {project['name']}")
-            ```
         """  # noqa: E501
         all_projects: list[v1.Project] = []
         next_cursor: Optional[str] = None
@@ -123,8 +154,8 @@ class Projects:
         """Create a new project.
 
         Args:
-            name: The name of the project.
-            description: An optional description of the project.
+            name (str): The name of the project.
+            description (Optional[str]): An optional description of the project.
 
         Returns:
             The newly created project.
@@ -133,17 +164,16 @@ class Projects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid.
 
-        Example:
-            ```python
-            from phoenix.client import Client
+        Example::
 
+            from phoenix.client import Client
             client = Client()
+
             project = client.projects.create(
                 name="My Project",
                 description="A description of my project",
             )
             print(f"Created project with ID: {project['id']}")
-            ```
         """  # noqa: E501
         url = "v1/projects"
         json_ = v1.CreateProjectRequestBody(name=name)
@@ -166,9 +196,9 @@ class Projects:
             Project names cannot be changed. If a name is provided, it will be ignored.
 
         Args:
-            project_id: The ID of the project to update.
-            project_name: The name of the project to update.
-            description: The new description for the project.
+            project_id (Optional[str]): The ID of the project to update.
+            project_name (Optional[str]): The name of the project to update.
+            description (Optional[str]): The new description for the project.
 
         Returns:
             The updated project.
@@ -177,23 +207,23 @@ class Projects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid or if neither project_id nor project_name is provided.
 
-        Example:
-            ```python
-            from phoenix.client import Client
+        Example::
 
+            from phoenix.client import Client
             client = Client()
+
             # Update by ID
             project = client.projects.update(
                 project_id="UHJvamVjdDoy",
                 description="Updated project description",
             )
+
             # Update by name
             project = client.projects.update(
                 project_name="My Project",
                 description="Updated project description",
             )
             print(f"Updated project description: {project['description']}")
-            ```
         """  # noqa: E501
         if not project_id and not project_name:
             raise ValueError("Either project_id or project_name must be provided.")
@@ -221,23 +251,23 @@ class Projects:
         """Delete a project by ID or name.
 
         Args:
-            project_id: The ID of the project to delete.
-            project_name: The name of the project to delete.
+            project_id (Optional[str]): The ID of the project to delete.
+            project_name (Optional[str]): The name of the project to delete.
 
         Raises:
             httpx.HTTPError: If the request fails.
             ValueError: If neither project_id nor project_name is provided.
 
-        Example:
-            ```python
-            from phoenix.client import Client
+        Example::
 
+            from phoenix.client import Client
             client = Client()
+
             # Delete by ID
             client.projects.delete(project_id="UHJvamVjdDoy")
+
             # Delete by name
             client.projects.delete(project_name="My Project")
-            ```
         """  # noqa: E501
         if not project_id and not project_name:
             raise ValueError("Either project_id or project_name must be provided.")
@@ -256,25 +286,53 @@ class Projects:
 class AsyncProjects:
     """Asynchronous client for interacting with the Projects API endpoints.
 
-    This class provides asynchronous methods for creating, retrieving, updating, and deleting projects.
+    This class provides asynchronous methods for creating, retrieving, updating,
+    and deleting projects.
 
-    Example:
-        ```python
-        from phoenix.client import AsyncClient
+    Examples:
+        Basic project operations::
 
-        async_client = AsyncClient()
-        projects = await async_client.projects.list()
-        project = await async_client.projects.get(project_id="UHJvamVjdDoy")
-        ```
-    """  # noqa: E501
+            from phoenix.client import AsyncClient
+            async_client = AsyncClient()
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+            # List all projects
+            projects = await async_client.projects.list()
+            for project in projects:
+                print(f"Project: {project['name']}")
+
+            # Get a specific project
+            project = await async_client.projects.get(project_id="UHJvamVjdDoy")
+            print(f"Project name: {project['name']}")
+
+            # Create a new project
+            new_project = await async_client.projects.create(
+                name="My Project",
+                description="A description of my project"
+            )
+
+            # Update a project
+            updated_project = await async_client.projects.update(
+                project_id=new_project["id"],
+                description="Updated description"
+            )
+
+            # Delete a project
+            await async_client.projects.delete(project_id=new_project["id"])
+    """
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        _guard: AsyncServerVersionGuard | None = None,
+    ) -> None:
         """Initialize the AsyncProjects client.
 
         Args:
-            client: The httpx async client to use for making requests.
+            client (httpx.AsyncClient): The httpx async client to use for making requests.
         """
         self._client = client
+        self._guard = _guard or AsyncServerVersionGuard(client)
 
     async def get(
         self,
@@ -285,8 +343,8 @@ class AsyncProjects:
         """Get a project by ID or name.
 
         Args:
-            project_id: The ID of the project to retrieve.
-            project_name: The name of the project to retrieve.
+            project_id (Optional[str]): The ID of the project to retrieve.
+            project_name (Optional[str]): The name of the project to retrieve.
 
         Returns:
             The project with the specified ID or name.
@@ -295,14 +353,18 @@ class AsyncProjects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid or if neither project_id nor project_name is provided.
 
-        Example:
-            ```python
-            from phoenix.client import AsyncClient
+        Example::
 
+            from phoenix.client import AsyncClient
             async_client = AsyncClient()
+
+            # Get by ID
             project = await async_client.projects.get(project_id="UHJvamVjdDoy")
             print(f"Project name: {project['name']}")
-            ```
+
+            # Get by name
+            project = await async_client.projects.get(project_name="My Project")
+            print(f"Project name: {project['name']}")
         """  # noqa: E501
         if not project_id and not project_name:
             raise ValueError("Either project_id or project_name must be provided.")
@@ -330,15 +392,14 @@ class AsyncProjects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid.
 
-        Example:
-            ```python
-            from phoenix.client import AsyncClient
+        Example::
 
+            from phoenix.client import AsyncClient
             async_client = AsyncClient()
+
             projects = await async_client.projects.list()
             for project in projects:
                 print(f"Project name: {project['name']}")
-            ```
         """  # noqa: E501
         all_projects: list[v1.Project] = []
         next_cursor: Optional[str] = None
@@ -362,8 +423,8 @@ class AsyncProjects:
         """Create a new project.
 
         Args:
-            name: The name of the project.
-            description: An optional description of the project.
+            name (str): The name of the project.
+            description (Optional[str]): An optional description of the project.
 
         Returns:
             The newly created project.
@@ -372,17 +433,16 @@ class AsyncProjects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid.
 
-        Example:
-            ```python
-            from phoenix.client import AsyncClient
+        Example::
 
+            from phoenix.client import AsyncClient
             async_client = AsyncClient()
+
             project = await async_client.projects.create(
                 name="My Project",
                 description="A description of my project",
             )
             print(f"Created project with ID: {project['id']}")
-            ```
         """  # noqa: E501
         url = "v1/projects"
         json_ = v1.CreateProjectRequestBody(name=name)
@@ -405,9 +465,9 @@ class AsyncProjects:
             Project names cannot be changed. If a name is provided, it will be ignored.
 
         Args:
-            project_id: The ID of the project to update.
-            project_name: The name of the project to update.
-            description: The new description for the project.
+            project_id (Optional[str]): The ID of the project to update.
+            project_name (Optional[str]): The name of the project to update.
+            description (Optional[str]): The new description for the project.
 
         Returns:
             The updated project.
@@ -416,23 +476,23 @@ class AsyncProjects:
             httpx.HTTPError: If the request fails.
             ValueError: If the response is invalid or if neither project_id nor project_name is provided.
 
-        Example:
-            ```python
-            from phoenix.client import AsyncClient
+        Example::
 
+            from phoenix.client import AsyncClient
             async_client = AsyncClient()
+
             # Update by ID
             project = await async_client.projects.update(
                 project_id="UHJvamVjdDoy",
                 description="Updated project description",
             )
+
             # Update by name
             project = await async_client.projects.update(
                 project_name="My Project",
                 description="Updated project description",
             )
             print(f"Updated project description: {project['description']}")
-            ```
         """  # noqa: E501
         if not project_id and not project_name:
             raise ValueError("Either project_id or project_name must be provided.")
@@ -460,23 +520,23 @@ class AsyncProjects:
         """Delete a project by ID or name.
 
         Args:
-            project_id: The ID of the project to delete.
-            project_name: The name of the project to delete.
+            project_id (Optional[str]): The ID of the project to delete.
+            project_name (Optional[str]): The name of the project to delete.
 
         Raises:
             httpx.HTTPError: If the request fails.
             ValueError: If neither project_id nor project_name is provided.
 
-        Example:
-            ```python
-            from phoenix.client import AsyncClient
+        Example::
 
+            from phoenix.client import AsyncClient
             async_client = AsyncClient()
+
             # Delete by ID
             await async_client.projects.delete(project_id="UHJvamVjdDoy")
+
             # Delete by name
             await async_client.projects.delete(project_name="My Project")
-            ```
         """  # noqa: E501
         if not project_id and not project_name:
             raise ValueError("Either project_id or project_name must be provided.")

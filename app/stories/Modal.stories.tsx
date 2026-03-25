@@ -1,17 +1,26 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
+import type { ModalProps } from "@phoenix/components";
 import {
   Button,
   Dialog,
   DialogTrigger,
-  Heading,
+  Flex,
   Modal,
-  ModalProps,
+  ModalOverlay,
+  Text,
+  View,
 } from "@phoenix/components";
+import {
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTitleExtra,
+} from "@phoenix/components/core/dialog";
 
 const meta: Meta = {
-  title: "Modal",
+  title: "Core/Overlays/Modal",
   component: Modal,
 };
 
@@ -20,13 +29,104 @@ export default meta;
 const Template: StoryFn<ModalProps> = (args) => (
   <DialogTrigger>
     <Button>Open Modal</Button>
-    <Modal {...args}>
-      <Dialog>
-        <Heading slot="title">Modal Title</Heading>
-        <Button slot="close">Close</Button>
-      </Dialog>
-    </Modal>
+    <ModalOverlay>
+      <Modal {...args}>
+        <Dialog>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Modal Title</DialogTitle>
+              <DialogTitleExtra>
+                <DialogCloseButton slot="close" />
+              </DialogTitleExtra>
+            </DialogHeader>
+            <View padding="size-200">
+              <Text>
+                Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                Quisquam, quos.
+              </Text>
+            </View>
+          </DialogContent>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   </DialogTrigger>
 );
 
-export const Default = Template.bind({});
+export const Default = {
+  render: Template,
+};
+
+const SlideoverTemplate: StoryFn<ModalProps> = (args) => (
+  <DialogTrigger>
+    <Button>Open Modal</Button>
+    <ModalOverlay>
+      <Modal variant="slideover" {...args}>
+        <Dialog>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Modal Title</DialogTitle>
+              <DialogTitleExtra>
+                <DialogCloseButton slot="close" />
+              </DialogTitleExtra>
+            </DialogHeader>
+            <View padding="size-200">
+              <Text>
+                Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                Quisquam, quos.
+              </Text>
+            </View>
+          </DialogContent>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
+  </DialogTrigger>
+);
+
+export const Slideover = {
+  render: SlideoverTemplate,
+};
+
+const NoOverlayTemplate: StoryFn<ModalProps> = (args) => (
+  <Flex gap="size-200" direction="column">
+    <DialogTrigger>
+      <Button>Open Normal Modal</Button>
+      <Modal {...args}>
+        <Dialog>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Modal Title</DialogTitle>
+              <DialogTitleExtra>
+                <DialogCloseButton slot="close" />
+              </DialogTitleExtra>
+            </DialogHeader>
+            <View padding="size-200">
+              <Text>
+                Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                Quisquam, quos.
+              </Text>
+            </View>
+          </DialogContent>
+        </Dialog>
+      </Modal>
+    </DialogTrigger>
+    <DialogTrigger>
+      <Button>Open Slideover Modal</Button>
+      <Modal variant="slideover" {...args}>
+        <Dialog>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Modal Title</DialogTitle>
+              <DialogTitleExtra>
+                <DialogCloseButton slot="close" />
+              </DialogTitleExtra>
+            </DialogHeader>
+          </DialogContent>
+        </Dialog>
+      </Modal>
+    </DialogTrigger>
+  </Flex>
+);
+
+export const NoOverlay = {
+  render: NoOverlayTemplate,
+};

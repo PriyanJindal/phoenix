@@ -1,10 +1,7 @@
-import React from "react";
-
 import { ExternalLink, Heading, Text, View } from "@phoenix/components";
-import { CodeWrap, PythonBlockWithCopy } from "@phoenix/components/code";
+import { CodeWrap } from "@phoenix/components/code";
+import { PackageManagerCommandBlock } from "@phoenix/components/code/PackageManagerCommandBlock";
 import { TypeScriptBlockWithCopy } from "@phoenix/components/code/TypeScriptBlockWithCopy";
-
-const INSTALL_OPENINFERENCE_CORE_TYPESCRIPT = `npm install @arizeai/openinference-core --save`;
 
 const ADD_SESSION_ID_TYPESCRIPT = `import { trace } from "@opentelemetry/api";
 import { SemanticConventions } from "@arizeai/openinference-semantic-conventions";
@@ -83,9 +80,10 @@ export function TypeScriptSessionsGuide() {
           OpenInference instrumentation package.
         </Text>
       </View>
-      <CodeWrap>
-        <PythonBlockWithCopy value={INSTALL_OPENINFERENCE_CORE_TYPESCRIPT} />
-      </CodeWrap>
+      <PackageManagerCommandBlock
+        language="TypeScript"
+        packages={["@arizeai/openinference-core"]}
+      />
       <View paddingTop="size-200" paddingBottom="size-100">
         <Heading level={2} weight="heavy">
           Add Session ID to your Traces
@@ -103,7 +101,7 @@ export function TypeScriptSessionsGuide() {
       <View paddingBottom="size-100">
         <Text>
           For more information on how to use sessions, consult the{" "}
-          <ExternalLink href="https://docs.arize.com/phoenix/tracing/how-to-tracing/setup-sessions">
+          <ExternalLink href="https://arize.com/docs/phoenix/tracing/how-to-tracing/setup-sessions">
             documentation
           </ExternalLink>
         </Text>

@@ -1,11 +1,19 @@
-import React from "react";
+import type { SerializedStyles } from "@emotion/react";
 import { css } from "@emotion/react";
 
 import { JSONBlock } from "@phoenix/components/code";
 import { usePrettyText } from "@phoenix/hooks/usePrettyText";
 import { assertUnreachable } from "@phoenix/typeUtils";
 
-export function PrettyText({ children }: { children: string }) {
+type PrettyTextProps = {
+  children: string;
+  /**
+   * Style overrides for the pre tag
+   */
+  preCSS?: SerializedStyles;
+};
+
+export function PrettyText({ children, preCSS }: PrettyTextProps) {
   const { text, textType } = usePrettyText(children);
   if (textType === "string") {
     return (
@@ -14,8 +22,9 @@ export function PrettyText({ children }: { children: string }) {
           white-space: pre-wrap;
           text-wrap: wrap;
           overflow-wrap: anywhere;
-          font-size: var(--ac-global-font-size-s);
+          font-size: var(--global-font-size-s);
           margin: 0;
+          ${preCSS}
         `}
       >
         {text}

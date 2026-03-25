@@ -1,21 +1,36 @@
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 import { graphql, useMutation } from "react-relay";
 
-import { Dialog, DialogContainer } from "@arizeai/components";
-
 import {
-  UserForm,
-  UserFormParams,
-} from "@phoenix/components/settings/UserForm";
+  Dialog,
+  Modal,
+  ModalOverlay,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
+} from "@phoenix/components";
+import {
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@phoenix/components/core/dialog";
+import type { LDAPUserFormParams } from "@phoenix/components/settings/LDAPUserForm";
+import { LDAPUserForm } from "@phoenix/components/settings/LDAPUserForm";
+import type { OAuthUserFormParams } from "@phoenix/components/settings/OAuthUserForm";
+import { OAuthUserForm } from "@phoenix/components/settings/OAuthUserForm";
+import type { UserFormParams } from "@phoenix/components/settings/UserForm";
+import { UserForm } from "@phoenix/components/settings/UserForm";
 
-import { NewUserDialogMutation } from "./__generated__/NewUserDialogMutation.graphql";
+import type { NewUserDialogMutation } from "./__generated__/NewUserDialogMutation.graphql";
 
 export function NewUserDialog({
   onNewUserCreated,
   onNewUserCreationError,
   onDismiss,
 }: {
-  onNewUserCreated: (email: string) => void;
+  onNewUserCreated: (username: string) => void;
   onNewUserCreationError: (error: Error) => void;
   onDismiss: () => void;
 }) {
@@ -25,6 +40,7 @@ export function NewUserDialog({
         user {
           id
           email
+          username
         }
       }
     }
@@ -39,11 +55,12 @@ export function NewUserDialog({
             username: data.username,
             password: data.password,
             role: data.role,
+            authMethod: "LOCAL",
             sendWelcomeEmail: true,
           },
         },
         onCompleted: (response) => {
-          onNewUserCreated(response.createUser.user.email);
+          onNewUserCreated(response.createUser.user.username);
         },
         onError: (error) => {
           onNewUserCreationError(error);
@@ -53,16 +70,120 @@ export function NewUserDialog({
     [commit, onNewUserCreated, onNewUserCreationError]
   );
 
+  const onSubmitOauthUser = useCallback(
+    (data: OAuthUserFormParams) => {
+      commit({
+        variables: {
+          input: {
+            email: data.email,
+            username: data.username,
+            role: data.role,
+            authMethod: "OAUTH2",
+            sendWelcomeEmail: true,
+          },
+        },
+        onCompleted: (response) => {
+          onNewUserCreated(response.createUser.user.username);
+        },
+        onError: (error) => {
+          onNewUserCreationError(error);
+        },
+      });
+    },
+    [commit, onNewUserCreated, onNewUserCreationError]
+  );
+
+  const onSubmitLdapUser = useCallback(
+    (data: LDAPUserFormParams) => {
+      commit({
+        variables: {
+          input: {
+            email: data.email,
+            username: data.username,
+            role: data.role,
+            authMethod: "LDAP",
+            sendWelcomeEmail: true,
+          },
+        },
+        onCompleted: (response) => {
+          onNewUserCreated(response.createUser.user.username);
+        },
+        onError: (error) => {
+          onNewUserCreationError(error);
+        },
+      });
+    },
+    [commit, onNewUserCreated, onNewUserCreationError]
+  );
+
+  // Determine which tabs are available
+  const showLocalTab = !window.Config.basicAuthDisabled;
+  const showOAuth2Tab = window.Config.oAuth2Idps.length > 0;
+  // Hide LDAP tab when manual user creation is disabled (no email attribute configured)
+  const showLDAPTab = window.Config.ldapManualUserCreationEnabled;
+
+  // Smart default tab selection
+  const defaultTab = showLocalTab
+    ? "local"
+    : showOAuth2Tab
+      ? "oauth2"
+      : showLDAPTab
+        ? "ldap"
+        : "local"; // Fallback (should never happen due to backend validation)
+
   return (
-    <DialogContainer
-      onDismiss={onDismiss}
-      isDismissable
-      type="modal"
-      isKeyboardDismissDisabled
+    <ModalOverlay
+      isOpen={true}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          onDismiss();
+        }
+      }}
     >
-      <Dialog title="Add user">
-        <UserForm onSubmit={onSubmit} isSubmitting={isCommitting} />
-      </Dialog>
-    </DialogContainer>
+      <Modal>
+        <Dialog>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add User</DialogTitle>
+              <DialogCloseButton />
+            </DialogHeader>
+            <Tabs defaultSelectedKey={defaultTab}>
+              <TabList>
+                {showLocalTab && <Tab id="local">Local</Tab>}
+                {showOAuth2Tab && <Tab id="oauth2">OAuth2</Tab>}
+                {showLDAPTab && <Tab id="ldap">LDAP</Tab>}
+              </TabList>
+              {showLocalTab && (
+                <TabPanel id="local">
+                  <UserForm
+                    key="user-form"
+                    onSubmit={onSubmit}
+                    isSubmitting={isCommitting}
+                  />
+                </TabPanel>
+              )}
+              {showOAuth2Tab && (
+                <TabPanel id="oauth2">
+                  <OAuthUserForm
+                    key="oauth-form"
+                    onSubmit={onSubmitOauthUser}
+                    isSubmitting={isCommitting}
+                  />
+                </TabPanel>
+              )}
+              {showLDAPTab && (
+                <TabPanel id="ldap">
+                  <LDAPUserForm
+                    key="ldap-form"
+                    onSubmit={onSubmitLdapUser}
+                    isSubmitting={isCommitting}
+                  />
+                </TabPanel>
+              )}
+            </Tabs>
+          </DialogContent>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

@@ -1,11 +1,11 @@
-import React, { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { graphql, useMutation } from "react-relay";
 
-import { Card } from "@arizeai/components";
-
 import {
+  Alert,
   Button,
+  Card,
   FieldError,
   Flex,
   Form,
@@ -18,17 +18,17 @@ import {
   View,
 } from "@phoenix/components";
 import { UserPicture } from "@phoenix/components/user/UserPicture";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 import { useViewer } from "@phoenix/contexts/ViewerContext";
 
-import { ViewerProfileCardMutation } from "./__generated__/ViewerProfileCardMutation.graphql";
+import type { ViewerProfileCardMutation } from "./__generated__/ViewerProfileCardMutation.graphql";
 
 type EditProfileFormParams = {
   username: string;
 };
 export function ViewerProfileCard() {
   const { viewer, refetchViewer } = useViewer();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   const notifySuccess = useNotifySuccess();
   const [commit, isCommitting] = useMutation<ViewerProfileCardMutation>(graphql`
     mutation ViewerProfileCardMutation($input: PatchViewerInput!) {
@@ -65,14 +65,11 @@ export function ViewerProfileCard() {
           refetchViewer();
         },
         onError: (error) => {
-          notifyError({
-            title: "Failed update profile",
-            message: error.message,
-          });
+          setError(error.message);
         },
       });
     },
-    [commit, notifySuccess, reset, refetchViewer, notifyError]
+    [commit, notifySuccess, reset, refetchViewer]
   );
   if (!viewer) {
     return null;
@@ -80,8 +77,6 @@ export function ViewerProfileCard() {
   return (
     <Card
       title="Profile"
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
       extra={
         viewer.authMethod === "LOCAL" && (
           <LinkButton size="S" to="/reset-password">
@@ -90,15 +85,16 @@ export function ViewerProfileCard() {
         )
       }
     >
+      {error && <Alert variant="danger">{error}</Alert>}
       <View paddingTop="size-200" paddingStart="size-200" paddingEnd="size-200">
         <Flex direction="row" gap="size-200" alignItems="center">
           <UserPicture
-            name={viewer.username || viewer.email}
+            name={viewer.username}
             profilePictureUrl={viewer.profilePictureUrl}
           />
           <Flex direction="column" gap="size-50">
             <Heading level={2} weight="heavy">
-              {viewer.username || viewer.email}
+              {viewer.username}
             </Heading>
             <Text>{viewer.role.name.toLocaleLowerCase()}</Text>
           </Flex>
@@ -108,10 +104,12 @@ export function ViewerProfileCard() {
         <Form onSubmit={handleSubmit(onSubmit)}>
           <View padding="size-200">
             <Flex direction="column" gap="size-100">
-              <TextField value={viewer.email} isReadOnly size="S">
-                <Label>Email</Label>
-                <Input />
-              </TextField>
+              {viewer.email && (
+                <TextField value={viewer.email} isReadOnly size="S">
+                  <Label>Email</Label>
+                  <Input />
+                </TextField>
+              )}
               <Controller
                 name="username"
                 control={control}
@@ -148,7 +146,7 @@ export function ViewerProfileCard() {
             paddingBottom="size-100"
             paddingStart="size-200"
             paddingEnd="size-200"
-            borderTopColor="dark"
+            borderTopColor="default"
             borderTopWidth="thin"
           >
             <Flex direction="row" gap="size-100" justifyContent="end">

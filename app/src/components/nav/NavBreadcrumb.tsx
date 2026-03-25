@@ -1,41 +1,38 @@
-import React from "react";
-import { useMatches, useNavigate } from "react-router";
+import { Link } from "react-router";
 
-import { Breadcrumbs, Item } from "@arizeai/components";
-
-export type CrumbFn = (data: unknown) => string;
-type Matches = ReturnType<typeof useMatches>;
-type Match = Matches[number];
-type RouteMatchWithCrumb = Match & {
-  handle: {
-    crumb: CrumbFn;
-  };
-};
-
-function isRouteMatchWithCrumb(match: Match): match is RouteMatchWithCrumb {
-  return (
-    typeof match.handle == "object" &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    typeof (match.handle as any)?.crumb === "function"
-  );
-}
+import {
+  Breadcrumb,
+  Breadcrumbs,
+  CopyActionMenu,
+  Flex,
+} from "@phoenix/components";
+import { useMatchesWithCrumb } from "@phoenix/hooks/useMatchesWithCrumb";
 
 export function NavBreadcrumb() {
-  const navigate = useNavigate();
-  const matches = useMatches();
-  // Get rid of any matches that don't have handle and crumb
-  const matchesWithCrumb = matches.filter(isRouteMatchWithCrumb);
-
+  const matchesWithCrumb = useMatchesWithCrumb();
+  const numMatches = matchesWithCrumb.length;
   return (
-    <Breadcrumbs
-      onAction={(index) => {
-        // Action here is the index of the breadcrumb
-        navigate(matchesWithCrumb[Number(index)].pathname);
-      }}
-    >
-      {matchesWithCrumb.map((match, index) => (
-        <Item key={index}>{match.handle.crumb(match.data)}</Item>
-      ))}
+    <Breadcrumbs size="L">
+      {matchesWithCrumb.map((match, index) => {
+        const crumb = match.handle.crumb(match.loaderData);
+        const copyableItems = match.handle.copy
+          ? match.handle?.copy(match.loaderData)
+          : [];
+        const isLastCrumb = index === numMatches - 1;
+        const showCopyableItems = isLastCrumb && copyableItems.length;
+        return (
+          <Breadcrumb key={index}>
+            <Flex direction="row" gap="size-100">
+              <Link to={match.pathname} title={crumb}>
+                {crumb}
+              </Link>
+              {showCopyableItems ? (
+                <CopyActionMenu items={copyableItems} />
+              ) : null}
+            </Flex>
+          </Breadcrumb>
+        );
+      })}
     </Breadcrumbs>
   );
 }

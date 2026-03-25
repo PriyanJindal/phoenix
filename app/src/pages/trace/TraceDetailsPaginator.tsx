@@ -1,7 +1,6 @@
-import React, { startTransition } from "react";
-import { Tooltip, TooltipTrigger } from "react-aria-components";
-import { useHotkeys } from "react-hotkeys-hook";
 import { css } from "@emotion/react";
+import { startTransition } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import {
   Button,
@@ -9,7 +8,9 @@ import {
   Icon,
   Icons,
   KeyboardToken,
-  View,
+  Tooltip,
+  TooltipArrow,
+  TooltipTrigger,
 } from "@phoenix/components";
 import {
   getNeighbors,
@@ -76,18 +77,11 @@ export const TraceDetailsPaginator = ({
             }}
           />
           <Tooltip offset={4}>
-            <View
-              backgroundColor="dark"
-              borderWidth="thin"
-              borderColor="dark"
-              borderRadius="medium"
-              padding="size-100"
-            >
-              <Flex direction="row" gap="size-100" alignItems="center">
-                <span>Next trace</span>
-                <KeyboardToken>{NEXT_TRACE_HOTKEY}</KeyboardToken>
-              </Flex>
-            </View>
+            <TooltipArrow />
+            <Flex direction="row" gap="size-100" alignItems="center">
+              <span>Next trace</span>
+              <KeyboardToken>{NEXT_TRACE_HOTKEY}</KeyboardToken>
+            </Flex>
           </Tooltip>
         </TooltipTrigger>
         <TooltipTrigger delay={100}>
@@ -104,18 +98,11 @@ export const TraceDetailsPaginator = ({
             }}
           />
           <Tooltip offset={4}>
-            <View
-              backgroundColor="dark"
-              borderWidth="thin"
-              borderColor="dark"
-              borderRadius="medium"
-              padding="size-100"
-            >
-              <Flex direction="row" gap="size-100" alignItems="center">
-                <span>Previous trace</span>
-                <KeyboardToken>{PREVIOUS_TRACE_HOTKEY}</KeyboardToken>
-              </Flex>
-            </View>
+            <TooltipArrow />
+            <Flex direction="row" gap="size-100" alignItems="center">
+              <span>Previous trace</span>
+              <KeyboardToken>{PREVIOUS_TRACE_HOTKEY}</KeyboardToken>
+            </Flex>
           </Tooltip>
         </TooltipTrigger>
       </Flex>

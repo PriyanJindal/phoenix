@@ -1,23 +1,100 @@
-import { AnnotatorKind } from "./annotations";
-import { Node } from "./core";
-import { Example } from "./datasets";
+import type { LLMEvaluator } from "@arizeai/phoenix-evals";
+
+import type { AnnotatorKind } from "./annotations";
+import type { Node } from "./core";
+import type { Example, ExampleWithId } from "./datasets";
 
 /**
  * An experiment is a set of task runs on a dataset version
  */
-export interface Experiment extends Node {
+export interface ExperimentInfo extends Node {
   datasetId: string;
   datasetVersionId: string;
+  // @todo: mark this as required when experiment API returns it
+  datasetSplits?: string[];
+  /**
+   * Number of times the experiment is repeated
+   */
   repetitions: number;
   /**
-   * The project under which the experiment task traces are recorded
+   * Metadata about the experiment as an object of key values
+   * e.x. model name
    */
-  projectName: string;
+  metadata: Record<string, unknown>;
+  /**
+   * The project under which the experiment task traces are recorded
+   * Note: This can be null when no project is associated with the experiment
+   */
+  projectName: string | null;
+  /**
+   * The creation timestamp of the experiment
+   */
+  createdAt: string;
+  /**
+   * The last update timestamp of the experiment
+   */
+  updatedAt: string;
+  /**
+   * Number of examples in the experiment
+   */
+  exampleCount: number;
+  /**
+   * Number of successful runs in the experiment
+   */
+  successfulRunCount: number;
+  /**
+   * Number of failed runs in the experiment
+   */
+  failedRunCount: number;
+  /**
+   * Number of missing (not yet executed) runs in the experiment
+   */
+  missingRunCount: number;
 }
 
-export interface RanExperiment extends Experiment {
-  params: ExperimentParameters;
-  runs: Record<string, ExperimentRun>;
+export type ExperimentRunID = string;
+
+/**
+ * Represents incomplete experiment runs for a dataset example
+ * Groups all incomplete repetitions for a single example
+ */
+export interface IncompleteRun {
+  /**
+   * The dataset example that has incomplete runs
+   */
+  datasetExample: Example;
+  /**
+   * List of repetition numbers that need to be run for this example
+   */
+  repetitionNumbers: number[];
+}
+
+export interface IncompleteEvaluation {
+  /**
+   * The experiment run with incomplete evaluations
+   */
+  experimentRun: ExperimentRun;
+  /**
+   * The dataset example for this run
+   */
+  datasetExample: ExampleWithId;
+  /**
+   * List of evaluation names that are incomplete (either missing or failed)
+   */
+  evaluationNames: string[];
+}
+
+/**
+ * A map of an experiment runId to the run
+ */
+export interface ExperimentRunsMap {
+  runs: Record<ExperimentRunID, ExperimentRun>;
+}
+
+/**
+ * An experiment that has been run and been recorded on the server
+ */
+export interface RanExperiment extends ExperimentInfo, ExperimentRunsMap {
   evaluationRuns?: ExperimentEvaluationRun[];
 }
 
@@ -32,13 +109,12 @@ export interface ExperimentRun extends Node {
    */
   experimentId: string;
   datasetExampleId: string;
-  repetitionNumber: number;
-  output?: string | Record<string, unknown> | null;
+  output?: string | boolean | number | object | null;
   error: string | null;
   traceId: string | null;
 }
 
-export type EvaluatorParams = {
+export type EvaluatorParams<TaskOutputType = TaskOutput> = {
   /**
    * The input field of the Dataset Example
    */
@@ -46,7 +122,7 @@ export type EvaluatorParams = {
   /**
    * The output of the task
    */
-  output: TaskOutput;
+  output: TaskOutputType;
   /**
    * The expected or reference output of the Dataset Example
    */
@@ -54,21 +130,22 @@ export type EvaluatorParams = {
   /**
    * Metadata associated with the Dataset Example
    */
-  metadata?: Record<string, unknown>;
+  metadata?: Example["metadata"];
 };
 
 export type Evaluator = {
   name: string;
+  kind: AnnotatorKind;
   evaluate: (
     args: EvaluatorParams
   ) => Promise<EvaluationResult> | EvaluationResult;
 };
 
 export type EvaluationResult = {
-  score: number | null;
-  label: string | null;
-  metadata: Record<string, unknown>;
-  explanation: string | null;
+  score?: number | null;
+  label?: string | null;
+  metadata?: Record<string, unknown>;
+  explanation?: string | null;
 };
 
 export interface ExperimentEvaluationRun extends Node {
@@ -100,9 +177,12 @@ export interface ExperimentParameters {
    * The number of examples to run the experiment on
    */
   nExamples: number;
-  /**
-   * The number of repetitions to run the experiment
-   * e.g. the number of times to run the task
-   */
-  nRepetitions: number;
 }
+
+/**
+ * A type that represents any type of evaluator that can be used in an experiment.
+ * Unknown is used to capture evaluators from an external library such as phoenix-evals.
+ */
+export type ExperimentEvaluatorLike =
+  | Evaluator
+  | LLMEvaluator<Record<string, unknown>>;

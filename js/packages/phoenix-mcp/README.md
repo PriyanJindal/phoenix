@@ -12,22 +12,36 @@
     </div>
 </h1>
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Arize-ai/phoenix/blob/main/js/packages/phoenix-mcp/LICENSE)
-<img src="https://badge.mcpx.dev?status=on" title="MCP Enabled"/>
+<p align="center">
+    <a href="https://www.npmjs.com/package/@arizeai/phoenix-mcp">
+        <img src="https://img.shields.io/npm/v/%40arizeai%2Fphoenix-mcp" alt="NPM Version">
+    </a>
+    <a href="https://github.com/Arize-ai/phoenix/blob/main/js/packages/phoenix-mcp/LICENSE">
+        <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License">
+    </a>
+    <img src="https://badge.mcpx.dev?status=on" title="MCP Enabled"/>
+    <a href="https://cursor.com/install-mcp?name=phoenix&config=eyJjb21tYW5kIjoibnB4IC15IEBhcml6ZWFpL3Bob2VuaXgtbWNwQGxhdGVzdCAtLWJhc2VVcmwgaHR0cDovL2xvY2FsaG9zdDo2MDA2IC0tYXBpS2V5IHlvdXItYXBpLWtleSJ9">
+        <img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add Arize Phoenix MCP server to Cursor" height=20 />
+    </a>
+    <img referrerpolicy="no-referrer-when-downgrade" src="https://static.scarf.sh/a.png?x-pxid=8e8e8b34-7900-43fa-a38f-1f070bd48c64&page=js/packages/phoenix-mcp/README.md" />
+</p>
 
-Phoenix MCP Server is an implementation of the Model Context Protocol for the Arize Phoenix platform. It provides a unified interface to Phoenix's capabilites.
+Phoenix MCP Server is an implementation of the Model Context Protocol for the Arize Phoenix platform. It provides a unified interface to Phoenix's capabilities.
 
 You can use Phoenix MCP Server for:
 
+- **Projects Management**: List and explore projects that organize your observability data
+- **Traces, Spans & Annotations**: Retrieve traces, spans, and annotation configs for analysis and debugging
+- **Sessions**: Explore conversation flows and session-level annotations
 - **Prompts Management**: Create, list, update, and iterate on prompts
-- **Datasets**: Explore datasets, and syntesize new examples
+- **Datasets**: Explore datasets and synthesize new examples
 - **Experiments**: Pull experiment results and visualize them with the help of an LLM
 
 Don't see a use-case covered? `@arizeai/phoenix-mcp` is [open-source](https://github.com/Arize-ai/phoenix)! Issues and PRs welcome.
 
 ## Installation
 
-This MCP server can be used using `npx` and can be directly integrated with clients like Claude Desktop, Cursor, and more.
+This MCP server can be used with `npx` and can be directly integrated with clients like Claude Desktop, Cursor, and more.
 
 ```json
 {
@@ -44,6 +58,7 @@ This MCP server can be used using `npx` and can be directly integrated with clie
       ]
     }
   }
+}
 ```
 
 ## Development
@@ -89,10 +104,46 @@ pnpm inspect
 When developing, the server requires the following environment variables:
 
 - `PHOENIX_API_KEY`: Your Phoenix API key
-- `PHOENIX_BASE_URL`: The base URL for Phoenix
+- `PHOENIX_HOST`: The base URL for Phoenix
+- `PHOENIX_PROJECT`: Optional default project for project-scoped tools
+- `PHOENIX_CLIENT_HEADERS`: Optional JSON-encoded request headers
 
 Make sure to set these in a `.env` file. See `.env.example`.
 
-# License
+## Tool Coverage
+
+The MCP server covers the main operational Phoenix workflows:
+
+**Prompts** — `list-prompts`, `get-prompt`, `get-latest-prompt`, `get-prompt-by-identifier`, `get-prompt-version`, `list-prompt-versions`, `get-prompt-version-by-tag`, `list-prompt-version-tags`, `add-prompt-version-tag`, `upsert-prompt`
+
+**Projects** — `list-projects`, `get-project`
+
+**Traces** — `list-traces`, `get-trace`
+
+**Spans** — `get-spans`, `get-span-annotations`
+
+**Sessions** — `list-sessions`, `get-session`
+
+**Annotation Configs** — `list-annotation-configs`
+
+**Datasets** — `list-datasets`, `get-dataset`, `get-dataset-examples`, `get-dataset-experiments`, `add-dataset-examples`
+
+**Experiments** — `list-experiments-for-dataset`, `get-experiment-by-id`
+
+For Phoenix documentation search, use the separate Phoenix Docs MCP server instead of this package.
+
+## Community
+
+Join our community to connect with thousands of AI builders:
+
+- 🌍 Join our [Slack community](https://join.slack.com/t/arize-ai/shared_invite/zt-3r07iavnk-ammtATWSlF0pSrd1DsMW7g).
+- 📚 Read the [Phoenix documentation](https://arize.com/docs/phoenix).
+- 💡 Ask questions and provide feedback in the _#phoenix-support_ channel.
+- 🌟 Leave a star on our [GitHub](https://github.com/Arize-ai/phoenix).
+- 🐞 Report bugs with [GitHub Issues](https://github.com/Arize-ai/phoenix/issues).
+- 𝕏 Follow us on [𝕏](https://twitter.com/ArizePhoenix).
+- 🗺️ Check out our [roadmap](https://github.com/orgs/Arize-ai/projects/45) to see where we're heading next.
+
+## License
 
 Apache 2.0

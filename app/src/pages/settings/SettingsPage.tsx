@@ -1,9 +1,10 @@
-import React, { useCallback } from "react";
-import { Key } from "react-aria-components";
-import { Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { css } from "@emotion/react";
+import { Suspense, useCallback } from "react";
+import type { Key } from "react-aria-components";
+import { Collection } from "react-aria-components";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router";
 
-import { LazyTabPanel, Tab, TabList, Tabs } from "@phoenix/components";
+import { Loading, Tab, TabList, TabPanel, Tabs } from "@phoenix/components";
 
 const settingsPageCSS = css`
   overflow-y: auto;
@@ -11,14 +12,24 @@ const settingsPageCSS = css`
 `;
 
 const settingsPageInnerCSS = css`
-  padding: var(--ac-global-dimension-size-100);
-  max-width: 1000px;
+  padding: var(--global-dimension-size-100);
+  max-width: 1300px;
   min-width: 500px;
   box-sizing: border-box;
   width: 100%;
   margin-left: auto;
   margin-right: auto;
 `;
+
+const tabs: { id: string; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "providers", label: "AI Providers" },
+  { id: "models", label: "Models" },
+  { id: "datasets", label: "Datasets" },
+  { id: "annotations", label: "Annotations" },
+  { id: "prompts", label: "Prompts" },
+  { id: "data", label: "Data Retention" },
+];
 
 export function SettingsPage() {
   const { pathname } = useLocation();
@@ -39,24 +50,18 @@ export function SettingsPage() {
     <main css={settingsPageCSS}>
       <div css={settingsPageInnerCSS}>
         <Tabs selectedKey={tab} onSelectionChange={onChangeTab}>
-          <TabList>
-            <Tab id="general">General</Tab>
-            <Tab id="providers">AI Providers</Tab>
-            <Tab id="annotations">Annotations</Tab>
-            <Tab id="data">Data Retention</Tab>
+          <TabList items={tabs}>
+            {(item) => <Tab id={item.id}>{item.label}</Tab>}
           </TabList>
-          <LazyTabPanel id="general" padded>
-            <Outlet />
-          </LazyTabPanel>
-          <LazyTabPanel id="providers" padded>
-            <Outlet />
-          </LazyTabPanel>
-          <LazyTabPanel id="annotations" padded>
-            <Outlet />
-          </LazyTabPanel>
-          <LazyTabPanel id="data" padded>
-            <Outlet />
-          </LazyTabPanel>
+          <Collection items={tabs}>
+            {(item) => (
+              <TabPanel id={item.id} padded>
+                <Suspense fallback={<Loading />}>
+                  <Outlet />
+                </Suspense>
+              </TabPanel>
+            )}
+          </Collection>
         </Tabs>
       </div>
     </main>

@@ -1,4 +1,3 @@
-import React from "react";
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -7,61 +6,58 @@ import {
 } from "react-router";
 import { RouterProvider } from "react-router/dom";
 
+import type { DatasetEvaluatorDetailsLoaderData } from "@phoenix/pages/dataset/evaluators/datasetEvaluatorDetailsLoader";
+import { datasetEvaluatorDetailsLoader } from "@phoenix/pages/dataset/evaluators/datasetEvaluatorDetailsLoader";
+import { DatasetEvaluatorDetailsPage } from "@phoenix/pages/dataset/evaluators/DatasetEvaluatorDetailsPage";
+import { datasetEvaluatorsLoader } from "@phoenix/pages/dataset/evaluators/datasetEvaluatorsLoader";
+import { DatasetEvaluatorsPage } from "@phoenix/pages/dataset/evaluators/DatasetEvaluatorsPage";
+import {
+  EVALUATOR_DETAILS_ROUTE_ID,
+  EvaluatorTracePage,
+} from "@phoenix/pages/dataset/evaluators/EvaluatorTracePage";
+import { EvaluatorsPage } from "@phoenix/pages/evaluators/EvaluatorsPage";
+import { evaluatorsPageLoader } from "@phoenix/pages/evaluators/evaluatorsPageLoader";
+import { RootLayout } from "@phoenix/pages/RootLayout";
+import { settingsPromptsPageLoader } from "@phoenix/pages/settings/prompts/settingsPromptsPageLoader";
 import { SettingsAIProvidersPage } from "@phoenix/pages/settings/SettingsAIProvidersPage";
 import { settingsAIProvidersPageLoader } from "@phoenix/pages/settings/settingsAIProvidersPageLoader";
 import { SettingsAnnotationsPage } from "@phoenix/pages/settings/SettingsAnnotationsPage";
 import { settingsAnnotationsPageLoader } from "@phoenix/pages/settings/settingsAnnotationsPageLoader";
 import { SettingsDataPage } from "@phoenix/pages/settings/SettingsDataPage";
 import { SettingsGeneralPage } from "@phoenix/pages/settings/SettingsGeneralPage";
+import { settingsModelsLoader } from "@phoenix/pages/settings/settingsModelsLoader";
+import { SettingsModelsPage } from "@phoenix/pages/settings/SettingsModelsPage";
 
-import { datasetLoaderQuery$data } from "./pages/dataset/__generated__/datasetLoaderQuery.graphql";
-import { embeddingLoaderQuery$data } from "./pages/embedding/__generated__/embeddingLoaderQuery.graphql";
-import { Layout } from "./pages/Layout";
-import { spanPlaygroundPageLoaderQuery$data } from "./pages/playground/__generated__/spanPlaygroundPageLoaderQuery.graphql";
-import { projectLoaderQuery$data } from "./pages/project/__generated__/projectLoaderQuery.graphql";
-import { ProjectConfigPage } from "./pages/project/ProjectConfigPage";
-import { ProjectRoot } from "./pages/project/ProjectRoot";
-import { promptLoaderQuery$data } from "./pages/prompt/__generated__/promptLoaderQuery.graphql";
-import { promptConfigLoader } from "./pages/prompt/promptConfigLoader";
-import { PromptIndexPage } from "./pages/prompt/PromptIndexPage";
-import { PromptLayout } from "./pages/prompt/PromptLayout";
-import { promptPlaygroundLoader } from "./pages/prompt/promptPlaygroundLoader";
-import { PromptPlaygroundPage } from "./pages/prompt/PromptPlaygroundPage";
-import { PromptVersionDetailsPage } from "./pages/prompt/PromptVersionDetailsPage";
-import { promptVersionLoader } from "./pages/prompt/promptVersionLoader";
-import { promptVersionsLoader } from "./pages/prompt/promptVersionsLoader";
-import { PromptVersionsPage } from "./pages/prompt/PromptVersionsPage";
-import { settingsDataPageLoader } from "./pages/settings/settingsDataPageLoader";
-import { sessionLoader } from "./pages/trace/sessionLoader";
-import { SessionPage } from "./pages/trace/SessionPage";
+import type {
+  DatasetLoaderData,
+  ProjectLoaderData,
+  PromptLoaderData,
+  SpanPlaygroundPageLoaderData,
+} from "./pages";
 import {
-  APIsPage,
   AuthenticatedRoot,
   authenticatedRootLoader,
   datasetLoader,
   DatasetPage,
   DatasetsPage,
-  dimensionLoader,
-  DimensionPage,
-  embeddingLoader,
-  EmbeddingPage,
+  datasetVersionsLoader,
+  DatasetVersionsPage,
   ErrorElement,
   ExamplePage,
   examplesLoader,
   ExamplesPage,
-  experimentCompareLoader,
   ExperimentComparePage,
-  experimentsLoader,
   ExperimentsPage,
   ForgotPasswordPage,
   homeLoader,
+  LoggedOutPage,
   LoginPage,
-  ModelPage,
-  ModelRoot,
   PlaygroundPage,
+  playgroundPageLoader,
   ProfilePage,
   ProjectIndexPage,
   projectLoader,
+  ProjectMetricsPage,
   ProjectPage,
   ProjectSessionsPage,
   ProjectsPage,
@@ -75,18 +71,40 @@ import {
   resetPasswordLoader,
   ResetPasswordPage,
   ResetPasswordWithTokenPage,
+  SessionPage,
+  SettingsDatasetsPage,
   settingsGeneralPageLoader,
   SettingsPage,
+  SettingsPromptsPage,
   SpanPlaygroundPage,
   spanPlaygroundPageLoader,
   SupportPage,
   TracePage,
 } from "./pages";
+import { GraphQLPage } from "./pages/apis/GraphQLPage";
+import { RestAPIPage } from "./pages/apis/RestAPIPage";
+import { Layout } from "./pages/Layout";
+import { layoutLoader } from "./pages/layoutLoader";
+import { ProjectConfigPage } from "./pages/project/ProjectConfigPage";
+import { ProjectRoot } from "./pages/project/ProjectRoot";
+import { promptConfigLoader } from "./pages/prompt/promptConfigLoader";
+import { PromptIndexPage } from "./pages/prompt/PromptIndexPage";
+import { PromptLayout } from "./pages/prompt/PromptLayout";
+import { PromptVersionDetailsPage } from "./pages/prompt/PromptVersionDetailsPage";
+import { promptVersionLoader } from "./pages/prompt/promptVersionLoader";
+import { promptVersionsLoader } from "./pages/prompt/promptVersionsLoader";
+import { PromptVersionsPage } from "./pages/prompt/PromptVersionsPage";
+import { promptTagRedirectLoader } from "./pages/redirects/promptTagRedirectLoader";
+import { sessionRedirectLoader } from "./pages/redirects/sessionRedirectLoader";
+import { spanRedirectLoader } from "./pages/redirects/spanRedirectLoader";
+import { traceRedirectLoader } from "./pages/redirects/traceRedirectLoader";
+import { settingsDataPageLoader } from "./pages/settings/settingsDataPageLoader";
+import { sessionLoader } from "./pages/trace/sessionLoader";
 
 const router = createBrowserRouter(
   createRoutesFromElements(
-    <Route path="/" errorElement={<ErrorElement />}>
-      {/* 
+    <Route path="/" errorElement={<ErrorElement />} element={<RootLayout />}>
+      {/*
         Using /v1/* below redirects all /v1/* routes that don't have a GET method to the root path.
         In particular, this redirects /v1/traces to the root path (/). This route is for the
         OpenTelemetry trace collector, but users sometimes accidentally try to access Phoenix
@@ -95,6 +113,7 @@ const router = createBrowserRouter(
       */}
       <Route path="/v1/*" element={<Navigate to="/" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/logout" element={<LoggedOutPage />} />
       <Route
         path="/reset-password"
         element={<ResetPasswordPage />}
@@ -106,7 +125,7 @@ const router = createBrowserRouter(
       />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route element={<AuthenticatedRoot />} loader={authenticatedRootLoader}>
-        <Route element={<Layout />}>
+        <Route element={<Layout />} loader={layoutLoader}>
           <Route
             path="/profile"
             handle={{ crumb: () => "profile" }}
@@ -114,39 +133,8 @@ const router = createBrowserRouter(
           />
           <Route index loader={homeLoader} />
           <Route
-            path="/model"
-            handle={{ crumb: () => "model" }}
-            element={<ModelRoot />}
-          >
-            <Route index element={<ModelPage />} />
-            <Route element={<ModelPage />}>
-              <Route path="dimensions">
-                <Route
-                  path=":dimensionId"
-                  element={<DimensionPage />}
-                  loader={dimensionLoader}
-                />
-              </Route>
-            </Route>
-            <Route path="embeddings">
-              <Route
-                path=":embeddingDimensionId"
-                element={<EmbeddingPage />}
-                loader={embeddingLoader}
-                handle={{
-                  // `crumb` is your own abstraction, we decided
-                  // to make this one a function so we can pass
-                  // the data from the loader to it so that our
-                  // breadcrumb is made up of dynamic content
-                  crumb: (data: embeddingLoaderQuery$data) =>
-                    data.embedding.name,
-                }}
-              />
-            </Route>
-          </Route>
-          <Route
             path="/projects"
-            handle={{ crumb: () => "projects" }}
+            handle={{ crumb: () => "Projects" }}
             element={<ProjectsRoot />}
           >
             <Route index element={<ProjectsPage />} />
@@ -154,7 +142,19 @@ const router = createBrowserRouter(
               path=":projectId"
               loader={projectLoader}
               handle={{
-                crumb: (data: projectLoaderQuery$data) => data.project.name,
+                crumb: (data: ProjectLoaderData) => data?.project?.name,
+                copy: (data: ProjectLoaderData) => [
+                  {
+                    name: "Project Name",
+                    value: data?.project?.name,
+                    iconKey: "TextOutline" as const,
+                  },
+                  {
+                    name: "Project ID",
+                    value: data?.project?.id,
+                    iconKey: "IDOutline" as const,
+                  },
+                ],
               }}
               element={<ProjectRoot />}
             >
@@ -174,29 +174,34 @@ const router = createBrowserRouter(
                   />
                 </Route>
                 <Route path="config" element={<ProjectConfigPage />} />
+                <Route path="metrics" element={<ProjectMetricsPage />} />
               </Route>
             </Route>
           </Route>
-          <Route path="/datasets" handle={{ crumb: () => "datasets" }}>
+          <Route path="/datasets" handle={{ crumb: () => "Datasets" }}>
             <Route index element={<DatasetsPage />} />
             <Route
               path=":datasetId"
               loader={datasetLoader}
               handle={{
-                crumb: (data: datasetLoaderQuery$data) => data.dataset.name,
+                crumb: (data: DatasetLoaderData) => data?.dataset?.name,
+                copy: (data: DatasetLoaderData) => [
+                  {
+                    name: "Dataset Name",
+                    value: data?.dataset?.name,
+                    iconKey: "TextOutline" as const,
+                  },
+                  {
+                    name: "Dataset ID",
+                    value: data?.dataset?.id,
+                    iconKey: "IDOutline" as const,
+                  },
+                ],
               }}
             >
               <Route element={<DatasetPage />} loader={datasetLoader}>
-                <Route
-                  index
-                  element={<ExperimentsPage />}
-                  loader={experimentsLoader}
-                />
-                <Route
-                  path="experiments"
-                  element={<ExperimentsPage />}
-                  loader={experimentsLoader}
-                />
+                <Route index element={<ExperimentsPage />} />
+                <Route path="experiments" element={<ExperimentsPage />} />
                 <Route
                   path="examples"
                   element={<ExamplesPage />}
@@ -204,42 +209,75 @@ const router = createBrowserRouter(
                 >
                   <Route path=":exampleId" element={<ExamplePage />} />
                 </Route>
+                <Route
+                  path="versions"
+                  element={<DatasetVersionsPage />}
+                  loader={datasetVersionsLoader}
+                />
+                <Route
+                  path="evaluators"
+                  element={<DatasetEvaluatorsPage />}
+                  loader={datasetEvaluatorsLoader}
+                  handle={{
+                    crumb: () => "evaluators",
+                  }}
+                />
+              </Route>
+              <Route
+                id={EVALUATOR_DETAILS_ROUTE_ID}
+                path="evaluators/:evaluatorId"
+                element={<DatasetEvaluatorDetailsPage />}
+                loader={datasetEvaluatorDetailsLoader}
+                handle={{
+                  crumb: (data: DatasetEvaluatorDetailsLoaderData) =>
+                    data?.evaluatorDisplayName || "evaluator",
+                }}
+              >
+                <Route path=":traceId" element={<EvaluatorTracePage />} />
               </Route>
               <Route
                 path="compare"
-                handle={{
-                  crumb: () => "compare",
-                }}
-                loader={experimentCompareLoader}
                 element={<ExperimentComparePage />}
+                handle={{ crumb: () => "compare" }}
               />
             </Route>
           </Route>
           <Route
             path="/playground"
             handle={{
-              crumb: () => "Playground",
+              crumb: () => "Playground", // TODO: add playground name
             }}
           >
-            <Route index element={<PlaygroundPage />} />
+            <Route
+              index
+              element={<PlaygroundPage />}
+              loader={playgroundPageLoader}
+            />
             <Route
               path="spans/:spanId"
               element={<SpanPlaygroundPage />}
               loader={spanPlaygroundPageLoader}
               handle={{
-                crumb: (data: spanPlaygroundPageLoaderQuery$data) => {
-                  if (data.span.__typename === "Span") {
-                    return `span ${data.span.spanId}`;
+                crumb: (data: SpanPlaygroundPageLoaderData) => {
+                  if (data?.span.__typename === "Span") {
+                    return `span ${data?.span?.spanId}`;
                   }
                   return "span unknown";
                 },
               }}
             />
           </Route>
+          <Route path="/evaluators" handle={{ crumb: () => "Evaluators" }}>
+            <Route
+              index
+              element={<EvaluatorsPage />}
+              loader={evaluatorsPageLoader}
+            />
+          </Route>
           <Route
             path="/prompts"
             handle={{
-              crumb: () => "prompts",
+              crumb: () => "Prompts",
             }}
           >
             <Route index element={<PromptsPage />} loader={promptsLoader} />
@@ -250,11 +288,28 @@ const router = createBrowserRouter(
               // displayed when navigating back to the prompt page after gql mutation
               shouldRevalidate={() => true}
               handle={{
-                crumb: (data: promptLoaderQuery$data) => {
-                  if (data.prompt.__typename === "Prompt") {
-                    return data.prompt.name;
+                crumb: (data: PromptLoaderData) => {
+                  if (data?.prompt?.__typename === "Prompt") {
+                    return data?.prompt?.name;
                   }
-                  return "unknown";
+                  return "prompt unknown";
+                },
+                copy: (data: PromptLoaderData) => {
+                  if (data?.prompt?.__typename === "Prompt") {
+                    return [
+                      {
+                        name: "Prompt Name",
+                        value: data.prompt.name,
+                        iconKey: "TextOutline" as const,
+                      },
+                      {
+                        name: "Prompt ID",
+                        value: data.prompt.id,
+                        iconKey: "IDOutline" as const,
+                      },
+                    ];
+                  }
+                  return [];
                 },
               }}
             >
@@ -277,35 +332,34 @@ const router = createBrowserRouter(
                   loader={promptConfigLoader}
                 />
               </Route>
-              <Route
-                path="playground"
-                element={<PromptPlaygroundPage />}
-                loader={promptPlaygroundLoader}
-                handle={{
-                  crumb: () => "playground",
-                }}
-              />
             </Route>
           </Route>
           <Route
-            path="/apis"
-            element={<APIsPage />}
+            path="/apis/rest"
+            element={<RestAPIPage />}
             handle={{
-              crumb: () => "APIs",
+              crumb: () => "REST API",
+            }}
+          />
+          <Route
+            path="/apis/graphql"
+            element={<GraphQLPage />}
+            handle={{
+              crumb: () => "GraphQL",
             }}
           />
           <Route
             path="/support"
             element={<SupportPage />}
             handle={{
-              crumb: () => "support",
+              crumb: () => "Support",
             }}
           />
           <Route
             path="/settings"
             element={<SettingsPage />}
             handle={{
-              crumb: () => "settings",
+              crumb: () => "Settings",
             }}
           >
             <Route
@@ -313,7 +367,7 @@ const router = createBrowserRouter(
               loader={settingsGeneralPageLoader}
               element={<SettingsGeneralPage />}
               handle={{
-                crumb: () => "general",
+                crumb: () => "General",
               }}
             />
             <Route
@@ -321,7 +375,22 @@ const router = createBrowserRouter(
               loader={settingsAIProvidersPageLoader}
               element={<SettingsAIProvidersPage />}
               handle={{
-                crumb: () => "providers",
+                crumb: () => "AI Providers",
+              }}
+            />
+            <Route
+              path="models"
+              loader={settingsModelsLoader}
+              element={<SettingsModelsPage />}
+              handle={{
+                crumb: () => "Models",
+              }}
+            />
+            <Route
+              path="datasets"
+              element={<SettingsDatasetsPage />}
+              handle={{
+                crumb: () => "Datasets",
               }}
             />
             <Route
@@ -329,18 +398,46 @@ const router = createBrowserRouter(
               loader={settingsAnnotationsPageLoader}
               element={<SettingsAnnotationsPage />}
               handle={{
-                crumb: () => "annotations",
+                crumb: () => "Annotations",
               }}
             />
             <Route
               path="data"
               element={<SettingsDataPage />}
               handle={{
-                crumb: () => "data retention",
+                crumb: () => "Data Retention",
               }}
               loader={settingsDataPageLoader}
             />
+            <Route
+              path="prompts"
+              element={<SettingsPromptsPage />}
+              loader={settingsPromptsPageLoader}
+              handle={{
+                crumb: () => "Prompts",
+              }}
+            />
           </Route>
+          <Route
+            path="/redirects/spans/:span_otel_id"
+            loader={spanRedirectLoader}
+            errorElement={<ErrorElement />}
+          />
+          <Route
+            path="/redirects/traces/:trace_otel_id"
+            loader={traceRedirectLoader}
+            errorElement={<ErrorElement />}
+          />
+          <Route
+            path="/redirects/sessions/:session_id"
+            loader={sessionRedirectLoader}
+            errorElement={<ErrorElement />}
+          />
+          <Route
+            path="/redirects/prompts/:promptId/tags/:tagName"
+            loader={promptTagRedirectLoader}
+            errorElement={<ErrorElement />}
+          />
         </Route>
       </Route>
     </Route>

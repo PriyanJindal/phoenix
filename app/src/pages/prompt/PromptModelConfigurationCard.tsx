@@ -1,15 +1,13 @@
-import React from "react";
 import { graphql, useFragment } from "react-relay";
 
-import { Card } from "@arizeai/components";
-
 import {
+  Card,
   Disclosure,
   DisclosureGroup,
   DisclosurePanel,
   DisclosureTrigger,
 } from "@phoenix/components";
-import { PromptModelConfigurationCard__main$key } from "@phoenix/pages/prompt/__generated__/PromptModelConfigurationCard__main.graphql";
+import type { PromptModelConfigurationCard__main$key } from "@phoenix/pages/prompt/__generated__/PromptModelConfigurationCard__main.graphql";
 import { PromptInvocationParameters } from "@phoenix/pages/prompt/PromptInvocationParameters";
 import { PromptLLM } from "@phoenix/pages/prompt/PromptLLM";
 import { PromptResponseFormat } from "@phoenix/pages/prompt/PromptResponseFormat";
@@ -34,12 +32,7 @@ export function PromptModelConfigurationCard({
     promptVersionFragment
   );
   return (
-    <Card
-      title="Model Configuration"
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
-      collapsible
-    >
+    <Card title="Model Configuration" collapsible>
       <DisclosureGroup
         defaultExpandedKeys={[
           "llm",

@@ -1,11 +1,9 @@
-import React, { useMemo } from "react";
 import { css } from "@emotion/react";
+import { useMemo } from "react";
 
 import { Text } from "@phoenix/components";
-import {
-  detectToolCallProvider,
-  LlmProviderToolCall,
-} from "@phoenix/schemas/toolCallSchemas";
+import type { LlmProviderToolCall } from "@phoenix/schemas/toolCallSchemas";
+import { detectToolCallProvider } from "@phoenix/schemas/toolCallSchemas";
 import { assertUnreachable, isStringKeyedObject } from "@phoenix/typeUtils";
 import { safelyParseJSON } from "@phoenix/utils/jsonUtils";
 
@@ -54,6 +52,13 @@ export function PlaygroundToolCall({
           name: validatedToolCall.name,
           input: validatedToolCall.input,
         };
+
+      case "AWS":
+        return {
+          name: validatedToolCall.toolUse.name,
+          input: validatedToolCall.toolUse.input,
+        };
+
       case "UNKNOWN": {
         // This should never be the case, happen but we should handle it in case the server returns an invalid tool call
         if (!isPartialOutputToolCall(toolCall)) {
@@ -78,7 +83,8 @@ export function PlaygroundToolCall({
     <pre
       css={css`
         text-wrap: wrap;
-        margin: var(--ac-global-dimension-static-size-100) 0;
+        margin: var(--global-dimension-static-size-100) 0;
+        margin-block: 0;
       `}
     >
       {functionDisplay.name}(

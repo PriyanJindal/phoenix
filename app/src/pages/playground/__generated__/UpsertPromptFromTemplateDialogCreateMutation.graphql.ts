@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0de4be1481d0b1da17674430ccdf2f51>>
+ * @generated SignedSource<<d951a7ab6d165eb90a4882b30c9cbf30>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,29 +9,33 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type ModelProvider = "ANTHROPIC" | "AZURE_OPENAI" | "GOOGLE" | "OPENAI";
+export type GenerativeProviderKey = "ANTHROPIC" | "AWS" | "AZURE_OPENAI" | "CEREBRAS" | "DEEPSEEK" | "FIREWORKS" | "GOOGLE" | "GROQ" | "MOONSHOT" | "OLLAMA" | "OPENAI" | "PERPLEXITY" | "TOGETHER" | "XAI";
+export type PromptMessageRole = "AI" | "SYSTEM" | "TOOL" | "USER";
 export type PromptTemplateFormat = "F_STRING" | "MUSTACHE" | "NONE";
 export type CreateChatPromptInput = {
   description?: string | null;
+  metadata?: any | null;
   name: string;
   promptVersion: ChatPromptVersionInput;
+  tags?: ReadonlyArray<CreatePromptVersionTagInput> | null;
 };
 export type ChatPromptVersionInput = {
+  customProviderId?: string | null;
   description?: string | null;
   invocationParameters?: any;
   modelName: string;
-  modelProvider: ModelProvider;
-  responseFormat?: ResponseFormatInput | null;
+  modelProvider: GenerativeProviderKey;
+  responseFormat?: PromptResponseFormatJSONSchemaInput | null;
   template: PromptChatTemplateInput;
   templateFormat: PromptTemplateFormat;
-  tools?: ReadonlyArray<ToolDefinitionInput>;
+  tools?: PromptToolsInput | null;
 };
 export type PromptChatTemplateInput = {
   messages: ReadonlyArray<PromptMessageInput>;
 };
 export type PromptMessageInput = {
   content: ReadonlyArray<ContentPartInput>;
-  role: string;
+  role: PromptMessageRole;
 };
 export type ContentPartInput = {
   text?: TextContentValueInput | null;
@@ -54,11 +58,39 @@ export type ToolResultContentValueInput = {
   result: any;
   toolCallId: string;
 };
-export type ToolDefinitionInput = {
-  definition: any;
+export type PromptToolsInput = {
+  disableParallelToolCalls?: boolean | null;
+  toolChoice?: PromptToolChoiceInput | null;
+  tools: ReadonlyArray<PromptToolFunctionInput>;
 };
-export type ResponseFormatInput = {
-  definition: any;
+export type PromptToolFunctionInput = {
+  function: PromptToolFunctionDefinitionInput;
+};
+export type PromptToolFunctionDefinitionInput = {
+  description?: string | null;
+  name: string;
+  parameters?: any | null;
+  strict?: boolean | null;
+};
+export type PromptToolChoiceInput = {
+  functionName?: string | null;
+  none?: boolean | null;
+  oneOrMore?: boolean | null;
+  zeroOrMore?: boolean | null;
+};
+export type PromptResponseFormatJSONSchemaInput = {
+  jsonSchema: PromptResponseFormatJSONSchemaDefinitionInput;
+  type: string;
+};
+export type PromptResponseFormatJSONSchemaDefinitionInput = {
+  description?: string | null;
+  name: string;
+  schema?: any | null;
+  strict?: boolean | null;
+};
+export type CreatePromptVersionTagInput = {
+  description?: string | null;
+  name: string;
 };
 export type UpsertPromptFromTemplateDialogCreateMutation$variables = {
   input: CreateChatPromptInput;
@@ -67,6 +99,9 @@ export type UpsertPromptFromTemplateDialogCreateMutation$data = {
   readonly createChatPrompt: {
     readonly id: string;
     readonly name: string;
+    readonly version: {
+      readonly id: string;
+    };
   };
 };
 export type UpsertPromptFromTemplateDialogCreateMutation = {
@@ -82,7 +117,14 @@ var v0 = [
     "name": "input"
   }
 ],
-v1 = [
+v1 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v2 = [
   {
     "alias": null,
     "args": [
@@ -97,18 +139,24 @@ v1 = [
     "name": "createChatPrompt",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
+      (v1/*: any*/),
       {
         "alias": null,
         "args": null,
         "kind": "ScalarField",
         "name": "name",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "PromptVersion",
+        "kind": "LinkedField",
+        "name": "version",
+        "plural": false,
+        "selections": [
+          (v1/*: any*/)
+        ],
         "storageKey": null
       }
     ],
@@ -121,7 +169,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "UpsertPromptFromTemplateDialogCreateMutation",
-    "selections": (v1/*: any*/),
+    "selections": (v2/*: any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -130,19 +178,19 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
     "name": "UpsertPromptFromTemplateDialogCreateMutation",
-    "selections": (v1/*: any*/)
+    "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "73d9d27e0df3bc27e4af4dd3d77f41fb",
+    "cacheID": "ed384aa4423c1f5fccce6611d269d532",
     "id": null,
     "metadata": {},
     "name": "UpsertPromptFromTemplateDialogCreateMutation",
     "operationKind": "mutation",
-    "text": "mutation UpsertPromptFromTemplateDialogCreateMutation(\n  $input: CreateChatPromptInput!\n) {\n  createChatPrompt(input: $input) {\n    id\n    name\n  }\n}\n"
+    "text": "mutation UpsertPromptFromTemplateDialogCreateMutation(\n  $input: CreateChatPromptInput!\n) {\n  createChatPrompt(input: $input) {\n    id\n    name\n    version {\n      id\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "fa52cba6c2bfaa6298a5360253dc9bc5";
+(node as any).hash = "80098dd0b05cefab137107fe4c143c02";
 
 export default node;

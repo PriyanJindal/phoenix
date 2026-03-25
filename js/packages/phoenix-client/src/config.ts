@@ -1,36 +1,18 @@
+import type { EnvironmentConfig } from "@arizeai/phoenix-config";
+import {
+  DEFAULT_PHOENIX_BASE_URL,
+  getEnvironmentConfig,
+} from "@arizeai/phoenix-config";
 import type { ClientOptions } from "openapi-fetch";
-import z from "zod";
-
-const phoenixEnvironmentSchema = z.object({
-  PHOENIX_API_KEY: z.string().optional(),
-  PHOENIX_HOST: z.string().optional(),
-  PHOENIX_CLIENT_HEADERS: z
-    .string()
-    .transform((s) => JSON.parse(s))
-    .transform((o) => z.record(z.string()).parse(o))
-    .optional(),
-});
-
-type PhoenixEnvironment = z.infer<typeof phoenixEnvironmentSchema>;
 
 /**
- * Parse environment variables from an opaque object into a PhoenixEnvironment object.
+ * Convert a EnvironmentConfig object into a ClientOptions object.
  *
- * @param environment - The environment variables object-like structure to parse.
- * @returns The parsed PhoenixEnvironment object.
- */
-const fromEnvironment = (environment: unknown) => {
-  return phoenixEnvironmentSchema.safeParse(environment)?.data ?? {};
-};
-
-/**
- * Convert a PhoenixEnvironment object into a ClientOptions object.
- *
- * @param environment - The PhoenixEnvironment object to convert.
+ * @param environment - The EnvironmentConfig object to convert.
  * @returns The converted ClientOptions object.
  */
 const phoenixEnvironmentToClientOptions = (
-  environment: PhoenixEnvironment
+  environment: EnvironmentConfig
 ): Partial<ClientOptions> => {
   const options: Partial<ClientOptions> = {
     baseUrl: environment.PHOENIX_HOST,
@@ -64,7 +46,7 @@ export const defaultGetEnvironmentOptions = (): Partial<ClientOptions> => {
   if (typeof process !== "object" || typeof process.env !== "object") {
     return {};
   }
-  return phoenixEnvironmentToClientOptions(fromEnvironment(process.env));
+  return phoenixEnvironmentToClientOptions(getEnvironmentConfig());
 };
 
 /**
@@ -74,6 +56,6 @@ export const defaultGetEnvironmentOptions = (): Partial<ClientOptions> => {
  */
 export const makeDefaultClientOptions = (): Partial<ClientOptions> => {
   return {
-    baseUrl: "http://localhost:6006",
+    baseUrl: DEFAULT_PHOENIX_BASE_URL,
   };
 };

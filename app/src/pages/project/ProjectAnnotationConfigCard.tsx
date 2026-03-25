@@ -1,4 +1,11 @@
-import React, {
+import { css } from "@emotion/react";
+import type { CellContext, ColumnDef } from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import {
   startTransition,
   Suspense,
   useCallback,
@@ -11,19 +18,10 @@ import {
   useMutation,
   useRefetchableFragment,
 } from "react-relay";
-import {
-  CellContext,
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import { css } from "@emotion/react";
-
-import { Card } from "@arizeai/components";
 
 import {
   Alert,
+  Card,
   ContentSkeleton,
   Flex,
   Link,
@@ -33,13 +31,13 @@ import {
 import { AnnotationLabel } from "@phoenix/components/annotation";
 import { IndeterminateCheckboxCell } from "@phoenix/components/table/IndeterminateCheckboxCell";
 import { tableCSS } from "@phoenix/components/table/styles";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 
-import { ProjectAnnotationConfigCardContent_project_annotations$key } from "./__generated__/ProjectAnnotationConfigCardContent_project_annotations.graphql";
-import { ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation } from "./__generated__/ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation.graphql";
-import { ProjectAnnotationConfigCardContentProjectAnnotationsQuery } from "./__generated__/ProjectAnnotationConfigCardContentProjectAnnotationsQuery.graphql";
-import { ProjectAnnotationConfigCardContentQuery } from "./__generated__/ProjectAnnotationConfigCardContentQuery.graphql";
-import { ProjectAnnotationConfigCardContentRemoveAnnotationConfigFromProjectMutation } from "./__generated__/ProjectAnnotationConfigCardContentRemoveAnnotationConfigFromProjectMutation.graphql";
+import type { ProjectAnnotationConfigCardContent_project_annotations$key } from "./__generated__/ProjectAnnotationConfigCardContent_project_annotations.graphql";
+import type { ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation } from "./__generated__/ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation.graphql";
+import type { ProjectAnnotationConfigCardContentProjectAnnotationsQuery } from "./__generated__/ProjectAnnotationConfigCardContentProjectAnnotationsQuery.graphql";
+import type { ProjectAnnotationConfigCardContentQuery } from "./__generated__/ProjectAnnotationConfigCardContentQuery.graphql";
+import type { ProjectAnnotationConfigCardContentRemoveAnnotationConfigFromProjectMutation } from "./__generated__/ProjectAnnotationConfigCardContentRemoveAnnotationConfigFromProjectMutation.graphql";
 
 interface ProjectAnnotationConfigCardProps {
   projectId: string;
@@ -49,11 +47,7 @@ export const ProjectAnnotationConfigCard = (
   props: ProjectAnnotationConfigCardProps
 ) => {
   return (
-    <Card
-      title="Project Annotations"
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
-    >
+    <Card title="Project Annotations">
       <Alert variant="info" banner>
         Annotation Configs are configured globally and can be associated with
         multiple projects. Select the annotation configs you want to use for
@@ -66,7 +60,7 @@ export const ProjectAnnotationConfigCard = (
         paddingX="size-200"
         paddingY="size-100"
         borderTopWidth="thin"
-        borderColor="dark"
+        borderColor="default"
       >
         <Flex direction="row" justifyContent="end">
           <Link to="/settings/annotations">Configure Annotation Configs</Link>
@@ -94,14 +88,14 @@ const columns: ColumnDef<AnnotationConfigTableRow>[] = [
     cell: ({ row }: CellContext<AnnotationConfigTableRow, unknown>) => (
       <IndeterminateCheckboxCell
         {...{
-          checked: row.original.isEnabled,
-          disabled: row.original.isLoading,
-          onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+          isSelected: row.original.isEnabled,
+          isDisabled: row.original.isLoading,
+          onChange: (isSelected: boolean) => {
             const annotationConfigId = row.original.id;
             if (!annotationConfigId) {
               throw new Error("Annotation config ID is required");
             }
-            if (e.target.checked) {
+            if (isSelected) {
               row.original.onAdd(annotationConfigId);
             } else {
               row.original.onRemove(annotationConfigId);
@@ -152,17 +146,18 @@ interface ProjectAnnotationConfigCardContentProps {
 const ProjectAnnotationConfigCardContent = (
   props: ProjectAnnotationConfigCardContentProps
 ) => {
+  "use no memo";
   const { projectId } = props;
   // Keep track of the loading state for each annotation config
   const [loadingConfigs, setLoadingConfigs] = useState<Record<string, boolean>>(
     {}
   );
+  const [error, setError] = useState<string | null>(null);
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
 
   const data = useLazyLoadQuery<ProjectAnnotationConfigCardContentQuery>(
     graphql`
-      query ProjectAnnotationConfigCardContentQuery($projectId: GlobalID!) {
+      query ProjectAnnotationConfigCardContentQuery($projectId: ID!) {
         project: node(id: $projectId) {
           ... on Project {
             ...ProjectAnnotationConfigCardContent_project_annotations
@@ -213,14 +208,11 @@ const ProjectAnnotationConfigCardContent = (
     useMutation<ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation>(
       graphql`
         mutation ProjectAnnotationConfigCardContentAddAnnotationConfigToProjectMutation(
-          $projectId: GlobalID!
-          $annotationConfigId: GlobalID!
+          $projectId: ID!
+          $annotationConfigId: ID!
         ) {
           addAnnotationConfigToProject(
-            input: {
-              projectId: $projectId
-              annotationConfigId: $annotationConfigId
-            }
+            input: { projectId: $projectId, annotationConfigId: $annotationConfigId }
           ) {
             project {
               ...ProjectAnnotationConfigCardContent_project_annotations
@@ -234,14 +226,11 @@ const ProjectAnnotationConfigCardContent = (
     useMutation<ProjectAnnotationConfigCardContentRemoveAnnotationConfigFromProjectMutation>(
       graphql`
         mutation ProjectAnnotationConfigCardContentRemoveAnnotationConfigFromProjectMutation(
-          $projectId: GlobalID!
-          $annotationConfigId: GlobalID!
+          $projectId: ID!
+          $annotationConfigId: ID!
         ) {
           removeAnnotationConfigFromProject(
-            input: {
-              projectId: $projectId
-              annotationConfigId: $annotationConfigId
-            }
+            input: { projectId: $projectId, annotationConfigId: $annotationConfigId }
           ) {
             project {
               ...ProjectAnnotationConfigCardContent_project_annotations
@@ -253,6 +242,7 @@ const ProjectAnnotationConfigCardContent = (
 
   const addAnnotationConfigToProject = useCallback(
     (annotationConfigId: string) => {
+      setError(null);
       setLoadingConfigs((prev) => ({ ...prev, [annotationConfigId]: true }));
       startTransition(() => {
         addAnnotationConfigToProjectiMutation({
@@ -275,24 +265,17 @@ const ProjectAnnotationConfigCardContent = (
               ...prev,
               [annotationConfigId]: false,
             }));
-            notifyError({
-              title: "Failed to add annotation config",
-              message: error.message || "An unknown error occurred",
-            });
+            setError(error.message || "An unknown error occurred");
           },
         });
       });
     },
-    [
-      projectId,
-      addAnnotationConfigToProjectiMutation,
-      notifySuccess,
-      notifyError,
-    ]
+    [projectId, addAnnotationConfigToProjectiMutation, notifySuccess]
   );
 
   const removeAnnotationConfigFromProject = useCallback(
     (annotationConfigId: string) => {
+      setError(null);
       setLoadingConfigs((prev) => ({ ...prev, [annotationConfigId]: true }));
       removeAnnotationConfigFromProjectMutation({
         variables: {
@@ -314,19 +297,11 @@ const ProjectAnnotationConfigCardContent = (
             ...prev,
             [annotationConfigId]: false,
           }));
-          notifyError({
-            title: "Failed to remove annotation config",
-            message: error.message || "An unknown error occurred",
-          });
+          setError(error.message || "An unknown error occurred");
         },
       });
     },
-    [
-      projectId,
-      removeAnnotationConfigFromProjectMutation,
-      notifySuccess,
-      notifyError,
-    ]
+    [projectId, removeAnnotationConfigFromProjectMutation, notifySuccess]
   );
 
   const { allAnnotationConfigs } = data;
@@ -354,6 +329,7 @@ const ProjectAnnotationConfigCardContent = (
     removeAnnotationConfigFromProject,
   ]);
 
+  // eslint-disable-next-line react-hooks-js/incompatible-library
   const table = useReactTable({
     data: tableData,
     columns,
@@ -369,59 +345,62 @@ const ProjectAnnotationConfigCardContent = (
   }
 
   return (
-    <div
-      css={css`
-        overflow: auto;
-      `}
-    >
-      <table
-        css={tableCSS}
-        style={{
-          width: table.getTotalSize(),
-          minWidth: "100%",
-        }}
+    <>
+      {error && <Alert variant="danger">{error}</Alert>}
+      <div
+        css={css`
+          overflow: auto;
+        `}
       >
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th colSpan={header.colSpan} key={header.id}>
-                  {header.isPlaceholder ? null : (
-                    <div
-                      style={{
-                        left: header.getStart(),
-                        width: header.getSize(),
-                      }}
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                    </div>
-                  )}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td
-                  key={cell.id}
-                  style={{
-                    width: cell.column.getSize(),
-                    maxWidth: cell.column.getSize(),
-                  }}
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        <table
+          css={tableCSS}
+          style={{
+            width: table.getTotalSize(),
+            minWidth: "100%",
+          }}
+        >
+          <thead>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th colSpan={header.colSpan} key={header.id}>
+                    {header.isPlaceholder ? null : (
+                      <div
+                        style={{
+                          left: header.getStart(),
+                          width: header.getSize(),
+                        }}
+                      >
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                      </div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <td
+                    key={cell.id}
+                    style={{
+                      width: cell.column.getSize(),
+                      maxWidth: cell.column.getSize(),
+                    }}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 };

@@ -1,9 +1,10 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { graphql, useLazyLoadQuery } from "react-relay";
 
-import { ComboBox, ComboBoxItem, ComboBoxProps } from "@phoenix/components";
+import type { ComboBoxProps } from "@phoenix/components";
+import { ComboBox, ComboBoxItem } from "@phoenix/components";
 
-import { PromptComboBoxQuery } from "./__generated__/PromptComboBoxQuery.graphql";
+import type { PromptComboBoxQuery } from "./__generated__/PromptComboBoxQuery.graphql";
 
 export type PromptItem =
   PromptComboBoxQuery["response"]["prompts"]["edges"][number]["prompt"];
@@ -18,14 +19,13 @@ type PromptComboBoxProps = {
 
 export function PromptComboBox({
   onChange,
-  container,
   promptId,
   ...comboBoxProps
 }: PromptComboBoxProps) {
   const data = useLazyLoadQuery<PromptComboBoxQuery>(
     graphql`
       query PromptComboBoxQuery {
-        prompts {
+        prompts(first: 200) {
           edges {
             prompt: node {
               __typename
@@ -55,7 +55,6 @@ export function PromptComboBox({
       width="100%"
       menuTrigger="focus"
       stopPropagation
-      container={container}
       defaultItems={items}
       placeholder="Select a prompt..."
       renderEmptyState={() => <div>No prompts found</div>}

@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
 from hashlib import pbkdf2_hmac
 from typing import Any, Literal, Optional, Protocol
 
+from starlette.datastructures import Secret
 from starlette.responses import Response
 from typing_extensions import TypeVar
 
-from phoenix.config import get_env_phoenix_use_secure_cookies
+from phoenix.config import (
+    get_env_cookies_path,
+    get_env_phoenix_use_secure_cookies,
+)
 
 ResponseType = TypeVar("ResponseType", bound=Response)
 
 
-def compute_password_hash(*, password: str, salt: bytes) -> bytes:
+def compute_password_hash(*, password: Secret, salt: bytes) -> bytes:
     """
     Salts and hashes a password using PBKDF2, HMAC and SHA256.
 
@@ -26,11 +30,11 @@ def compute_password_hash(*, password: str, salt: bytes) -> bytes:
         bytes: the hashed password
     """
     assert salt
-    password_bytes = password.encode("utf-8")
+    password_bytes = str(password).encode("utf-8")
     return pbkdf2_hmac("sha256", password_bytes, salt, NUM_ITERATIONS)
 
 
-def is_valid_password(*, password: str, salt: bytes, password_hash: bytes) -> bool:
+def is_valid_password(*, password: Secret, salt: bytes, password_hash: bytes) -> bool:
     """
     Determines whether the password is valid by salting and hashing the password
     and comparing against the existing hash value.
@@ -44,6 +48,18 @@ def is_valid_password(*, password: str, salt: bytes, password_hash: bytes) -> bo
     """
     assert salt
     return password_hash == compute_password_hash(password=password, salt=salt)
+
+
+def sanitize_email(email: str) -> str:
+    """
+    Sanitizes an email address by trimming whitespace and converting to lowercase.
+
+    Args:
+        email (str): the email address to sanitize
+    Returns:
+        str: the sanitized email address
+    """
+    return email.strip().lower()
 
 
 def validate_email_format(email: str) -> None:
@@ -65,7 +81,21 @@ def validate_password_format(password: str) -> None:
     """
     Checks that the password has a valid format.
     """
-    PASSWORD_REQUIREMENTS.validate(password)
+    get_password_requirements().validate(password)
+
+
+def get_password_requirements() -> _PasswordRequirements:
+    """
+    Returns the active password requirements based on configuration.
+
+    When PHOENIX_ENABLE_STRONG_PASSWORD_POLICY is enabled, returns strong password
+    requirements. Otherwise, returns the default minimal requirements.
+    """
+    from phoenix.config import get_env_enable_strong_password_policy
+
+    if get_env_enable_strong_password_policy():
+        return STRONG_PASSWORD_REQUIREMENTS
+    return PASSWORD_REQUIREMENTS
 
 
 def set_access_token_cookie(
@@ -116,6 +146,18 @@ def set_oauth2_nonce_cookie(
     )
 
 
+def set_oauth2_code_verifier_cookie(
+    *, response: ResponseType, code_verifier: str, max_age: timedelta
+) -> ResponseType:
+    return _set_cookie(
+        response=response,
+        cookie_name=PHOENIX_OAUTH2_CODE_VERIFIER_COOKIE_NAME,
+        cookie_max_age=max_age,
+        samesite="lax",
+        value=code_verifier,
+    )
+
+
 def _set_cookie(
     *,
     response: ResponseType,
@@ -131,6 +173,7 @@ def _set_cookie(
         httponly=True,
         samesite=samesite,
         max_age=int(cookie_max_age.total_seconds()),
+        path=get_env_cookies_path(),
     )
     return response
 
@@ -152,6 +195,11 @@ def delete_oauth2_state_cookie(response: ResponseType) -> ResponseType:
 
 def delete_oauth2_nonce_cookie(response: ResponseType) -> ResponseType:
     response.delete_cookie(key=PHOENIX_OAUTH2_NONCE_COOKIE_NAME)
+    return response
+
+
+def delete_oauth2_code_verifier_cookie(response: ResponseType) -> ResponseType:
+    response.delete_cookie(key=PHOENIX_OAUTH2_CODE_VERIFIER_COOKIE_NAME)
     return response
 
 
@@ -240,8 +288,18 @@ NUM_ITERATIONS = 10_000
 """The number of iterations to use for the PBKDF2 key derivation function."""
 MIN_PASSWORD_LENGTH = 4
 """The minimum length of a password."""
+STRONG_PASSWORD_LENGTH = 12
+"""The minimum length of a password when the strong password policy is enabled."""
 PASSWORD_REQUIREMENTS = _PasswordRequirements(length=MIN_PASSWORD_LENGTH)
 """The requirements for a valid password."""
+STRONG_PASSWORD_REQUIREMENTS = _PasswordRequirements(
+    length=STRONG_PASSWORD_LENGTH,
+    digits=True,
+    lower_case=True,
+    upper_case=True,
+    special_chars=True,
+)
+"""The requirements for a valid password when the strong password policy is enabled."""
 REQUIREMENTS_FOR_PHOENIX_SECRET = _PasswordRequirements(
     length=DEFAULT_SECRET_LENGTH, digits=True, lower_case=True
 )
@@ -256,6 +314,8 @@ PHOENIX_OAUTH2_STATE_COOKIE_NAME = "phoenix-oauth2-state"
 """The name of the cookie that stores the state used for the OAuth2 authorization code flow."""
 PHOENIX_OAUTH2_NONCE_COOKIE_NAME = "phoenix-oauth2-nonce"
 """The name of the cookie that stores the nonce used for the OAuth2 authorization code flow."""
+PHOENIX_OAUTH2_CODE_VERIFIER_COOKIE_NAME = "phoenix-oauth2-code-verifier"
+"""The name of the cookie that stores the PKCE code verifier for OAuth2."""
 DEFAULT_OAUTH2_LOGIN_EXPIRY_MINUTES = 15
 """
 The default amount of time in minutes that can elapse between the initial
@@ -298,7 +358,13 @@ class ClaimSet:
 
     @property
     def status(self) -> ClaimSetStatus:
-        if self.expiration_time and self.expiration_time.timestamp() < datetime.now().timestamp():
+        # Per JWT RFC 7519 Section 4.1.4, the expiration time identifies the time
+        # "on or after which" the JWT must not be accepted. Use <= for inclusive check.
+        # https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.4
+        if (
+            self.expiration_time
+            and self.expiration_time.timestamp() <= datetime.now(timezone.utc).timestamp()
+        ):
             return ClaimSetStatus.EXPIRED
         if self.token_id is not None and self.subject is not None:
             return ClaimSetStatus.VALID

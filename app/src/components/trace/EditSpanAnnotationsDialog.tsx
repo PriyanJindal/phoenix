@@ -1,19 +1,30 @@
-import React from "react";
-
-import { Dialog } from "@arizeai/components";
-
+import { Dialog } from "@phoenix/components";
 import {
-  SpanAnnotationsEditor,
-  SpanAnnotationsEditorProps,
-} from "./SpanAnnotationsEditor";
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTitleExtra,
+} from "@phoenix/components/core/dialog";
+
+import type { SpanAnnotationsEditorProps } from "./SpanAnnotationsEditor";
+import { SpanAnnotationsEditor } from "./SpanAnnotationsEditor";
 
 type EditSpanAnnotationsDialogProps = SpanAnnotationsEditorProps;
 export function EditSpanAnnotationsDialog(
   props: EditSpanAnnotationsDialogProps
 ) {
   return (
-    <Dialog title="Annotate" size="M" isDismissable>
-      <SpanAnnotationsEditor {...props} />
+    <Dialog>
+      <DialogHeader>
+        <DialogTitle>Annotate</DialogTitle>
+        <DialogTitleExtra>
+          <DialogCloseButton slot="close" />
+        </DialogTitleExtra>
+      </DialogHeader>
+      <DialogContent>
+        <SpanAnnotationsEditor {...props} />
+      </DialogContent>
     </Dialog>
   );
 }

@@ -1,6 +1,7 @@
 import React from "react";
 
-import { Text, TextProps } from "@phoenix/components";
+import type { TextProps } from "@phoenix/components";
+import { Text } from "@phoenix/components";
 import { formatFloat } from "@phoenix/utils/numberFormatUtils";
 
 export const MeanScore = ({
@@ -12,12 +13,16 @@ export const MeanScore = ({
   fallback?: React.ReactNode;
 } & Omit<TextProps, "children">) => {
   if (value == null || typeof value !== "number" || isNaN(value)) {
-    return <Text {...props}>{fallback}</Text>;
+    return (
+      <Text {...props} fontFamily="mono">
+        {fallback}
+      </Text>
+    );
   }
   return (
     <Text {...props}>
       <span aria-label="mean score">μ&nbsp;</span>
-      {`${formatFloat(value)}`}
+      <span className="font-mono">{`${formatFloat(value)}`}</span>
     </Text>
   );
 };

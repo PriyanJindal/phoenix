@@ -1,51 +1,76 @@
-import React, { ReactNode, useState } from "react";
-import { Link, NavLink as RRNavLink } from "react-router";
 import { css } from "@emotion/react";
+import type { PropsWithChildren, ReactNode } from "react";
+import { useMemo } from "react";
+import { Button, Pressable } from "react-aria-components";
+import { Link, NavLink as RRNavLink } from "react-router";
 
-import { Icon, Icons, Text } from "@phoenix/components";
-import { useTheme } from "@phoenix/contexts";
+import {
+  Flex,
+  Icon,
+  Icons,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Popover,
+  PopoverArrow,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+} from "@phoenix/components";
+import { GitHubStarCount } from "@phoenix/components/nav/GitHubStarCount";
+import { isProviderThemeMode, useTheme, useViewer } from "@phoenix/contexts";
+import { assertUnreachable } from "@phoenix/typeUtils";
 
-import { Logo } from "./Logo";
+import { Logo, LogoText } from "./Logo";
 
 const topNavCSS = css`
-  padding: var(--ac-global-dimension-static-size-100)
-    var(--ac-global-dimension-static-size-100)
-    var(--ac-global-dimension-static-size-100) 12px;
-  border-bottom: 1px solid var(--ac-global-color-grey-200);
+  padding: var(--global-dimension-static-size-100);
+  background-color: var(--global-color-gray-100);
   flex: none;
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: var(--global-dimension-static-size-100);
+
+  .copy-action-menu__button {
+    opacity: 0;
+    transition: none;
+  }
+  &:hover .copy-action-menu__button,
+  .copy-action-menu__button[data-pressed],
+  .copy-action-menu__button[data-copied] {
+    opacity: 1;
+    transition: opacity 0.15s ease-in-out;
+  }
 `;
 
 const sideNavCSS = css`
-  padding: var(--ac-global-dimension-static-size-200)
-    var(--ac-global-dimension-static-size-100);
+  padding: var(--global-dimension-static-size-200)
+    var(--global-dimension-static-size-100);
+  background-color: var(--global-color-gray-100);
   flex: none;
   display: flex;
   flex-direction: column;
-  background-color: var(--ac-global-color-grey-75);
-  border-right: 1px solid var(--ac-global-color-grey-200);
   box-sizing: border-box;
   height: 100vh;
-  position: fixed;
-  width: var(--px-nav-collapsed-width);
-  z-index: 2; // Above the content
-  transition:
-    width 0.15s cubic-bezier(0, 0.57, 0.21, 0.99),
-    box-shadow 0.15s cubic-bezier(0, 0.57, 0.21, 0.99);
+  width: var(--nav-collapsed-width);
+  transition: width 0.15s cubic-bezier(0, 0.57, 0.21, 0.99);
   &[data-expanded="true"] {
-    width: var(--px-nav-expanded-width);
-    box-shadow: 0 0 30px 0 rgba(0, 0, 0, 0.2);
+    width: var(--nav-expanded-width);
+  }
+  &[data-expanded="false"] {
+    .brand-text-wrap {
+      opacity: 0;
+    }
   }
 `;
 
 const navLinkCSS = css`
   width: 100%;
-  color: var(--ac-global-color-grey-500);
+  color: var(--global-color-gray-500);
   background-color: transparent;
-  border-radius: var(--ac-global-rounding-small);
+  border-radius: var(--global-rounding-small);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -54,67 +79,195 @@ const navLinkCSS = css`
     color 0.2s ease-in-out,
     background-color 0.2s ease-in-out;
   text-decoration: none;
+  cursor: pointer;
 
   &.active {
-    color: var(--ac-global-color-grey-1200);
-    background-color: var(--ac-global-color-primary-200);
+    color: var(--global-text-color-900);
+    background-color: var(--global-color-gray-200);
   }
   &:hover:not(.active) {
-    color: var(--ac-global-color-grey-1200);
-    background-color: var(--ac-global-color-grey-100);
+    color: var(--global-text-color-900);
+    background-color: var(--global-color-gray-200);
   }
-  & > .ac-icon-wrap {
-    padding: var(--ac-global-dimension-size-50);
+  & > .icon-wrap {
+    padding: var(--global-dimension-size-100);
     display: inline-block;
   }
-  .ac-text {
-    padding-inline-start: var(--ac-global-dimension-size-50);
+  .text {
+    padding-inline-start: var(--global-dimension-size-50);
+    padding-inline-end: var(--global-dimension-size-100);
     white-space: nowrap;
+    flex: 1;
+    text-align: start;
+  }
+  .counter {
+    margin-inline-end: var(--global-dimension-size-100);
   }
 `;
 
 const brandCSS = css`
-  color: var(--ac-global-text-color-900);
-  font-size: var(--ac-global-font-size-xl);
+  color: var(--global-text-color-900);
+  font-size: var(--global-font-size-xl);
   text-decoration: none;
-  margin: 0 0 var(--ac-global-dimension-static-size-200) 0;
+  margin: 0 0 var(--global-dimension-static-size-200) 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--global-dimension-static-size-150);
+  overflow: hidden;
+  & > * {
+    flex: none;
+  }
+  .brand-text-wrap {
+    opacity: 1;
+    transition: all 0.8s ease-in-out;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
 `;
 
 function ExternalLink(props: {
   href: string;
   leadingVisual: ReactNode;
+  trailingVisual?: ReactNode;
   text: string;
+  replaceTab?: boolean;
+  isExpanded: boolean;
 }) {
   return (
-    <a href={props.href} target="_blank" css={navLinkCSS} rel="noreferrer">
-      {props.leadingVisual}
-      <Text>{props.text}</Text>
-    </a>
+    <TooltipTrigger delay={0} isDisabled={props.isExpanded}>
+      <Pressable>
+        <a
+          href={props.href}
+          target={props.replaceTab ? undefined : "_blank"}
+          css={navLinkCSS}
+          rel="noreferrer"
+          role="button"
+        >
+          {props.leadingVisual}
+          <Text>{props.text}</Text>
+          {props.trailingVisual}
+        </a>
+      </Pressable>
+      <Tooltip placement="right" offset={10}>
+        {props.text}
+      </Tooltip>
+    </TooltipTrigger>
   );
 }
 
-export function DocsLink() {
+export function DocsLink({ isExpanded }: { isExpanded: boolean }) {
   return (
     <ExternalLink
-      href="https://docs.arize.com/phoenix"
+      href="https://arize.com/docs/phoenix"
       leadingVisual={<Icon svg={<Icons.BookOutline />} />}
       text="Documentation"
+      isExpanded={isExpanded}
     />
   );
 }
 
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark";
+export function GitHubLink({ isExpanded }: { isExpanded: boolean }) {
   return (
-    <button
-      css={navLinkCSS}
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="button--reset"
-    >
-      <Icon svg={isDark ? <Icons.MoonOutline /> : <Icons.SunOutline />} />
-      <Text>{isDark ? "Dark" : "Light"}</Text>
-    </button>
+    <ExternalLink
+      href="https://github.com/Arize-ai/phoenix"
+      leadingVisual={<Icon svg={<Icons.GitHub />} />}
+      trailingVisual={<GitHubStarCount />}
+      text="Star on GitHub"
+      isExpanded={isExpanded}
+    />
+  );
+}
+
+export function ThemeSelector({ isExpanded }: { isExpanded: boolean }) {
+  const { theme, systemTheme, themeMode, setThemeMode } = useTheme();
+  const { themeText, themeIcon } = useMemo(() => {
+    let themeIcon: ReactNode;
+    let themeText: string;
+    switch (themeMode) {
+      case "light":
+        themeIcon = <Icons.SunOutline />;
+        themeText = "Light";
+        break;
+      case "dark":
+        themeIcon = <Icons.MoonOutline />;
+        themeText = "Dark";
+        break;
+      case "system":
+        themeIcon = <Icons.HalfMoonHalfSunOutline />;
+        themeText = `${theme === "light" ? "Light" : "Dark"} (auto)`;
+        break;
+      default:
+        assertUnreachable(themeMode);
+    }
+    return {
+      themeIcon,
+      themeText,
+    };
+  }, [theme, themeMode]);
+
+  return (
+    <TooltipTrigger delay={0} isDisabled={isExpanded}>
+      <MenuTrigger>
+        <Button css={navLinkCSS} className="button--reset">
+          <Icon svg={themeIcon} />
+          <Text>{themeText}</Text>
+        </Button>
+        <Popover placement="right top">
+          <PopoverArrow />
+          <Menu
+            aria-label="Theme selection"
+            selectedKeys={new Set([themeMode])}
+            selectionMode="single"
+            onSelectionChange={(keys) => {
+              const selectedKey =
+                keys instanceof Set ? Array.from(keys)[0] : null;
+              if (selectedKey && isProviderThemeMode(selectedKey)) {
+                setThemeMode(selectedKey);
+              }
+            }}
+          >
+            <MenuItem id="system">
+              <Flex
+                direction="row"
+                gap="size-100"
+                justifyContent="start"
+                alignItems="center"
+              >
+                <Icon svg={<Icons.HalfMoonHalfSunOutline />} />
+                <Text>{`Auto (${systemTheme})`}</Text>
+              </Flex>
+            </MenuItem>
+            <MenuItem id="dark">
+              <Flex
+                direction="row"
+                gap="size-100"
+                justifyContent="start"
+                alignItems="center"
+              >
+                <Icon svg={<Icons.MoonOutline />} />
+                <Text>Dark</Text>
+              </Flex>
+            </MenuItem>
+            <MenuItem id="light">
+              <Flex
+                direction="row"
+                gap="size-100"
+                justifyContent="start"
+                alignItems="center"
+              >
+                <Icon svg={<Icons.SunOutline />} />
+                <Text>Light</Text>
+              </Flex>
+            </MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+      <Tooltip placement="right" offset={10}>
+        {themeText}
+      </Tooltip>
+    </TooltipTrigger>
   );
 }
 
@@ -126,6 +279,9 @@ export function Brand() {
       title={`version: ${window.Config.platformVersion}`}
     >
       <Logo />
+      <div className="brand-text-wrap">
+        <LogoText className="brand-text" />
+      </div>
     </Link>
   );
 }
@@ -134,19 +290,12 @@ export function TopNavbar({ children }: { children: ReactNode }) {
   return <nav css={topNavCSS}>{children}</nav>;
 }
 
-export function SideNavbar({ children }: { children: ReactNode }) {
-  const [isHovered, setIsHovered] = useState(false);
+export function SideNavbar({
+  children,
+  isExpanded,
+}: PropsWithChildren<{ isExpanded: boolean }>) {
   return (
-    <nav
-      data-expanded={isHovered}
-      css={sideNavCSS}
-      onMouseOver={() => {
-        setIsHovered(true);
-      }}
-      onMouseOut={() => {
-        setIsHovered(false);
-      }}
-    >
+    <nav data-expanded={isExpanded} css={sideNavCSS}>
       {children}
     </nav>
   );
@@ -156,12 +305,24 @@ export function NavLink(props: {
   to: string;
   text: string;
   leadingVisual: ReactNode;
+  trailingVisual?: ReactNode;
+  isExpanded: boolean;
 }) {
   return (
-    <RRNavLink to={props.to} css={navLinkCSS}>
-      {props.leadingVisual}
-      <Text>{props.text}</Text>
-    </RRNavLink>
+    <TooltipTrigger delay={0} isDisabled={props.isExpanded}>
+      <Pressable>
+        <div role="button">
+          <RRNavLink to={props.to} css={navLinkCSS}>
+            {props.leadingVisual}
+            <Text>{props.text}</Text>
+            {props.trailingVisual}
+          </RRNavLink>
+        </div>
+      </Pressable>
+      <Tooltip placement="right" offset={10}>
+        {props.text}
+      </Tooltip>
+    </TooltipTrigger>
   );
 }
 
@@ -177,3 +338,22 @@ export function NavButton(props: {
     </button>
   );
 }
+
+export const ManagementLink = ({ isExpanded }: { isExpanded: boolean }) => {
+  const { viewer } = useViewer();
+
+  if (viewer?.isManagementUser && window.Config.managementUrl) {
+    return (
+      <li key="management">
+        <ExternalLink
+          href={window.Config.managementUrl}
+          leadingVisual={<Icon svg={<Icons.Server />} />}
+          text="Management Console"
+          replaceTab
+          isExpanded={isExpanded}
+        />
+      </li>
+    );
+  }
+  return null;
+};

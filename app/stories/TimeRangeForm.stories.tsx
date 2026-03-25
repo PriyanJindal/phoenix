@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta } from "@storybook/react";
+import { useState } from "react";
 
 import {
   Button,
@@ -10,13 +10,12 @@ import {
   Popover,
   PopoverArrow,
   TimeRangeForm,
-  TimeRangeFormProps,
   View,
 } from "@phoenix/components";
-import { timeRangeFormatter } from "@phoenix/utils/timeFormatUtils";
+import { createTimeRangeFormatter } from "@phoenix/utils/timeFormatUtils";
 
 const meta: Meta = {
-  title: "TimeRangeForm",
+  title: "Core/Forms/Time Range Form",
   component: TimeRangeForm,
   parameters: {
     layout: "centered",
@@ -25,20 +24,18 @@ const meta: Meta = {
 
 export default meta;
 
-const Template: StoryFn<TimeRangeFormProps> = (args) => (
-  <TimeRangeForm {...args} />
-);
+export const Default = {
+  args: {},
+};
 
-/**
- * Used to specify a time range in a pop up or modal
- */
-export const Default = Template.bind({});
-
-Default.args = {};
+const timeRangeFormatter = createTimeRangeFormatter({
+  locale: "en-US",
+  timeZone: "UTC",
+});
 
 export const InAPopOver = () => {
   const [timeRange, setTimeRange] = useState<OpenTimeRange>({
-    start: new Date(),
+    start: new Date("2024-01-15T10:00:00Z"),
   });
   const timeRangeString = timeRangeFormatter(timeRange);
   return (

@@ -1,5 +1,4 @@
-import React, { startTransition, useEffect, useMemo } from "react";
-import { graphql, usePaginationFragment } from "react-relay";
+import { css } from "@emotion/react";
 import {
   type ColumnDef,
   flexRender,
@@ -7,34 +6,59 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { css } from "@emotion/react";
+import { useMemo } from "react";
+import { graphql, readInlineData, usePaginationFragment } from "react-relay";
 
 import { Link } from "@phoenix/components";
 import { tableCSS } from "@phoenix/components/table/styles";
-import {
-  useNotifySuccess,
-  useViewerCanManageRetentionPolicy,
-} from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts/NotificationContext";
+import { useViewerCanManageRetentionPolicy } from "@phoenix/contexts/ViewerContext";
 import { assertUnreachable } from "@phoenix/typeUtils";
 import { createPolicyScheduleSummaryText } from "@phoenix/utils/retentionPolicyUtils";
 
-import { RetentionPoliciesTable_policies$key } from "./__generated__/RetentionPoliciesTable_policies.graphql";
-import { RetentionPoliciesTablePoliciesQuery } from "./__generated__/RetentionPoliciesTablePoliciesQuery.graphql";
+import type { RetentionPoliciesTable_policies$key } from "./__generated__/RetentionPoliciesTable_policies.graphql";
+import type { RetentionPoliciesTable_retentionPolicy$key } from "./__generated__/RetentionPoliciesTable_retentionPolicy.graphql";
+import type { RetentionPoliciesTablePoliciesQuery } from "./__generated__/RetentionPoliciesTablePoliciesQuery.graphql";
 import { RetentionPolicyActionMenu } from "./RetentionPolicyActionMenu";
+
+const RETENTION_POLICY_FRAGMENT = graphql`
+  fragment RetentionPoliciesTable_retentionPolicy on ProjectTraceRetentionPolicy
+  @inline {
+    id
+    name
+    cronExpression
+    rule {
+      __typename
+      ... on TraceRetentionRuleMaxCount {
+        maxCount
+      }
+      ... on TraceRetentionRuleMaxDays {
+        maxDays
+      }
+      ... on TraceRetentionRuleMaxDaysOrCount {
+        maxDays
+        maxCount
+      }
+    }
+    projects {
+      edges {
+        node {
+          name
+          id
+        }
+      }
+    }
+  }
+`;
 export const RetentionPoliciesTable = ({
   query,
-  fetchKey,
 }: {
   query: RetentionPoliciesTable_policies$key;
-  /**
-   * A temporary workaround to force a refetch of the table when a new policy is created.
-   * This is because the refetchable fragment doesn't refetch when the data is updated.
-   */
-  fetchKey: number;
 }) => {
+  "use no memo";
   const notifySuccess = useNotifySuccess();
   const canManageRetentionPolicy = useViewerCanManageRetentionPolicy();
-  const { data, refetch } = usePaginationFragment<
+  const { data } = usePaginationFragment<
     RetentionPoliciesTablePoliciesQuery,
     RetentionPoliciesTable_policies$key
   >(
@@ -46,35 +70,10 @@ export const RetentionPoliciesTable = ({
         first: { type: "Int", defaultValue: 1000 }
       ) {
         projectTraceRetentionPolicies(first: $first, after: $after)
-          @connection(
-            key: "RetentionPoliciesTable_projectTraceRetentionPolicies"
-          ) {
+          @connection(key: "RetentionPoliciesTable_projectTraceRetentionPolicies") {
           edges {
             node {
-              id
-              name
-              cronExpression
-              rule {
-                __typename
-                ... on TraceRetentionRuleMaxCount {
-                  maxCount
-                }
-                ... on TraceRetentionRuleMaxDays {
-                  maxDays
-                }
-                ... on TraceRetentionRuleMaxDaysOrCount {
-                  maxDays
-                  maxCount
-                }
-              }
-              projects {
-                edges {
-                  node {
-                    name
-                    id
-                  }
-                }
-              }
+              ...RetentionPoliciesTable_retentionPolicy
             }
           }
         }
@@ -83,22 +82,17 @@ export const RetentionPoliciesTable = ({
     query
   );
 
-  /**
-   * This is a temporary workaround to force a refetch of the table when a new policy is created.
-   */
-  useEffect(() => {
-    if (fetchKey > 0) {
-      refetch(
-        {},
-        {
-          fetchPolicy: "network-only",
-        }
-      );
-    }
-  }, [fetchKey, refetch]);
-
-  const tableData = data.projectTraceRetentionPolicies.edges.map(
-    (edge) => edge.node
+  const tableData = useMemo(
+    () =>
+      data.projectTraceRetentionPolicies.edges.map((edge) => {
+        const node = edge.node;
+        const data = readInlineData<RetentionPoliciesTable_retentionPolicy$key>(
+          RETENTION_POLICY_FRAGMENT,
+          node
+        );
+        return data;
+      }),
+    [data]
   );
 
   const columns: ColumnDef<(typeof tableData)[number]>[] = useMemo(() => {
@@ -188,14 +182,6 @@ export const RetentionPoliciesTable = ({
                   title: "Policy deleted",
                   message: `Policy "${row.original.name}" was deleted`,
                 });
-                startTransition(() => {
-                  refetch(
-                    {},
-                    {
-                      fetchPolicy: "network-only",
-                    }
-                  );
-                });
               }}
             />
           );
@@ -203,9 +189,10 @@ export const RetentionPoliciesTable = ({
       });
     }
     return columns;
-  }, [canManageRetentionPolicy, notifySuccess, refetch]);
+  }, [canManageRetentionPolicy, notifySuccess]);
 
-  const table = useReactTable<(typeof tableData)[number]>({
+  // eslint-disable-next-line react-hooks-js/incompatible-library
+  const table = useReactTable({
     columns,
     data: tableData,
     getCoreRowModel: getCoreRowModel(),

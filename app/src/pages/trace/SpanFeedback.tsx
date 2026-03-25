@@ -1,19 +1,20 @@
-import React, { useMemo, useState } from "react";
-import { graphql, useFragment } from "react-relay";
+import { css } from "@emotion/react";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
-  SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { css } from "@emotion/react";
+import { useMemo, useState } from "react";
+import { graphql, useFragment } from "react-relay";
 
 import { JSONText } from "@phoenix/components/code/JSONText";
-import { Icons } from "@phoenix/components/icon";
-import { Icon } from "@phoenix/components/icon/Icon";
-import { Flex } from "@phoenix/components/layout/Flex";
+import { Alert } from "@phoenix/components/core/alert";
+import { Icons } from "@phoenix/components/core/icon";
+import { Icon } from "@phoenix/components/core/icon/Icon";
+import { Flex } from "@phoenix/components/core/layout/Flex";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
 import { PreformattedTextCell } from "@phoenix/components/table";
 import { tableCSS } from "@phoenix/components/table/styles";
 import { TableEmpty } from "@phoenix/components/table/TableEmpty";
@@ -21,10 +22,9 @@ import { TimestampCell } from "@phoenix/components/table/TimestampCell";
 import { AnnotatorKindToken } from "@phoenix/components/trace/AnnotatorKindToken";
 import { SpanAnnotationActionMenu } from "@phoenix/components/trace/SpanAnnotationActionMenu";
 import { UserPicture } from "@phoenix/components/user/UserPicture";
-import { Truncate } from "@phoenix/components/utility/Truncate";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import { useNotifySuccess } from "@phoenix/contexts";
 
-import {
+import type {
   SpanFeedback_annotations$data,
   SpanFeedback_annotations$key,
 } from "./__generated__/SpanFeedback_annotations.graphql";
@@ -52,7 +52,7 @@ function SpanAnnotationsTable({
     }));
   }, [annotations, spanNodeId]);
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
 
   const columns: ColumnDef<TableRow>[] = useMemo(
     () => [
@@ -147,29 +147,25 @@ function SpanAnnotationsTable({
         cell: ({ row }) => {
           return (
             <SpanAnnotationActionMenu
-              buttonVariant="default"
-              buttonSize="compact"
               annotationId={row.original.id}
               spanNodeId={row.original.spanNodeId}
               annotationName={row.original.name}
               onSpanAnnotationActionSuccess={notifySuccess}
               onSpanAnnotationActionError={(error) => {
-                notifyError({
-                  title: "Failed to update span annotation",
-                  message: error.message,
-                });
+                setError(error.message);
               }}
             />
           );
         },
       },
     ],
-    [notifyError, notifySuccess]
+    [setError, notifySuccess]
   );
 
   const [sorting, setSorting] = useState<SortingState>([
     { id: "createdAt", desc: true },
   ]);
+  // eslint-disable-next-line react-hooks-js/incompatible-library
   const table = useReactTable({
     columns,
     data: tableData,
@@ -185,6 +181,7 @@ function SpanAnnotationsTable({
 
   return (
     <div css={spanAnnotationsTableWrapCSS}>
+      {error && <Alert variant="danger">{error}</Alert>}
       <table css={tableCSS} data-testid="span-annotations-table">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -195,9 +192,7 @@ function SpanAnnotationsTable({
                     <>
                       <div
                         {...{
-                          className: header.column.getCanSort()
-                            ? "cursor-pointer"
-                            : "",
+                          className: header.column.getCanSort() ? "sort" : "",
                           onClick: header.column.getToggleSortingHandler(),
                           style: {
                             display: "flex",
@@ -259,6 +254,7 @@ function SpanAnnotationsTable({
 }
 
 export function SpanFeedback({ span }: { span: SpanFeedback_annotations$key }) {
+  "use no memo";
   const data = useFragment(
     graphql`
       fragment SpanFeedback_annotations on Span {

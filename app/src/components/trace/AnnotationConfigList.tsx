@@ -1,86 +1,44 @@
-import React, { startTransition, useCallback, useMemo, useState } from "react";
-import { FocusScope } from "react-aria";
+import { isString } from "lodash";
+import { startTransition, useCallback, useMemo } from "react";
 import {
   graphql,
   useFragment,
   useLazyLoadQuery,
   useMutation,
 } from "react-relay";
-import { useNavigate } from "react-router";
-import { css } from "@emotion/react";
-
-import { Tooltip, TooltipTrigger, TriggerWrap } from "@arizeai/components";
 
 import {
-  Button,
-  Flex,
-  Icon,
-  Icons,
+  Autocomplete,
   Input,
-  Link,
-  ListBox,
-  ListBoxItem,
+  Menu,
+  MenuEmpty,
+  MenuHeader,
+  MenuItem,
+  SearchField,
   Text,
-  TextField,
-  View,
+  Token,
+  useFilter,
 } from "@phoenix/components";
-import { AnnotationLabel } from "@phoenix/components/annotation";
-import { AnnotationConfigListAssociateAnnotationConfigWithProjectMutation } from "@phoenix/components/trace/__generated__/AnnotationConfigListAssociateAnnotationConfigWithProjectMutation.graphql";
-import { AnnotationConfigListProjectAnnotationConfigFragment$key } from "@phoenix/components/trace/__generated__/AnnotationConfigListProjectAnnotationConfigFragment.graphql";
-import {
-  AnnotationConfigListQuery,
-  AnnotationType,
-} from "@phoenix/components/trace/__generated__/AnnotationConfigListQuery.graphql";
-import { AnnotationConfigListRemoveAnnotationConfigFromProjectMutation } from "@phoenix/components/trace/__generated__/AnnotationConfigListRemoveAnnotationConfigFromProjectMutation.graphql";
+import { AnnotationColorSwatch } from "@phoenix/components/annotation";
+import { SearchIcon } from "@phoenix/components/core/field";
+import type { AnnotationConfigListAssociateAnnotationConfigWithProjectMutation } from "@phoenix/components/trace/__generated__/AnnotationConfigListAssociateAnnotationConfigWithProjectMutation.graphql";
+import type { AnnotationConfigListProjectAnnotationConfigFragment$key } from "@phoenix/components/trace/__generated__/AnnotationConfigListProjectAnnotationConfigFragment.graphql";
+import type { AnnotationConfigListQuery } from "@phoenix/components/trace/__generated__/AnnotationConfigListQuery.graphql";
+import type { AnnotationConfigListRemoveAnnotationConfigFromProjectMutation } from "@phoenix/components/trace/__generated__/AnnotationConfigListRemoveAnnotationConfigFromProjectMutation.graphql";
 import { useViewer } from "@phoenix/contexts/ViewerContext";
-
-const annotationListBoxCSS = css`
-  padding: 0 var(--ac-global-dimension-size-100);
-  max-height: 300px;
-  min-width: 320px;
-  min-height: 20px;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  .react-aria-ListBoxItem {
-    padding: 0 var(--ac-global-dimension-size-100);
-
-    label {
-      border-radius: var(--ac-global-rounding-small);
-      padding: var(--ac-global-dimension-size-50) 0;
-      width: 100%;
-      &:hover {
-        background-color: var(--ac-global-color-grey-300);
-      }
-    }
-  }
-`;
-
-const annotationLabelCSS = css`
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ac-global-dimension-size-100);
-`;
-
-const annotationTypeLabelMap: Record<AnnotationType, string> = {
-  ["CATEGORICAL"]: "Categorical",
-  ["CONTINUOUS"]: "Continuous",
-  ["FREEFORM"]: "Freeform",
-};
 
 export function AnnotationConfigList(props: {
   projectId: string;
   spanId: string;
+  refetchKey?: number;
 }) {
-  const navigate = useNavigate();
-  const { projectId, spanId } = props;
-  const [filter, setFilter] = useState<string>("");
+  const { projectId, spanId, refetchKey = 0 } = props;
+  const { contains } = useFilter({ sensitivity: "base" });
   const { viewer } = useViewer();
   const viewerId = viewer?.id;
   const data = useLazyLoadQuery<AnnotationConfigListQuery>(
     graphql`
-      query AnnotationConfigListQuery($projectId: GlobalID!) {
+      query AnnotationConfigListQuery($projectId: ID!) {
         project: node(id: $projectId) {
           ... on Project {
             ...AnnotationConfigListProjectAnnotationConfigFragment
@@ -112,7 +70,8 @@ export function AnnotationConfigList(props: {
         }
       }
     `,
-    { projectId }
+    { projectId },
+    { fetchKey: refetchKey, fetchPolicy: "store-and-network" }
   );
 
   const projectAnnotationData =
@@ -156,16 +115,13 @@ export function AnnotationConfigList(props: {
     useMutation<AnnotationConfigListAssociateAnnotationConfigWithProjectMutation>(
       graphql`
         mutation AnnotationConfigListAssociateAnnotationConfigWithProjectMutation(
-          $projectId: GlobalID!
-          $annotationConfigId: GlobalID!
-          $spanId: GlobalID!
-          $filterUserIds: [GlobalID!]
+          $projectId: ID!
+          $annotationConfigId: ID!
+          $spanId: ID!
+          $filterUserIds: [ID!]
         ) {
           addAnnotationConfigToProject(
-            input: {
-              projectId: $projectId
-              annotationConfigId: $annotationConfigId
-            }
+            input: { projectId: $projectId, annotationConfigId: $annotationConfigId }
           ) {
             query {
               projectNode: node(id: $projectId) {
@@ -191,16 +147,13 @@ export function AnnotationConfigList(props: {
     useMutation<AnnotationConfigListRemoveAnnotationConfigFromProjectMutation>(
       graphql`
         mutation AnnotationConfigListRemoveAnnotationConfigFromProjectMutation(
-          $projectId: GlobalID!
-          $annotationConfigId: GlobalID!
-          $spanId: GlobalID!
-          $filterUserIds: [GlobalID!]
+          $projectId: ID!
+          $annotationConfigId: ID!
+          $spanId: ID!
+          $filterUserIds: [ID!]
         ) {
           removeAnnotationConfigFromProject(
-            input: {
-              projectId: $projectId
-              annotationConfigId: $annotationConfigId
-            }
+            input: { projectId: $projectId, annotationConfigId: $annotationConfigId }
           ) {
             query {
               projectNode: node(id: $projectId) {
@@ -252,144 +205,82 @@ export function AnnotationConfigList(props: {
     [projectId, removeAnnotationConfigFromProjectMutation, spanId, viewerId]
   );
 
-  const allAnnotationConfigs = data.allAnnotationConfigs.edges;
-  const projectAnnotationConfigs =
-    projectAnnotationData.annotationConfigs?.edges;
-  const annotationConfigIdInProject = useMemo(() => {
-    return new Set(projectAnnotationConfigs?.map((config) => config.node.id));
+  const allAnnotationConfigs = useMemo(
+    () => data.allAnnotationConfigs.edges.map((edge) => edge.node),
+    [data]
+  );
+  const projectAnnotationConfigs = useMemo(
+    () => projectAnnotationData.annotationConfigs?.edges || [],
+    [projectAnnotationData]
+  );
+  const annotationConfigIdsInProject: Set<string> = useMemo(() => {
+    const configIds = projectAnnotationConfigs
+      .map((config) => config.node.id)
+      .filter(isString);
+    return new Set(configIds);
   }, [projectAnnotationConfigs]);
-  const filteredAnnotationConfigs = useMemo(() => {
-    return allAnnotationConfigs.filter((config) =>
-      config.node.name?.toLowerCase().includes(filter.toLowerCase())
-    );
-  }, [allAnnotationConfigs, filter]);
-  const toggleAnnotationConfigInProject = useCallback(
-    (annotationConfigId: string) => {
-      if (annotationConfigIdInProject.has(annotationConfigId)) {
-        removeAnnotationConfigFromProject(annotationConfigId);
-      } else {
-        addAnnotationConfigToProject(annotationConfigId);
+
+  const handleSelectionChange = useCallback(
+    (keys: "all" | Set<React.Key>) => {
+      if (keys === "all") {
+        return;
+      }
+      const newSelectedIds = new Set(Array.from(keys) as string[]);
+      for (const configId of newSelectedIds) {
+        if (!annotationConfigIdsInProject.has(configId)) {
+          addAnnotationConfigToProject(configId);
+        }
+      }
+      for (const configId of annotationConfigIdsInProject) {
+        if (!newSelectedIds.has(configId)) {
+          removeAnnotationConfigFromProject(configId);
+        }
       }
     },
     [
-      annotationConfigIdInProject,
       addAnnotationConfigToProject,
       removeAnnotationConfigFromProject,
+      annotationConfigIdsInProject,
     ]
   );
+
   return (
-    <>
-      <View paddingTop="size-100" maxWidth={320}>
-        <FocusScope autoFocus contain>
-          <Flex direction="column" gap="size-100">
-            <View paddingX="size-100" paddingY="size-100">
-              <Flex
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                gap="size-100"
-              >
-                <TextField
-                  aria-label="Search annotation configs"
-                  value={filter}
-                  onChange={(value) => {
-                    setFilter(value);
-                  }}
-                >
-                  <Input placeholder="Search annotation configs" />
-                </TextField>
-                <TooltipTrigger>
-                  <TriggerWrap>
-                    <Button
-                      aria-label="Create annotation config"
-                      onPress={() => {
-                        navigate("/settings/annotations");
-                      }}
-                      leadingVisual={<Icon svg={<Icons.PlusCircleOutline />} />}
-                    />
-                  </TriggerWrap>
-                  <Tooltip>Create new annotation config</Tooltip>
-                </TooltipTrigger>
-              </Flex>
-            </View>
-            <ListBox
-              css={annotationListBoxCSS}
-              selectionMode="single"
-              selectionBehavior="toggle"
-              aria-label="Annotation Configs"
-              renderEmptyState={() => (
-                <View width="100%" height="100%" paddingBottom="size-100">
-                  <Flex
-                    direction="column"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    {filter ? (
-                      <Text
-                        style={{
-                          whiteSpace: "pre-wrap",
-                          textAlign: "center",
-                          padding: 0,
-                        }}
-                      >
-                        No annotation configs found for &quot;{filter}&quot;
-                      </Text>
-                    ) : (
-                      <Link to="/settings/annotations">
-                        Configure Annotation Configs
-                      </Link>
-                    )}
-                  </Flex>
-                </View>
-              )}
-              onSelectionChange={(keys) => {
-                if (keys === "all" || keys.size === 0) {
-                  return;
-                }
-                const annotationConfigId = keys.values().next().value;
-                toggleAnnotationConfigInProject(annotationConfigId);
-              }}
-            >
-              {filteredAnnotationConfigs.map((config) => (
-                <ListBoxItem
-                  key={config.node.id}
-                  id={config.node.id}
-                  textValue={config.node.name}
-                >
-                  <Flex direction="row" alignItems="center">
-                    <label css={annotationLabelCSS}>
-                      <Flex direction="row" alignItems="center" gap="size-100">
-                        <input
-                          type="checkbox"
-                          checked={annotationConfigIdInProject.has(
-                            config.node.id
-                          )}
-                          readOnly
-                        />
-                        <AnnotationLabel
-                          key={config.node.name}
-                          annotation={{
-                            name: config.node.name || "",
-                          }}
-                          annotationDisplayPreference="none"
-                          css={css`
-                            width: fit-content;
-                          `}
-                        />
-                      </Flex>
-                      <span>
-                        {annotationTypeLabelMap[
-                          config.node.annotationType as AnnotationType
-                        ] || config.node.annotationType}
-                      </span>
-                    </label>
-                  </Flex>
-                </ListBoxItem>
-              ))}
-            </ListBox>
-          </Flex>
-        </FocusScope>
-      </View>
-    </>
+    <Autocomplete filter={contains}>
+      <MenuHeader>
+        <SearchField
+          aria-label="Search annotation configs"
+          variant="quiet"
+          autoFocus
+        >
+          <SearchIcon />
+          <Input placeholder="Search annotation configs" />
+        </SearchField>
+      </MenuHeader>
+      <Menu
+        aria-label="Annotation Configs"
+        items={allAnnotationConfigs}
+        selectionMode="multiple"
+        selectedKeys={annotationConfigIdsInProject}
+        onSelectionChange={handleSelectionChange}
+        renderEmptyState={() => (
+          <MenuEmpty>No annotation configs found.</MenuEmpty>
+        )}
+      >
+        {({ id, name, annotationType }) => (
+          <MenuItem
+            id={id}
+            textValue={name ?? undefined}
+            leadingContent={
+              <AnnotationColorSwatch annotationName={name || ""} />
+            }
+            trailingContent={
+              <Token size="S">{annotationType?.toLocaleLowerCase()}</Token>
+            }
+          >
+            <Text>{name}</Text>
+          </MenuItem>
+        )}
+      </Menu>
+    </Autocomplete>
   );
 }

@@ -1,11 +1,12 @@
 import gzip
 from collections.abc import Callable
+from datetime import datetime, timezone
 from itertools import chain
 from typing import Any, Iterator, Optional, Union, cast
 
 import pandas as pd
 import pyarrow as pa
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from google.protobuf.message import DecodeError
 from pandas import DataFrame
 from sqlalchemy import select
@@ -14,12 +15,6 @@ from starlette.background import BackgroundTask
 from starlette.datastructures import State
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
-from starlette.status import (
-    HTTP_204_NO_CONTENT,
-    HTTP_404_NOT_FOUND,
-    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    HTTP_422_UNPROCESSABLE_ENTITY,
-)
 from typing_extensions import TypeAlias
 
 import phoenix.trace.v1 as pb
@@ -28,6 +23,7 @@ from phoenix.db import models
 from phoenix.db.insertion.types import Precursors
 from phoenix.exceptions import PhoenixEvaluationNameIsMissing
 from phoenix.server.api.routers.utils import table_to_bytes
+from phoenix.server.authorization import is_not_locked
 from phoenix.server.types import DbSessionFactory
 from phoenix.trace.span_evaluations import (
     DocumentEvaluations,
@@ -45,19 +41,19 @@ router = APIRouter(tags=["traces"], include_in_schema=True)
 
 @router.post(
     "/evaluations",
+    dependencies=[Depends(is_not_locked)],
     operation_id="addEvaluations",
     summary="Add span, trace, or document evaluations",
-    status_code=HTTP_204_NO_CONTENT,
+    status_code=204,
     responses=add_errors_to_responses(
         [
             {
-                "status_code": HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                "status_code": 415,
                 "description": (
-                    "Unsupported content type, "
-                    "only gzipped protobuf and pandas-arrow are supported"
+                    "Unsupported content type, only gzipped protobuf and pandas-arrow are supported"
                 ),
             },
-            HTTP_422_UNPROCESSABLE_ENTITY,
+            422,
         ]
     ),
     openapi_extra={
@@ -78,29 +74,23 @@ async def post_evaluations(
     if content_type == "application/x-pandas-arrow":
         return await _process_pyarrow(request)
     if content_type != "application/x-protobuf":
-        raise HTTPException(
-            detail="Unsupported content type", status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE
-        )
+        raise HTTPException(detail="Unsupported content type", status_code=415)
     body = await request.body()
     if content_encoding == "gzip":
         body = gzip.decompress(body)
     elif content_encoding:
-        raise HTTPException(
-            detail="Unsupported content encoding", status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE
-        )
+        raise HTTPException(detail="Unsupported content encoding", status_code=415)
     evaluation = pb.Evaluation()
     try:
         evaluation.ParseFromString(body)
     except DecodeError:
-        raise HTTPException(
-            detail="Request body is invalid", status_code=HTTP_422_UNPROCESSABLE_ENTITY
-        )
+        raise HTTPException(detail="Request body is invalid", status_code=422)
     if not evaluation.name.strip():
         raise HTTPException(
             detail="Evaluation name must not be blank/empty",
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
         )
-    await request.state.queue_evaluation_for_bulk_insert(evaluation)
+    await request.state.enqueue_evaluation(evaluation)
     return Response()
 
 
@@ -108,7 +98,7 @@ async def post_evaluations(
     "/evaluations",
     operation_id="getEvaluations",
     summary="Get span, trace, or document evaluations from a project",
-    responses=add_errors_to_responses([HTTP_404_NOT_FOUND]),
+    responses=add_errors_to_responses([404]),
 )
 async def get_evaluations(
     request: Request,
@@ -147,7 +137,7 @@ async def get_evaluations(
         and span_evals_dataframe.empty
         and document_evals_dataframe.empty
     ):
-        return Response(status_code=HTTP_404_NOT_FOUND)
+        return Response(status_code=404)
 
     evals = chain(
         map(
@@ -177,7 +167,7 @@ async def _process_pyarrow(request: Request) -> Response:
     except pa.ArrowInvalid:
         raise HTTPException(
             detail="Request body is not valid pyarrow",
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
         )
     try:
         evaluations = Evaluations.from_pyarrow_reader(reader)
@@ -185,11 +175,11 @@ async def _process_pyarrow(request: Request) -> Response:
         if isinstance(e, PhoenixEvaluationNameIsMissing):
             raise HTTPException(
                 detail="Evaluation name must not be blank/empty",
-                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
             )
         raise HTTPException(
             detail="Invalid data in request body",
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
         )
     return Response(background=BackgroundTask(_add_evaluations, request.state, evaluations))
 
@@ -219,7 +209,7 @@ async def _add_evaluations(state: State, evaluations: Evaluations) -> None:
                 explanation=explanation,
                 metadata_={},
             )
-            await state.enqueue(document_annotation)
+            await state.enqueue_annotations(document_annotation)
     elif len(names) == 1 and names[0] in ("context.span_id", "span_id"):
         for index, row in dataframe.iterrows():
             score, label, explanation = _get_annotation_result(row)
@@ -233,7 +223,7 @@ async def _add_evaluations(state: State, evaluations: Evaluations) -> None:
                 explanation=explanation,
                 metadata_={},
             )
-            await state.enqueue(span_annotation)
+            await state.enqueue_annotations(span_annotation)
     elif len(names) == 1 and names[0] in ("context.trace_id", "trace_id"):
         for index, row in dataframe.iterrows():
             score, label, explanation = _get_annotation_result(row)
@@ -247,7 +237,7 @@ async def _add_evaluations(state: State, evaluations: Evaluations) -> None:
                 explanation=explanation,
                 metadata_={},
             )
-            await state.enqueue(trace_annotation)
+            await state.enqueue_annotations(trace_annotation)
 
 
 def _get_annotation_result(
@@ -267,18 +257,22 @@ def _document_annotation_factory(
     [Union[tuple[str, int], tuple[int, str]]],
     Callable[..., Precursors.DocumentAnnotation],
 ]:
-    return lambda index: lambda **kwargs: Precursors.DocumentAnnotation(
-        span_id=str(index[span_id_idx]),
-        document_position=int(index[document_position_idx]),
-        obj=models.DocumentAnnotation(
+    return lambda index: (
+        lambda **kwargs: Precursors.DocumentAnnotation(
+            datetime.now(timezone.utc),
+            span_id=str(index[span_id_idx]),
             document_position=int(index[document_position_idx]),
-            **kwargs,
-        ),
+            obj=models.DocumentAnnotation(
+                document_position=int(index[document_position_idx]),
+                **kwargs,
+            ),
+        )
     )
 
 
 def _span_annotation_factory(span_id: str) -> Callable[..., Precursors.SpanAnnotation]:
     return lambda **kwargs: Precursors.SpanAnnotation(
+        datetime.now(timezone.utc),
         span_id=str(span_id),
         obj=models.SpanAnnotation(**kwargs),
     )
@@ -286,6 +280,7 @@ def _span_annotation_factory(span_id: str) -> Callable[..., Precursors.SpanAnnot
 
 def _trace_annotation_factory(trace_id: str) -> Callable[..., Precursors.TraceAnnotation]:
     return lambda **kwargs: Precursors.TraceAnnotation(
+        datetime.now(timezone.utc),
         trace_id=str(trace_id),
         obj=models.TraceAnnotation(**kwargs),
     )

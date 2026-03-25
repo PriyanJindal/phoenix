@@ -1,18 +1,15 @@
-import React from "react";
+import { useState } from "react";
 import { graphql, useLazyLoadQuery, useMutation } from "react-relay";
 
-import {
-  useNotifyError,
-  useNotifySuccess,
-} from "@phoenix/contexts/NotificationContext";
+import { Alert } from "@phoenix/components";
+import { useNotifySuccess } from "@phoenix/contexts/NotificationContext";
+import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
 
 import type { ProjectTraceRetentionRuleInput } from "./__generated__/CreateRetentionPolicyMutation.graphql";
 import type { EditRetentionPolicyMutation } from "./__generated__/EditRetentionPolicyMutation.graphql";
-import { EditRetentionPolicyQuery } from "./__generated__/EditRetentionPolicyQuery.graphql";
-import {
-  RetentionPolicyForm,
-  RetentionPolicyFormParams,
-} from "./RetentionPolicyForm";
+import type { EditRetentionPolicyQuery } from "./__generated__/EditRetentionPolicyQuery.graphql";
+import type { RetentionPolicyFormParams } from "./RetentionPolicyForm";
+import { RetentionPolicyForm } from "./RetentionPolicyForm";
 
 interface EditRetentionPolicyProps {
   policyId: string;
@@ -24,11 +21,11 @@ interface EditRetentionPolicyProps {
  * A Wrapper around the RetentionPolicyForm component that is used to edit an existing retention policy.
  */
 export function EditRetentionPolicy(props: EditRetentionPolicyProps) {
+  const [error, setError] = useState<string | null>(null);
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
   const data = useLazyLoadQuery<EditRetentionPolicyQuery>(
     graphql`
-      query EditRetentionPolicyQuery($id: GlobalID!) {
+      query EditRetentionPolicyQuery($id: ID!) {
         retentionPolicy: node(id: $id) {
           ... on ProjectTraceRetentionPolicy {
             id
@@ -74,6 +71,7 @@ export function EditRetentionPolicy(props: EditRetentionPolicyProps) {
   );
 
   const onSubmit = (params: RetentionPolicyFormParams) => {
+    setError(null);
     let rule: ProjectTraceRetentionRuleInput;
     if (params.numberOfDays && params.numberOfTraces) {
       rule = {
@@ -94,8 +92,17 @@ export function EditRetentionPolicy(props: EditRetentionPolicyProps) {
           maxCount: params.numberOfTraces,
         },
       };
+    } else if (params.numberOfDays === 0) {
+      rule = {
+        maxDays: {
+          maxDays: 0,
+        },
+      };
     } else {
-      throw new Error("Invalid retention policy rule");
+      setError(
+        "Invalid retention policy rule. Please enter a number of days or a number of traces, or both, to configure this policy."
+      );
+      return;
     }
 
     submit({
@@ -114,28 +121,31 @@ export function EditRetentionPolicy(props: EditRetentionPolicyProps) {
         });
         props.onEditCompleted();
       },
-      onError: () => {
-        notifyError({
-          title: "Error updating retention policy",
-          message: "Please try again.",
-        });
+      onError: (error) => {
+        setError(
+          getErrorMessagesFromRelayMutationError(error)?.join("\n") ??
+            "An unknown error occurred while updating the retention policy. Please try again."
+        );
       },
     });
   };
 
   return (
-    <RetentionPolicyForm
-      onSubmit={onSubmit}
-      isSubmitting={isSubmitting}
-      mode="edit"
-      defaultValues={{
-        // Fallbacks should never happen, just to satisfy the type checker
-        name: data.retentionPolicy.name ?? "New Policy",
-        schedule: data.retentionPolicy.cronExpression ?? "0 0 * * 0",
-        numberOfDays: data.retentionPolicy.rule?.maxDays,
-        numberOfTraces: data.retentionPolicy.rule?.maxCount,
-      }}
-      onCancel={props.onCancel}
-    />
+    <>
+      {error && <Alert variant="danger">{error}</Alert>}
+      <RetentionPolicyForm
+        onSubmit={onSubmit}
+        isSubmitting={isSubmitting}
+        mode="edit"
+        defaultValues={{
+          // Fallbacks should never happen, just to satisfy the type checker
+          name: data.retentionPolicy.name ?? "New Policy",
+          schedule: data.retentionPolicy.cronExpression ?? "0 0 * * 0",
+          numberOfDays: data.retentionPolicy.rule?.maxDays,
+          numberOfTraces: data.retentionPolicy.rule?.maxCount ?? null,
+        }}
+        onCancel={props.onCancel}
+      />
+    </>
   );
 }

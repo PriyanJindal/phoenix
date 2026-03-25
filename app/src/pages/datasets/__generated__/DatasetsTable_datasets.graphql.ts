@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e59ce39d300c6dc278700848a4a6706c>>
+ * @generated SignedSource<<6d6e3db0d9ff9319e69e4321501cb708>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,9 +16,15 @@ export type DatasetsTable_datasets$data = {
       readonly node: {
         readonly createdAt: string;
         readonly description: string | null;
+        readonly evaluatorCount: number;
         readonly exampleCount: number;
         readonly experimentCount: number;
         readonly id: string;
+        readonly labels: ReadonlyArray<{
+          readonly color: string;
+          readonly id: string;
+          readonly name: string;
+        }>;
         readonly metadata: any;
         readonly name: string;
       };
@@ -36,13 +42,32 @@ import DatasetsTableDatasetsQuery_graphql from './DatasetsTableDatasetsQuery.gra
 const node: ReaderFragment = (function(){
 var v0 = [
   "datasets"
-];
+],
+v1 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+};
 return {
   "argumentDefinitions": [
     {
       "defaultValue": null,
       "kind": "LocalArgument",
       "name": "after"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "filter"
     },
     {
       "defaultValue": 100,
@@ -88,6 +113,11 @@ return {
       "args": [
         {
           "kind": "Variable",
+          "name": "filter",
+          "variableName": "filter"
+        },
+        {
+          "kind": "Variable",
           "name": "sort",
           "variableName": "sort"
         }
@@ -113,20 +143,8 @@ return {
               "name": "node",
               "plural": false,
               "selections": [
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "id",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "name",
-                  "storageKey": null
-                },
+                (v1/*: any*/),
+                (v2/*: any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -160,6 +178,33 @@ return {
                   "args": null,
                   "kind": "ScalarField",
                   "name": "experimentCount",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "kind": "ScalarField",
+                  "name": "evaluatorCount",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "DatasetLabel",
+                  "kind": "LinkedField",
+                  "name": "labels",
+                  "plural": true,
+                  "selections": [
+                    (v1/*: any*/),
+                    (v2/*: any*/),
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "color",
+                      "storageKey": null
+                    }
+                  ],
                   "storageKey": null
                 },
                 {
@@ -216,6 +261,6 @@ return {
 };
 })();
 
-(node as any).hash = "fa378bc7ec26f5e877e6cf90e5ee553d";
+(node as any).hash = "fc083cc2fa596e206fe47bd613f159aa";
 
 export default node;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0c9290a3698614800d03b84a2b77f8bc>>
+ * @generated SignedSource<<0cef701f27818fec4c28140e89fa1edf>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,13 +9,14 @@
 // @ts-nocheck
 
 import { ReaderFragment } from 'relay-runtime';
-export type AuthMethod = "LOCAL" | "OAUTH2";
+export type AuthMethod = "LDAP" | "LOCAL" | "OAUTH2";
 import { FragmentRefs } from "relay-runtime";
 export type ViewerContext_viewer$data = {
   readonly viewer: {
     readonly authMethod: AuthMethod;
-    readonly email: string;
+    readonly email: string | null;
     readonly id: string;
+    readonly isManagementUser: boolean;
     readonly profilePictureUrl: string | null;
     readonly role: {
       readonly name: string;
@@ -83,6 +84,13 @@ const node: ReaderFragment = {
         {
           "alias": null,
           "args": null,
+          "kind": "ScalarField",
+          "name": "isManagementUser",
+          "storageKey": null
+        },
+        {
+          "alias": null,
+          "args": null,
           "concreteType": "UserRole",
           "kind": "LinkedField",
           "name": "role",
@@ -118,6 +126,6 @@ const node: ReaderFragment = {
   "abstractKey": null
 };
 
-(node as any).hash = "bec0ae2a629134a5b9afe1846eaec2c9";
+(node as any).hash = "d85505e5f9dffd2a1c791f8e0007ab61";
 
 export default node;

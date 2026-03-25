@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
+import { useState } from "react";
 
 import {
   Button,
@@ -21,6 +21,9 @@ import {
   Select,
   SelectChevronUpDownIcon,
   SelectValue,
+  Slider,
+  SliderNumberField,
+  Switch,
   Tag,
   TagGroup,
   TagList,
@@ -33,7 +36,7 @@ import {
 } from "@phoenix/components";
 
 const meta: Meta = {
-  title: "Gallery",
+  title: "Reference/Gallery",
 
   parameters: {
     layout: "fullscreen",
@@ -75,7 +78,7 @@ const Template: StoryFn = () => {
       <View
         padding="size-200"
         borderWidth="thin"
-        borderColor="dark"
+        borderColor="default"
         borderRadius="medium"
       >
         <Flex direction="row" gap="size-100" alignItems="center">
@@ -94,7 +97,7 @@ const Template: StoryFn = () => {
       </View>
       <View
         borderWidth="thin"
-        borderColor="dark"
+        borderColor="default"
         padding="size-200"
         borderRadius="medium"
         marginTop="size-200"
@@ -138,6 +141,7 @@ const Template: StoryFn = () => {
           </TimeField>
           <Select size="S">
             <SelectContent />
+            <Text slot="description">the time of your event</Text>
           </Select>
           <View minWidth="300px">
             <TagGroup selectionMode="multiple">
@@ -186,7 +190,7 @@ const Template: StoryFn = () => {
       <View
         padding="size-200"
         borderWidth="thin"
-        borderColor="dark"
+        borderColor="default"
         borderRadius="medium"
         marginTop="size-200"
       >
@@ -228,8 +232,49 @@ const Template: StoryFn = () => {
         </Flex>
       </View>
       <View
+        padding="size-200"
         borderWidth="thin"
-        borderColor="dark"
+        borderColor="default"
+        borderRadius="medium"
+        marginTop="size-200"
+      >
+        <Flex direction="row" gap="size-400" alignItems="start">
+          <Flex direction="column" gap="size-200" width="200px">
+            <Switch>Enable notifications</Switch>
+            <Switch defaultSelected>Dark mode</Switch>
+            <Switch>Airplane mode</Switch>
+            <Switch isDisabled>Disabled switch</Switch>
+          </Flex>
+          <Flex direction="column" gap="size-200" flex="1 1 auto">
+            <Slider
+              label="Volume"
+              defaultValue={75}
+              minValue={0}
+              maxValue={100}
+            />
+            <Slider
+              label="Brightness"
+              defaultValue={50}
+              minValue={0}
+              maxValue={100}
+            >
+              <SliderNumberField />
+            </Slider>
+            <Slider
+              label="Opacity"
+              defaultValue={0.8}
+              minValue={0}
+              maxValue={1}
+              step={0.1}
+            >
+              <SliderNumberField />
+            </Slider>
+          </Flex>
+        </Flex>
+      </View>
+      <View
+        borderWidth="thin"
+        borderColor="default"
         borderRadius="medium"
         marginTop="size-200"
       >
@@ -246,4 +291,6 @@ const Template: StoryFn = () => {
   );
 };
 
-export const Default = Template.bind({});
+export const Default = {
+  render: Template,
+};

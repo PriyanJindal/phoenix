@@ -1,18 +1,16 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
+import type { DateFieldProps, DateValue } from "@phoenix/components";
 import {
   DateField,
-  DateFieldProps,
   DateInput,
   DateSegment,
-  DateValue,
   I18nProvider,
   Label,
 } from "@phoenix/components";
 
 const meta: Meta = {
-  title: "DateField",
+  title: "Core/Forms/Date Field",
   component: DateField,
   parameters: {
     layout: "centered",
@@ -28,12 +26,10 @@ const Template: StoryFn<DateFieldProps<DateValue>> = (args) => (
   </DateField>
 );
 
-/**
- * DateFields are used to type in dates within the UI
- */
-export const Default = Template.bind({});
-
-Default.args = {};
+export const Default = {
+  render: Template,
+  args: {},
+};
 
 export const InternationalizedIndia = () => (
   <I18nProvider locale="hi-IN-u-ca-indian">

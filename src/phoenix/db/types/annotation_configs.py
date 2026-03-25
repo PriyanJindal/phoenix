@@ -4,7 +4,7 @@ from typing import Annotated, Literal, Optional, Union
 from pydantic import AfterValidator, Field, RootModel, model_validator
 from typing_extensions import Self, TypeAlias
 
-from .db_models import DBBaseModel
+from .db_helper_types import DBBaseModel
 
 
 class AnnotationType(Enum):
@@ -20,6 +20,7 @@ class OptimizationDirection(Enum):
 
 
 class _BaseAnnotationConfig(DBBaseModel):
+    name: Optional[str] = None
     description: Optional[str] = None
 
 
@@ -95,3 +96,21 @@ AnnotationConfigType: TypeAlias = Annotated[
 
 class AnnotationConfig(RootModel[AnnotationConfigType]):
     root: AnnotationConfigType
+
+
+class CategoricalOutputConfig(CategoricalAnnotationConfig):
+    name: str
+
+
+class ContinuousOutputConfig(ContinuousAnnotationConfig):
+    name: str
+
+
+OutputConfigType: TypeAlias = Annotated[
+    Union[CategoricalOutputConfig, ContinuousOutputConfig],
+    Field(..., discriminator="type"),
+]
+
+
+class OutputConfig(RootModel[OutputConfigType]):
+    root: OutputConfigType

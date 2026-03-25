@@ -1,19 +1,19 @@
-import React, { useMemo, useRef } from "react";
-import { graphql, usePaginationFragment } from "react-relay";
+import { css } from "@emotion/react";
 import {
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { css } from "@emotion/react";
+import { useCallback, useMemo, useRef } from "react";
+import { graphql, usePaginationFragment } from "react-relay";
 
 import { Icon, Icons } from "@phoenix/components";
 import { tableCSS } from "@phoenix/components/table/styles";
 import { TableEmpty } from "@phoenix/components/table/TableEmpty";
 import { TimestampCell } from "@phoenix/components/table/TimestampCell";
 
-import { DatasetHistoryTable_versions$key } from "./__generated__/DatasetHistoryTable_versions.graphql";
+import type { DatasetHistoryTable_versions$key } from "./__generated__/DatasetHistoryTable_versions.graphql";
 
 const PAGE_SIZE = 100;
 
@@ -22,6 +22,7 @@ type DatasetHistoryTableProps = {
 };
 
 export function DatasetHistoryTable(props: DatasetHistoryTableProps) {
+  "use no memo";
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const { data, loadNext, hasNext, isLoadingNext } = usePaginationFragment(
@@ -50,7 +51,7 @@ export function DatasetHistoryTable(props: DatasetHistoryTableProps) {
     () => data.versions.edges.map((edge) => edge.node),
     [data]
   );
-  const fetchMoreOnBottomReached = React.useCallback(
+  const fetchMoreOnBottomReached = useCallback(
     (containerRefElement?: HTMLDivElement | null) => {
       if (containerRefElement) {
         const { scrollHeight, scrollTop, clientHeight } = containerRefElement;
@@ -66,6 +67,7 @@ export function DatasetHistoryTable(props: DatasetHistoryTableProps) {
     },
     [hasNext, isLoadingNext, loadNext]
   );
+  // eslint-disable-next-line react-hooks-js/incompatible-library
   const table = useReactTable({
     columns: [
       {
@@ -106,9 +108,7 @@ export function DatasetHistoryTable(props: DatasetHistoryTableProps) {
                   {header.isPlaceholder ? null : (
                     <div
                       {...{
-                        className: header.column.getCanSort()
-                          ? "cursor-pointer"
-                          : "",
+                        className: header.column.getCanSort() ? "sort" : "",
                         onClick: header.column.getToggleSortingHandler(),
                         style: {
                           left: header.getStart(),

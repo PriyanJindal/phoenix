@@ -1,42 +1,52 @@
-import { CSSProperties } from "react";
-import { Column } from "@tanstack/react-table";
 import { css } from "@emotion/react";
+import type { Column } from "@tanstack/react-table";
+import type { CSSProperties } from "react";
 
 export const tableCSS = css`
   // fixes table row sizing issues with full height cell children
   // this enables features like hovering anywhere on a cell to display controls
   height: fit-content;
-  font-size: var(--ac-global-font-size-s);
+  font-size: var(--global-font-size-s);
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   thead {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
+    background-color: var(--global-table-header-background-color);
     tr {
       th {
-        padding: var(--ac-global-dimension-size-50)
-          var(--ac-global-dimension-size-200);
-        background-color: var(--ac-global-color-grey-100);
+        padding: var(--global-table-cell-padding-y)
+          var(--global-table-cell-padding-x);
         position: relative;
         text-align: left;
         user-select: none;
-        border-bottom: 1px solid var(--ac-global-border-color-default);
+        vertical-align: top;
+        font-weight: 600;
+        font-size: var(--global-font-size-s);
+        line-height: var(--global-line-height-s);
+        border-bottom: 1px solid var(--global-border-color-default);
         &:not(:last-of-type) {
-          border-right: 1px solid var(--ac-global-border-color-default);
+          border-right: 1px solid var(--global-border-color-default);
         }
-        .cursor-pointer {
+        .sort {
+          /* The sortable part of the header */
           cursor: pointer;
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+
+          gap: var(--global-dimension-size-50);
         }
         .sort-icon {
-          margin-left: var(--ac-global-dimension-size-50);
-          font-size: var(--ac-global-font-size-xs);
+          margin-left: var(--global-dimension-size-50);
+          font-size: var(--global-font-size-xs);
           vertical-align: middle;
           display: inline-block;
         }
         &:hover .resizer {
-          background: var(--ac-global-color-grey-300);
+          background: var(--hover-background);
         }
         div.resizer {
           display: inline-block;
@@ -51,11 +61,11 @@ export const tableCSS = css`
           touch-action: none;
           &.isResizing,
           &:hover {
-            background: var(--ac-global-color-primary);
+            background: var(--global-color-primary);
           }
         }
         // Style action menu buttons in the header
-        .ac-button[data-size="compact"][data-childless="true"] {
+        .button[data-size="compact"][data-childless="true"] {
           padding: 0;
           border: none;
           background-color: transparent;
@@ -69,18 +79,15 @@ export const tableCSS = css`
       height: 100%;
       &:not(:last-of-type) {
         & > td {
-          border-bottom: 1px solid var(--ac-global-border-color-default);
+          border-bottom: 1px solid var(--global-table-row-border-color);
         }
       }
-      &:hover {
-        background-color: rgba(var(--ac-global-color-grey-300-rgb), 0.3);
-      }
       & > td {
-        padding: var(--ac-global-dimension-size-100)
-          var(--ac-global-dimension-size-200);
+        padding: var(--global-table-cell-padding-y)
+          var(--global-table-cell-padding-x);
       }
       &[data-selected="true"] {
-        background-color: var(--ac-global-color-primary-100);
+        background-color: var(--global-table-row-selected-background-color);
       }
     }
   }
@@ -90,10 +97,20 @@ export const borderedTableCSS = css`
   tbody:not(.is-empty) {
     tr {
       & > td {
-        border-bottom: 1px solid var(--ac-global-border-color-default);
+        border-bottom: 1px solid var(--global-table-bordered-cell-border-color);
       }
       & > td:not(:last-of-type) {
-        border-right: 1px solid var(--ac-global-border-color-default);
+        border-right: 1px solid var(--global-table-bordered-cell-border-color);
+      }
+    }
+  }
+`;
+
+export const interactiveTableCSS = css`
+  tbody:not(.is-empty) {
+    tr {
+      &:hover {
+        background-color: var(--hover-background);
       }
     }
   }
@@ -101,6 +118,7 @@ export const borderedTableCSS = css`
 
 export const selectableTableCSS = css(
   tableCSS,
+  interactiveTableCSS,
   css`
     tbody:not(.is-empty) {
       tr {
@@ -114,9 +132,9 @@ export const paginationCSS = css`
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  padding: var(--ac-global-dimension-size-100);
-  gap: var(--ac-global-dimension-size-50);
-  border-top: 1px solid var(--ac-global-color-grey-300);
+  padding: var(--global-table-pagination-padding);
+  gap: var(--global-table-pagination-gap);
+  border-top: 1px solid var(--global-table-pagination-border-color);
 `;
 
 //These are the important styles to make sticky column pinning work!
@@ -132,16 +150,20 @@ export function getCommonPinningStyles<Row>(
     isPinned === "right" && column.getIsFirstColumn("right");
 
   return {
-    boxShadow: isLastLeftPinnedColumn
-      ? "-8px 0 8px -8px var(--ac-global-color-grey-200) inset"
-      : isFirstRightPinnedColumn
-        ? "8px 0 8px -8px var(--ac-global-color-grey-200) inset"
-        : undefined,
+    borderRight: isLastLeftPinnedColumn
+      ? "1px solid var(--global-border-color-default)"
+      : undefined,
+    borderLeft: isFirstRightPinnedColumn
+      ? "1px solid var(--global-border-color-default)"
+      : undefined,
     left: isPinned === "left" ? `${column.getStart("left")}px` : undefined,
     right: isPinned === "right" ? `${column.getAfter("right")}px` : undefined,
-    opacity: isPinned ? 0.95 : 1,
+    opacity: 1,
     position: isPinned ? "sticky" : "relative",
     width: column.getSize(),
     zIndex: isPinned ? 1 : 0,
+    backgroundColor: isPinned
+      ? "var(--global-table-pinned-column-background-color)"
+      : undefined,
   };
 }

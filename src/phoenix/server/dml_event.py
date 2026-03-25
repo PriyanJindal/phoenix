@@ -34,6 +34,10 @@ class ProjectDeleteEvent(ProjectDmlEvent): ...
 
 
 @dataclass(frozen=True)
+class ProjectInsertEvent(ProjectDmlEvent): ...
+
+
+@dataclass(frozen=True)
 class SpanDmlEvent(ProjectDmlEvent): ...
 
 
@@ -121,6 +125,19 @@ class TraceAnnotationInsertEvent(TraceAnnotationDmlEvent): ...
 
 @dataclass(frozen=True)
 class TraceAnnotationDeleteEvent(TraceAnnotationDmlEvent): ...
+
+
+@dataclass(frozen=True)
+class ProjectSessionAnnotationDmlEvent(DmlEvent):
+    table = models.ProjectSessionAnnotation
+
+
+@dataclass(frozen=True)
+class ProjectSessionAnnotationInsertEvent(ProjectSessionAnnotationDmlEvent): ...
+
+
+@dataclass(frozen=True)
+class ProjectSessionAnnotationDeleteEvent(ProjectSessionAnnotationDmlEvent): ...
 
 
 @dataclass(frozen=True)

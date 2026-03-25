@@ -1,43 +1,41 @@
 from __future__ import annotations
 
-import os
 import re
 from typing import Literal, Optional, TypedDict
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from phoenix.config import ENV_PHOENIX_SQL_DATABASE_SCHEMA, get_env_database_schema
 from sqlalchemy import Connection, Engine, Row, text
 from typing_extensions import TypeAlias, assert_never
 
 _DBBackend: TypeAlias = Literal["sqlite", "postgresql"]
 
 
-def _up(engine: Engine, alembic_config: Config, revision: str) -> None:
+def _up(engine: Engine, alembic_config: Config, revision: str, schema: str) -> None:
     with engine.connect() as conn:
         alembic_config.attributes["connection"] = conn
         command.upgrade(alembic_config, revision)
     engine.dispose()
-    actual = _version_num(engine)
+    if revision == "head":
+        return
+    actual = _version_num(engine, schema)
     assert actual == (revision,)
 
 
-def _down(engine: Engine, alembic_config: Config, revision: str) -> None:
+def _down(engine: Engine, alembic_config: Config, revision: str, schema: str) -> None:
     with engine.connect() as conn:
         alembic_config.attributes["connection"] = conn
         command.downgrade(alembic_config, revision)
     engine.dispose()
-    assert _version_num(engine) == (None if revision == "base" else (revision,))
+    assert _version_num(engine, schema) == (None if revision == "base" else (revision,))
 
 
-def _version_num(engine: Engine) -> Optional[Row[tuple[str]]]:
-    schema_prefix = ""
-    if engine.url.get_backend_name().startswith("postgresql"):
-        assert (schema := os.environ[ENV_PHOENIX_SQL_DATABASE_SCHEMA])
-        schema_prefix = f"{schema}."
+def _version_num(engine: Engine, schema: str) -> Optional[Row[tuple[str]]]:
     table, column = "alembic_version", "version_num"
-    stmt = text(f"SELECT {column} FROM {schema_prefix}{table}")
+    if schema:
+        table = f"{schema}.{table}"
+    stmt = text(f"SELECT {column} FROM {table}")
     with engine.connect() as conn:
         return conn.execute(stmt).first()
 
@@ -60,12 +58,14 @@ class _TableSchemaInfo(TypedDict):
     column_names: frozenset[str]
     index_names: frozenset[str]
     constraint_names: frozenset[str]
+    nullable_column_names: frozenset[str]
 
 
 def _get_table_schema_info(
     conn: Connection,
     table_name: str,
     db_backend: Literal["sqlite", "postgresql"],
+    schema: str,
 ) -> Optional[_TableSchemaInfo]:
     """Get schema information for a database table.
 
@@ -94,9 +94,8 @@ def _get_table_schema_info(
     Raises:
         sqlalchemy.exc.SQLAlchemyError: If database queries fail
         AssertionError: If table definition parsing fails
-    """  # noqa: E501
+    """
     if db_backend == "postgresql":
-        assert (schema := get_env_database_schema())
         # Check if table exists
         table_exists = conn.execute(
             text(
@@ -115,11 +114,11 @@ def _get_table_schema_info(
         if not table_exists:
             return None
 
-        # Get column names
+        # Get column names and nullable info
         columns_result = conn.execute(
             text(
                 """
-                SELECT a.attname
+                SELECT a.attname, a.attnotnull
                 FROM pg_attribute a
                 JOIN pg_class c ON c.oid = a.attrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -133,6 +132,7 @@ def _get_table_schema_info(
             {"table_name": table_name, "schema": schema},
         ).fetchall()
         column_names = {col[0] for col in columns_result}
+        nullable_column_names = {col[0] for col in columns_result if not col[1]}
 
         # Get index names
         indices_result = conn.execute(
@@ -183,9 +183,11 @@ def _get_table_schema_info(
         if not table_exists:
             return None
 
-        # Get column names and primary key info
+        # Get column names and nullable info
         columns_result = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
         column_names = {col[1] for col in columns_result}
+        # In SQLite PRAGMA table_info, col[3] is notnull (1 if NOT NULL, 0 if nullable)
+        nullable_column_names = {col[1] for col in columns_result if col[3] == 0}
 
         # Get primary key columns
         pk_columns = [col[1] for col in columns_result if col[5] == 1]
@@ -238,10 +240,11 @@ def _get_table_schema_info(
         column_names=frozenset(column_names),
         index_names=frozenset(index_names),
         constraint_names=frozenset(constraint_names),
+        nullable_column_names=frozenset(nullable_column_names),
     )
 
 
-def _verify_clean_state(engine: Engine) -> None:
+def _verify_clean_state(engine: Engine, schema: str) -> None:
     """Verify that the database is in a clean state before running migrations.
 
     This function checks that the alembic_version table does not exist, indicating
@@ -256,4 +259,4 @@ def _verify_clean_state(engine: Engine) -> None:
             alembic_version table exists)
     """
     with pytest.raises(BaseException, match="alembic_version"):
-        _version_num(engine)
+        _version_num(engine, schema)

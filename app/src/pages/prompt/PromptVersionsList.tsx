@@ -1,11 +1,10 @@
-import React from "react";
+import { css } from "@emotion/react";
 import { graphql, useFragment } from "react-relay";
 import { Link } from "react-router";
-import { css } from "@emotion/react";
 
 import { Flex, View } from "@phoenix/components";
 
-import {
+import type {
   PromptVersionsList__main$data,
   PromptVersionsList__main$key,
 } from "./__generated__/PromptVersionsList__main.graphql";
@@ -20,12 +19,12 @@ type PromptVersion =
   PromptVersionsList__main$data["promptVersions"]["edges"][number]["version"];
 
 const promptVersionItemCSS = css`
-  border-bottom: 1px solid var(--ac-global-color-grey-300);
+  border-bottom: 1px solid var(--global-color-gray-300);
   transition: background-color 0.1s ease-in;
 
   &[data-active="true"],
   &:hover {
-    background-color: var(--ac-global-color-grey-200);
+    background-color: var(--global-color-gray-200);
   }
 
   & > a {
@@ -92,7 +91,7 @@ export const PromptVersionsList = ({
       width={PROMPT_VERSIONS_LIST_WIDTH}
       minWidth={PROMPT_VERSIONS_LIST_WIDTH}
       borderRightWidth="thin"
-      borderColor="grey-300"
+      borderColor="gray-300"
     >
       <Flex direction="column">
         {promptVersions.edges.map(({ version }) => (

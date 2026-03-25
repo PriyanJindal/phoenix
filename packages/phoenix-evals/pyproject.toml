@@ -2,7 +2,7 @@
 name = "arize-phoenix-evals"
 description = "LLM Evaluations"
 readme = "README.md"
-requires-python = ">=3.8, <3.14"
+requires-python = ">=3.10, <3.14"
 license = {text="Elastic-2.0"}
 license-files = { paths = ["LICENSE", "IP_NOTICE"] }
 keywords = [
@@ -15,25 +15,29 @@ authors = [
 ]
 classifiers = [
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
 ]
-version = "0.20.6"
+version = "2.12.0"
 dependencies = [
   "pandas",
   "tqdm",
   "typing-extensions>=4.5, <5",
+  "pystache",
+  "pydantic>=2.0.0",
+  "jsonpath_ng",
+  "openinference-semantic-conventions>=0.1.19",
+  "openinference-instrumentation>=0.1.20",
+  "opentelemetry-api",
 ]
 
 [project.optional-dependencies]
 dev = [
   "anthropic>0.18.0",
   "boto3",
-  "litellm>=1.28.9",
+  "litellm>=1.28.9,<1.82.7",  # Pinned: 1.82.7-1.82.8 compromised (supply chain attack, 2026-03)
   "openai>=1.0.0",
   "vertexai",
   "mistralai>=1.0.0",
@@ -45,19 +49,19 @@ test = [
   "typing-extensions>=4.5, <5",
   "anthropic>=0.18.0",
   "boto3",
-  "litellm>=1.28.9",
+  "litellm>=1.28.9,<1.82.7",  # Pinned: 1.82.7-1.82.8 compromised (supply chain attack, 2026-03)
   "openai>=1.0.0",
-  "mistralai>=1.0.0",
+  "mistralai>=1.0.0,<2",
   "vertexai",
   "respx",
   "nest_asyncio",
-  "pandas-stubs<=2.0.2.230605",
+  "pandas-stubs==2.0.3.230814",
   "types-tqdm",
-  "lameenc"
+  "lameenc",
 ]
 
 [project.urls]
-Documentation = "https://docs.arize.com/phoenix/"
+Documentation = "https://arize.com/docs/phoenix/"
 Issues = "https://github.com/Arize-ai/phoenix/issues"
 Source = "https://github.com/Arize-ai/phoenix"
 
@@ -71,27 +75,11 @@ packages = ["src/phoenix"]
 [tool.hatch.build]
 only-packages = true
 
-[tool.hatch.envs.publish]
-dependencies = [
-  "check-wheel-contents",
-  "twine",
-]
-
-[tool.hatch.envs.publish.scripts]
-testpypi = [
-  "check-wheel-contents dist/",
-  "twine upload --verbose --repository testpypi dist/*",
-]
-pypi = [
-  "check-wheel-contents dist/",
-  "twine upload --verbose dist/*",
-]
-
 [tool.ruff]
 exclude = [".git", "__pycache__", ".tox", "dist"]
 extend-include = ["*.ipynb"]
 line-length = 100
-target-version = "py38"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -101,6 +89,7 @@ force-single-line = false
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E402", "E501"]
+"tests/**/*.py" = ["E501"]
 
 [tool.ruff.format]
 line-ending = "native"
@@ -108,6 +97,7 @@ line-ending = "native"
 [tool.mypy]
 explicit_package_bases = true
 strict = true
+namespace_packages = true
 exclude = [
   "dist/",
   "tests/",
@@ -116,8 +106,21 @@ exclude = [
 [[tool.mypy.overrides]]
 module = [
   "litellm",
+  "langchain_openai",
+  "langchain_anthropic",
+  "langchain_core.*",
+  "langchain_community.*",
+  "mistralai",
+  "mistralai.*",
+  "opentelemetry",
+  "opentelemetry.trace",
+  "openinference.*",
+  "opentelemetry.*",
+  "google.api_core",
+  "google.api_core.*",
 ]
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,10 +1,10 @@
-import React, { useState } from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
+import { useState } from "react";
 
 import { Icon, Icons, ToggleButton } from "@phoenix/components";
 
 export default {
-  title: "ToggleButton",
+  title: "Core/Actions/Toggle Button",
   component: ToggleButton,
   parameters: {
     layout: "centered",
@@ -22,29 +22,41 @@ const Template: StoryFn<typeof ToggleButton> = (args) => {
   );
 };
 
-export const Basic = Template.bind({});
-Basic.args = {
-  children: "Click Me",
-  isSelected: false,
+export const Basic = {
+  render: Template,
+
+  args: {
+    children: "Click Me",
+    isSelected: false,
+  },
 };
 
-export const Selected = Template.bind({});
-Selected.args = {
-  children: "Selected Button",
-  isSelected: true,
+export const Selected = {
+  render: Template,
+
+  args: {
+    children: "Selected Button",
+    isSelected: true,
+  },
 };
 
-export const WithIcon = Template.bind({});
-WithIcon.args = {
-  children: "With Icon",
-  isSelected: false,
-  leadingVisual: <Icon svg={<Icons.PlusCircleOutline />} />,
+export const WithIcon = {
+  render: Template,
+
+  args: {
+    children: "With Icon",
+    isSelected: false,
+    leadingVisual: <Icon svg={<Icons.PlusCircleOutline />} />,
+  },
 };
 
-export const Disabled = Template.bind({});
-Disabled.args = {
-  children: "Disabled Button",
-  isSelected: false,
-  isDisabled: true,
-  onPress: () => {},
+export const Disabled = {
+  render: Template,
+
+  args: {
+    children: "Disabled Button",
+    isSelected: false,
+    isDisabled: true,
+    onPress: () => {},
+  },
 };

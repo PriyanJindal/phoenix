@@ -1,10 +1,6 @@
 import { mapPromptToSDKSnippet } from "../promptCodeSnippets";
-
-import {
-  ANTHROPIC_TOOL,
-  BASE_MOCK_PROMPT_VERSION,
-  FixturePromptVersion,
-} from "./fixtures";
+import type { FixturePromptVersion } from "./fixtures";
+import { BASE_MOCK_PROMPT_VERSION, TOOLS_FIXTURE } from "./fixtures";
 
 describe("promptCodeSnippets", () => {
   describe("anthropic", () => {
@@ -70,7 +66,7 @@ describe("promptCodeSnippets", () => {
               type: "auto",
             },
           },
-          tools: [{ definition: ANTHROPIC_TOOL }],
+          tools: TOOLS_FIXTURE,
           modelProvider: "ANTHROPIC",
           modelName: "claude-3-sonnet-latest",
           template: {
@@ -88,7 +84,7 @@ describe("promptCodeSnippets", () => {
                     toolCall: {
                       toolCallId: "call_123",
                       toolCall: {
-                        name: ANTHROPIC_TOOL.name,
+                        name: "test",
                         arguments: JSON.stringify({ foo: "bar" }),
                       },
                     },
@@ -161,13 +157,16 @@ describe("promptCodeSnippets", () => {
               {
                 name: "test",
                 description: "test function",
-                input: {
+                input_schema: {
                   type: "object",
                   properties: {
                     foo: {
                       type: "string"
                     }
-                  }
+                  },
+                  required: [
+                    "foo"
+                  ]
                 }
               }
             ],
@@ -284,7 +283,7 @@ describe("promptCodeSnippets", () => {
               type: "auto",
             },
           },
-          tools: [{ definition: ANTHROPIC_TOOL }],
+          tools: TOOLS_FIXTURE,
           modelProvider: "ANTHROPIC",
           modelName: "claude-3-sonnet-latest",
           template: {
@@ -302,7 +301,7 @@ describe("promptCodeSnippets", () => {
                     toolCall: {
                       toolCallId: "call_123",
                       toolCall: {
-                        name: ANTHROPIC_TOOL.name,
+                        name: "test",
                         arguments: JSON.stringify({ foo: "bar" }),
                       },
                     },
@@ -375,13 +374,16 @@ describe("promptCodeSnippets", () => {
               {
                 "name": "test",
                 "description": "test function",
-                "input": {
+                "input_schema": {
                   "type": "object",
                   "properties": {
                     "foo": {
                       "type": "string"
                     }
-                  }
+                  },
+                  "required": [
+                    "foo"
+                  ]
                 }
               }
             ],

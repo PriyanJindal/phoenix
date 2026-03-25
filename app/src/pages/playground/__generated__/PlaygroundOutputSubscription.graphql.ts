@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<aa8438baf32f17c24d9e5c04e369f867>>
+ * @generated SignedSource<<210a11f519486738d351868cd4154c05>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,73 +9,165 @@
 // @ts-nocheck
 
 import { ConcreteRequest } from 'relay-runtime';
-export type CanonicalParameterName = "ANTHROPIC_EXTENDED_THINKING" | "MAX_COMPLETION_TOKENS" | "RANDOM_SEED" | "REASONING_EFFORT" | "RESPONSE_FORMAT" | "STOP_SEQUENCES" | "TEMPERATURE" | "TOOL_CHOICE" | "TOP_P";
-export type ChatCompletionMessageRole = "AI" | "SYSTEM" | "TOOL" | "USER";
-export type GenerativeProviderKey = "ANTHROPIC" | "AZURE_OPENAI" | "GOOGLE" | "OPENAI";
+export type GenerativeProviderKey = "ANTHROPIC" | "AWS" | "AZURE_OPENAI" | "CEREBRAS" | "DEEPSEEK" | "FIREWORKS" | "GOOGLE" | "GROQ" | "MOONSHOT" | "OLLAMA" | "OPENAI" | "PERPLEXITY" | "TOGETHER" | "XAI";
+export type OpenAIApiType = "CHAT_COMPLETIONS" | "RESPONSES";
+export type OptimizationDirection = "MAXIMIZE" | "MINIMIZE" | "NONE";
+export type PromptMessageRole = "AI" | "SYSTEM" | "TOOL" | "USER";
 export type PromptTemplateFormat = "F_STRING" | "MUSTACHE" | "NONE";
 export type ChatCompletionInput = {
-  apiKey?: string | null;
-  invocationParameters?: ReadonlyArray<InvocationParameterInput>;
-  messages: ReadonlyArray<ChatCompletionMessageInput>;
-  model: GenerativeModelInput;
+  clientOptions?: ModelClientOptionsInput | null;
+  credentials?: ReadonlyArray<GenerativeCredentialInput> | null;
+  evaluators?: ReadonlyArray<PlaygroundEvaluatorInput>;
   promptName?: string | null;
+  promptVersion: ChatPromptVersionInput;
+  repetitions: number;
   template?: PromptTemplateOptions | null;
-  tools?: ReadonlyArray<any> | null;
 };
-export type ChatCompletionMessageInput = {
-  content?: any;
-  role: ChatCompletionMessageRole;
-  toolCallId?: string | null;
-  toolCalls?: ReadonlyArray<any> | null;
+export type ChatPromptVersionInput = {
+  customProviderId?: string | null;
+  description?: string | null;
+  invocationParameters?: any;
+  modelName: string;
+  modelProvider: GenerativeProviderKey;
+  responseFormat?: PromptResponseFormatJSONSchemaInput | null;
+  template: PromptChatTemplateInput;
+  templateFormat: PromptTemplateFormat;
+  tools?: PromptToolsInput | null;
 };
-export type GenerativeModelInput = {
-  apiVersion?: string | null;
-  baseUrl?: string | null;
-  endpoint?: string | null;
+export type PromptChatTemplateInput = {
+  messages: ReadonlyArray<PromptMessageInput>;
+};
+export type PromptMessageInput = {
+  content: ReadonlyArray<ContentPartInput>;
+  role: PromptMessageRole;
+};
+export type ContentPartInput = {
+  text?: TextContentValueInput | null;
+  toolCall?: ToolCallContentValueInput | null;
+  toolResult?: ToolResultContentValueInput | null;
+};
+export type TextContentValueInput = {
+  text: string;
+};
+export type ToolCallContentValueInput = {
+  toolCall: ToolCallFunctionInput;
+  toolCallId: string;
+};
+export type ToolCallFunctionInput = {
+  arguments: string;
   name: string;
-  providerKey: GenerativeProviderKey;
+  type?: string | null;
 };
-export type InvocationParameterInput = {
-  canonicalName?: CanonicalParameterName | null;
-  invocationName: string;
-  valueBool?: boolean | null;
-  valueBoolean?: boolean | null;
-  valueFloat?: number | null;
-  valueInt?: number | null;
-  valueJson?: any | null;
-  valueString?: string | null;
-  valueStringList?: ReadonlyArray<string> | null;
+export type ToolResultContentValueInput = {
+  result: any;
+  toolCallId: string;
+};
+export type PromptToolsInput = {
+  disableParallelToolCalls?: boolean | null;
+  toolChoice?: PromptToolChoiceInput | null;
+  tools: ReadonlyArray<PromptToolFunctionInput>;
+};
+export type PromptToolFunctionInput = {
+  function: PromptToolFunctionDefinitionInput;
+};
+export type PromptToolFunctionDefinitionInput = {
+  description?: string | null;
+  name: string;
+  parameters?: any | null;
+  strict?: boolean | null;
+};
+export type PromptToolChoiceInput = {
+  functionName?: string | null;
+  none?: boolean | null;
+  oneOrMore?: boolean | null;
+  zeroOrMore?: boolean | null;
+};
+export type PromptResponseFormatJSONSchemaInput = {
+  jsonSchema: PromptResponseFormatJSONSchemaDefinitionInput;
+  type: string;
+};
+export type PromptResponseFormatJSONSchemaDefinitionInput = {
+  description?: string | null;
+  name: string;
+  schema?: any | null;
+  strict?: boolean | null;
+};
+export type ModelClientOptionsInput = {
+  builtin?: BuiltinClientOptionsInput | null;
+  custom?: CustomClientOptionsInput | null;
+};
+export type BuiltinClientOptionsInput = {
+  baseUrl?: string | null;
+  customHeaders?: any | null;
+  endpoint?: string | null;
+  openaiApiType?: OpenAIApiType | null;
+  region?: string | null;
+};
+export type CustomClientOptionsInput = {
+  extraHeaders?: any | null;
+};
+export type GenerativeCredentialInput = {
+  envVarName: string;
+  value: string;
 };
 export type PromptTemplateOptions = {
   format: PromptTemplateFormat;
   variables: any;
+};
+export type PlaygroundEvaluatorInput = {
+  description?: string | null;
+  id: string;
+  inputMapping?: EvaluatorInputMappingInput;
+  name: string;
+  outputConfigs?: ReadonlyArray<AnnotationConfigInput> | null;
+};
+export type EvaluatorInputMappingInput = {
+  literalMapping?: any;
+  pathMapping?: any;
+};
+export type AnnotationConfigInput = {
+  categorical?: CategoricalAnnotationConfigInput | null;
+  continuous?: ContinuousAnnotationConfigInput | null;
+  freeform?: FreeformAnnotationConfigInput | null;
+};
+export type CategoricalAnnotationConfigInput = {
+  description?: string | null;
+  name: string;
+  optimizationDirection: OptimizationDirection;
+  values: ReadonlyArray<CategoricalAnnotationConfigValueInput>;
+};
+export type CategoricalAnnotationConfigValueInput = {
+  label: string;
+  score?: number | null;
+};
+export type ContinuousAnnotationConfigInput = {
+  description?: string | null;
+  lowerBound?: number | null;
+  name: string;
+  optimizationDirection: OptimizationDirection;
+  upperBound?: number | null;
+};
+export type FreeformAnnotationConfigInput = {
+  description?: string | null;
+  name: string;
 };
 export type PlaygroundOutputSubscription$variables = {
   input: ChatCompletionInput;
 };
 export type PlaygroundOutputSubscription$data = {
   readonly chatCompletion: {
-    readonly __typename: "ChatCompletionSubscriptionError";
-    readonly message: string;
-  } | {
-    readonly __typename: "ChatCompletionSubscriptionResult";
-    readonly span: {
-      readonly id: string;
-    } | null;
-  } | {
-    readonly __typename: "TextChunk";
-    readonly content: string;
-  } | {
-    readonly __typename: "ToolCallChunk";
-    readonly function: {
+    readonly __typename: string;
+    readonly content?: string;
+    readonly function?: {
       readonly arguments: string;
       readonly name: string;
     };
-    readonly id: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
+    readonly id?: string;
+    readonly message?: string;
+    readonly repetitionNumber: number | null;
+    readonly span?: {
+      readonly id: string;
+    } | null;
   };
 };
 export type PlaygroundOutputSubscription = {
@@ -118,6 +210,13 @@ v2 = [
         "args": null,
         "kind": "ScalarField",
         "name": "__typename",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "repetitionNumber",
         "storageKey": null
       },
       {
@@ -222,16 +321,16 @@ return {
     "selections": (v2/*: any*/)
   },
   "params": {
-    "cacheID": "aca7bf342ad2dc5db66b07e236a68268",
+    "cacheID": "e74612af0887018cc61d185ed2105c5c",
     "id": null,
     "metadata": {},
     "name": "PlaygroundOutputSubscription",
     "operationKind": "subscription",
-    "text": "subscription PlaygroundOutputSubscription(\n  $input: ChatCompletionInput!\n) {\n  chatCompletion(input: $input) {\n    __typename\n    ... on TextChunk {\n      content\n    }\n    ... on ToolCallChunk {\n      id\n      function {\n        name\n        arguments\n      }\n    }\n    ... on ChatCompletionSubscriptionResult {\n      span {\n        id\n      }\n    }\n    ... on ChatCompletionSubscriptionError {\n      message\n    }\n  }\n}\n"
+    "text": "subscription PlaygroundOutputSubscription(\n  $input: ChatCompletionInput!\n) {\n  chatCompletion(input: $input) {\n    __typename\n    repetitionNumber\n    ... on TextChunk {\n      content\n    }\n    ... on ToolCallChunk {\n      id\n      function {\n        name\n        arguments\n      }\n    }\n    ... on ChatCompletionSubscriptionResult {\n      span {\n        id\n      }\n    }\n    ... on ChatCompletionSubscriptionError {\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "bb5936a61a0e99dbb4a298a6e552a01c";
+(node as any).hash = "964992cecd018dc17131050b7553a3d1";
 
 export default node;

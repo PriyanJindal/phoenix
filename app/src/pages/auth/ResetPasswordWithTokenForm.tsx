@@ -1,14 +1,13 @@
-import React, { useCallback, useState } from "react";
+import { css } from "@emotion/react";
+import { useCallback, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
-import { css } from "@emotion/react";
-
-import { Form } from "@arizeai/components";
 
 import {
   Alert,
   Button,
   FieldError,
+  Form,
   Input,
   Label,
   Text,
@@ -54,15 +53,14 @@ export function ResetPasswordWithTokenForm({
           setError(text);
           return;
         }
-      } catch (error) {
+      } catch (_error) {
         setError(DEFAULT_ERROR_MESSAGE);
         return;
       } finally {
         setIsLoading(() => false);
       }
-      navigate(
-        `/login?message=${encodeURIComponent("Password has been reset.")}`
-      );
+      // Use success code instead of raw message to prevent phishing attacks
+      navigate("/login?message=password_reset");
     },
     [setError, navigate]
   );
@@ -160,8 +158,8 @@ export function ResetPasswordWithTokenForm({
         />
         <div
           css={css`
-            margin-top: var(--ac-global-dimension-size-200);
-            margin-bottom: var(--ac-global-dimension-size-50);
+            margin-top: var(--global-dimension-size-200);
+            margin-bottom: var(--global-dimension-size-50);
             button {
               width: 100%;
             }

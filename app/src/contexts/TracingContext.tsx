@@ -1,12 +1,13 @@
-import React, { createContext, PropsWithChildren, useState } from "react";
+import type { PropsWithChildren } from "react";
+import { createContext, useContext, useState } from "react";
 import { useZustand } from "use-zustand";
 
-import {
-  createTracingStore,
+import type {
   CreateTracingStoreProps,
   TracingState,
   TracingStore,
 } from "@phoenix/store/tracingStore";
+import { createTracingStore } from "@phoenix/store/tracingStore";
 
 export const TracingContext = createContext<TracingStore | null>(null);
 
@@ -25,7 +26,7 @@ export function useTracingContext<T>(
   selector: (state: TracingState) => T,
   equalityFn?: (left: T, right: T) => boolean
 ): T {
-  const store = React.useContext(TracingContext);
+  const store = useContext(TracingContext);
   if (!store) throw new Error("Missing TracingContext.Provider in the tree");
   return useZustand(store, selector, equalityFn);
 }

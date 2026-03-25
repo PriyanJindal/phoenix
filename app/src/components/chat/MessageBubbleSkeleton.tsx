@@ -1,4 +1,3 @@
-import React from "react";
 import { css } from "@emotion/react";
 
 import { Skeleton } from "@phoenix/components";
@@ -34,12 +33,12 @@ const skeletonContainerCSS = css`
 
 const skeletonBubbleCSS = css`
   &[data-outgoing="true"] {
-    border-radius: var(--ac-global-rounding-large)
-      var(--ac-global-rounding-large) 0 var(--ac-global-rounding-large);
+    border-radius: var(--global-rounding-large) var(--global-rounding-large) 0
+      var(--global-rounding-large);
   }
   &[data-outgoing="false"] {
-    border-radius: var(--ac-global-rounding-large)
-      var(--ac-global-rounding-large) var(--ac-global-rounding-large) 0;
+    border-radius: var(--global-rounding-large) var(--global-rounding-large)
+      var(--global-rounding-large) 0;
   }
 `;
 /**

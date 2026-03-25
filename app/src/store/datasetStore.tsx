@@ -1,10 +1,11 @@
 import { fetchQuery, graphql } from "react-relay";
-import { create, StateCreator } from "zustand";
+import type { StateCreator } from "zustand";
+import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
 import RelayEnvironment from "@phoenix/RelayEnvironment";
 
-import { datasetStore_latestVersionQuery } from "./__generated__/datasetStore_latestVersionQuery.graphql";
+import type { datasetStore_latestVersionQuery } from "./__generated__/datasetStore_latestVersionQuery.graphql";
 
 interface DatasetVersion {
   id: string;
@@ -45,19 +46,32 @@ export interface DatasetStoreState extends DatasetStoreProps {
 }
 
 export const createDatasetStore = (initialProps: InitialDatasetStoreProps) => {
-  const datasetStore: StateCreator<DatasetStoreState> = (set, get) => ({
+  const datasetStore: StateCreator<
+    DatasetStoreState,
+    [["zustand/devtools", unknown]]
+  > = (set, get) => ({
     ...initialProps,
     isRefreshingLatestVersion: false,
     refreshLatestVersion: async () => {
       const dataset = get();
-      set({ isRefreshingLatestVersion: true });
+      set({ isRefreshingLatestVersion: true }, false, {
+        type: "refreshLatestVersionInit",
+      });
       const newVersion = await fetchLatestVersion({
         datasetId: dataset.datasetId,
       });
-      set({ latestVersion: newVersion, isRefreshingLatestVersion: false });
+      set(
+        { latestVersion: newVersion, isRefreshingLatestVersion: false },
+        false,
+        { type: "refreshLatestVersionSuccess" }
+      );
     },
   });
-  return create<DatasetStoreState>()(devtools(datasetStore));
+  return create<DatasetStoreState>()(
+    devtools(datasetStore, {
+      name: "datasetStore",
+    })
+  );
 };
 
 export type DatasetStore = ReturnType<typeof createDatasetStore>;
@@ -70,14 +84,11 @@ async function fetchLatestVersion({
   const data = await fetchQuery<datasetStore_latestVersionQuery>(
     RelayEnvironment,
     graphql`
-      query datasetStore_latestVersionQuery($datasetId: GlobalID!) {
+      query datasetStore_latestVersionQuery($datasetId: ID!) {
         dataset: node(id: $datasetId) {
           id
           ... on Dataset {
-            latestVersions: versions(
-              first: 1
-              sort: { col: createdAt, dir: desc }
-            ) {
+            latestVersions: versions(first: 1, sort: { col: createdAt, dir: desc }) {
               edges {
                 version: node {
                   id

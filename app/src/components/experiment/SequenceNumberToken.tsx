@@ -1,6 +1,4 @@
-import React from "react";
-
-import { Token } from "@phoenix/components/token";
+import { Token } from "@phoenix/components/core/token";
 
 export function SequenceNumberToken({
   sequenceNumber,
@@ -8,7 +6,7 @@ export function SequenceNumberToken({
   sequenceNumber: number;
 }) {
   return (
-    <Token color="var(--ac-global-color-yellow-500)" size="S">
+    <Token color="var(--global-color-yellow-500)" size="S">
       #{sequenceNumber}
     </Token>
   );

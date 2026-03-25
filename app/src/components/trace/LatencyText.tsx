@@ -1,38 +1,59 @@
-import React, { useMemo } from "react";
 import { css } from "@emotion/react";
+import { useMemo } from "react";
 
-import { Flex, Icon, Icons, Text, TextProps } from "@phoenix/components";
-import { formatFloat } from "@phoenix/utils/numberFormatUtils";
+import type { TextProps } from "@phoenix/components";
+import { Flex, Icon, Icons, Text } from "@phoenix/components";
+import type { TextColorValue } from "@phoenix/components/core/types/style";
+import { latencyMsFormatter } from "@phoenix/utils/numberFormatUtils";
+/**
+ * The thresholds for the latency text color.
+ * The numbers are in milliseconds.
+ */
+export type LatencyThresholds = {
+  /**
+   * The threshold for the fast latency.
+   * Anything less than this is considered fast.
+   */
+  fast: number;
+  /**
+   * The threshold for the moderate latency.
+   * Anything between this and the slow threshold is considered moderate. Anything greater than this is considered slow.
+   */
+  moderate: number;
+};
 export function LatencyText({
   latencyMs,
   size = "M",
   showIcon = true,
+  latencyThresholds,
 }: {
-  latencyMs: number;
+  latencyMs: number | null;
   size?: TextProps["size"];
+  /**
+   * The thresholds for the latency text color.
+   * @default undefined
+   */
+  latencyThresholds?: LatencyThresholds;
   /**
    * Whether to show the clock icon.
    * @default true
    */
   showIcon?: boolean;
 }) {
-  const color = useMemo(() => {
-    if (latencyMs < 3000) {
-      return "green-1200";
-    } else if (latencyMs < 8000) {
-      return "yellow-1200";
-    } else if (latencyMs < 12000) {
-      return "orange-1200";
-    } else {
-      return "red-1200";
+  const color: TextColorValue = useMemo(() => {
+    if (latencyThresholds && latencyMs !== null) {
+      if (latencyMs < latencyThresholds.fast) {
+        return "success";
+      } else if (latencyMs < latencyThresholds.moderate) {
+        return "warning";
+      } else {
+        return "danger";
+      }
     }
-  }, [latencyMs]);
-  const latencyText = useMemo(() => {
-    if (latencyMs < 10) {
-      return formatFloat(latencyMs) + "ms";
-    }
-    return formatFloat(latencyMs / 1000) + "s";
-  }, [latencyMs]);
+    return "text-900";
+  }, [latencyMs, latencyThresholds]);
+
+  const latencyText = useMemo(() => latencyMsFormatter(latencyMs), [latencyMs]);
 
   return (
     <Flex
@@ -52,7 +73,7 @@ export function LatencyText({
           />
         </Text>
       ) : null}
-      <Text color={color} size={size}>
+      <Text color={color} size={size} fontFamily="mono">
         {latencyText}
       </Text>
     </Flex>

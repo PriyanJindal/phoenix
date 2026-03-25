@@ -1,21 +1,22 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
-import { Card } from "@arizeai/components";
-
+import type {
+  DisclosureProps,
+  DisclosureTriggerProps,
+} from "@phoenix/components";
 import {
+  Card,
   Disclosure,
   DisclosureGroup,
   type DisclosureGroupProps,
   DisclosurePanel,
-  DisclosureProps,
   DisclosureTrigger,
-  DisclosureTriggerProps,
   Text,
+  View,
 } from "@phoenix/components";
 
 const meta: Meta = {
-  title: "Disclosure",
+  title: "Core/Layout/Disclosure",
   component: DisclosureGroup,
   parameters: {
     layout: "centered",
@@ -25,25 +26,23 @@ const meta: Meta = {
 export default meta;
 
 const Template: StoryFn<DisclosureGroupProps> = (args) => (
-  <Card
-    title="Disclosure"
-    bodyStyle={{ padding: 0, width: "600px" }}
-    variant="compact"
-  >
-    <DisclosureGroup {...args}>
-      <Disclosure id="content">
-        <DisclosureTrigger>First Item Title</DisclosureTrigger>
-        <DisclosurePanel>
-          <Text>First Item Content</Text>
-        </DisclosurePanel>
-      </Disclosure>
-      <Disclosure id="content-2">
-        <DisclosureTrigger>Second Item Title</DisclosureTrigger>
-        <DisclosurePanel>
-          <Text>Second Item Content</Text>
-        </DisclosurePanel>
-      </Disclosure>
-    </DisclosureGroup>
+  <Card title="Disclosure">
+    <View width="600px">
+      <DisclosureGroup {...args}>
+        <Disclosure id="content">
+          <DisclosureTrigger>First Item Title</DisclosureTrigger>
+          <DisclosurePanel>
+            <Text>First Item Content</Text>
+          </DisclosurePanel>
+        </Disclosure>
+        <Disclosure id="content-2">
+          <DisclosureTrigger>Second Item Title</DisclosureTrigger>
+          <DisclosurePanel>
+            <Text>Second Item Content</Text>
+          </DisclosurePanel>
+        </Disclosure>
+      </DisclosureGroup>
+    </View>
   </Card>
 );
 
@@ -61,8 +60,7 @@ const SingleItemStory: StoryFn<DisclosureProps> = (args) => (
   </Disclosure>
 );
 
-export const SingleItem: Meta<typeof SingleItemStory> = {
-  render: SingleItemStory,
+export const SingleItem = SingleItemStory.bind({
   args: {
     defaultExpanded: true,
     isExpanded: undefined,
@@ -78,45 +76,42 @@ export const SingleItem: Meta<typeof SingleItemStory> = {
       options: ["M", "L"],
     },
   },
-};
+});
 
 const ExtraTitleContentStory: StoryFn<DisclosureTriggerProps> = (args) => (
-  <Card
-    title="Disclosure"
-    bodyStyle={{ padding: 0, width: "600px" }}
-    variant="compact"
-  >
-    <DisclosureGroup>
-      <Disclosure id="content" {...args}>
-        <DisclosureTrigger {...args}>
-          Content Title
-          <span
-            style={{
-              color: "var(--ac-global-text-color-500)",
-              border: "1px solid var(--ac-global-text-color-500)",
-              borderRadius: "12px",
-              padding: "var(--ac-global-dimension-static-size-100)",
-              height: "8px",
-              width: "16px",
-              lineHeight: "0px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            1
-          </span>
-        </DisclosureTrigger>
-        <DisclosurePanel>
-          <Text>Content</Text>
-        </DisclosurePanel>
-      </Disclosure>
-    </DisclosureGroup>
+  <Card title="Disclosure">
+    <View width="600px">
+      <DisclosureGroup>
+        <Disclosure id="content" {...args}>
+          <DisclosureTrigger {...args}>
+            Content Title
+            <span
+              style={{
+                color: "var(--global-text-color-500)",
+                border: "1px solid var(--global-text-color-500)",
+                borderRadius: "12px",
+                padding: "var(--global-dimension-static-size-100)",
+                height: "8px",
+                width: "16px",
+                lineHeight: "0px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              1
+            </span>
+          </DisclosureTrigger>
+          <DisclosurePanel>
+            <Text>Content</Text>
+          </DisclosurePanel>
+        </Disclosure>
+      </DisclosureGroup>
+    </View>
   </Card>
 );
 
-export const ExtraTitleContent: Meta<typeof ExtraTitleContentStory> = {
-  render: ExtraTitleContentStory,
+export const ExtraTitleContent = ExtraTitleContentStory.bind({
   args: {
     justifyContent: "start",
     arrowPosition: "end",
@@ -131,4 +126,4 @@ export const ExtraTitleContent: Meta<typeof ExtraTitleContentStory> = {
       options: ["space-between", "start"],
     },
   },
-};
+});

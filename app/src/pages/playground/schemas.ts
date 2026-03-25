@@ -1,21 +1,17 @@
-import { z } from "zod";
-import zodToJsonSchema from "zod-to-json-schema";
-
 import {
   LLMAttributePostfixes,
   MessageAttributePostfixes,
   SemanticAttributePrefixes,
   ToolAttributePostfixes,
 } from "@arizeai/openinference-semantic-conventions";
+import { z } from "zod";
 
 import {
   jsonSchemaZodSchema,
   llmProviderToolDefinitionSchema,
 } from "@phoenix/schemas";
-import {
-  JSONLiteral,
-  jsonLiteralSchema,
-} from "@phoenix/schemas/jsonLiteralSchema";
+import type { JSONLiteral } from "@phoenix/schemas/jsonLiteralSchema";
+import { jsonLiteralSchema } from "@phoenix/schemas/jsonLiteralSchema";
 import { llmProviderToolCallSchema } from "@phoenix/schemas/toolCallSchemas";
 import {
   isObject,
@@ -55,7 +51,7 @@ const messageSchema = z.object({
       .union([z.string(), z.array(z.record(z.string(), z.unknown()))])
       .default(""),
     [MessageAttributePostfixes.contents]: z
-      .array(z.object({ message_content: z.record(z.string()) }))
+      .array(z.object({ message_content: z.record(z.string(), z.string()) }))
       .optional(),
     [MessageAttributePostfixes.tool_calls]: z.array(toolCallSchema).optional(),
     [MessageAttributePostfixes.tool_call_id]: z.string().optional(),
@@ -120,7 +116,7 @@ export const chatMessageSchema = z.object({
 export const chatMessagesSchema = z.array(chatMessageSchema);
 
 export const jsonObjectSchema: z.ZodType<{ [key: string]: JSONLiteral }> =
-  z.lazy(() => z.record(jsonLiteralSchema));
+  z.lazy(() => z.record(z.string(), jsonLiteralSchema));
 
 export type JsonObjectSchema = z.infer<typeof jsonObjectSchema>;
 
@@ -149,7 +145,7 @@ const stringToInvocationParametersSchema = z
     const { json } = safelyParseJSON(s);
     if (!isObject(json)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "The invocation parameters must be a valid JSON object",
       });
       return z.NEVER;
@@ -158,14 +154,14 @@ const stringToInvocationParametersSchema = z
     const { success, data } = invocationParameterSchema.safeParse(json);
     if (!success) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "The invocation parameters must be a valid JSON object",
       });
       return z.NEVER;
     }
     return data;
   })
-  .default("{}");
+  .prefault("{}");
 /**
  * The zod schema for llm model config
  * @see {@link https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md|Semantic Conventions}
@@ -192,9 +188,81 @@ export const modelConfigWithResponseFormatSchema = z.object({
   [SemanticAttributePrefixes.llm]: z.object({
     [LLMAttributePostfixes.invocation_parameters]:
       stringToInvocationParametersSchema.pipe(
+        // Cast unavoidable: z.lazy() (used by jsonObjectSchema) erases the
+        // Input type to `unknown`, but .pipe() requires the target's Input to
+        // match the source's Output ({ [key: string]: JSONLiteral }).
         z.object({
           response_format: jsonObjectSchema.optional(),
-        })
+        }) as z.ZodType<
+          { response_format?: { [key: string]: JSONLiteral } },
+          { [key: string]: JSONLiteral }
+        >
+      ),
+  }),
+});
+
+export const modelConfigWithOpenAIResponsesFormatSchema = z.object({
+  [SemanticAttributePrefixes.llm]: z.object({
+    [LLMAttributePostfixes.invocation_parameters]:
+      stringToInvocationParametersSchema.pipe(
+        z.object({
+          text: z.object({ format: jsonObjectSchema.optional() }).optional(),
+        }) as z.ZodType<
+          {
+            text?: { format?: { [key: string]: JSONLiteral } };
+          },
+          { [key: string]: JSONLiteral }
+        >
+      ),
+  }),
+});
+
+export const modelConfigWithAnthropicOutputConfigSchema = z.object({
+  [SemanticAttributePrefixes.llm]: z.object({
+    [LLMAttributePostfixes.invocation_parameters]:
+      stringToInvocationParametersSchema.pipe(
+        z.object({
+          output_config: z
+            .object({
+              format: z
+                .object({
+                  type: z.literal("json_schema"),
+                  schema: jsonObjectSchema,
+                })
+                .optional(),
+            })
+            .optional(),
+        }) as z.ZodType<
+          {
+            output_config?: {
+              format?: {
+                type: "json_schema";
+                schema: { [key: string]: JSONLiteral };
+              };
+            };
+          },
+          { [key: string]: JSONLiteral }
+        >
+      ),
+  }),
+});
+
+export const modelConfigWithGoogleResponseFormatSchema = z.object({
+  [SemanticAttributePrefixes.llm]: z.object({
+    [LLMAttributePostfixes.invocation_parameters]:
+      stringToInvocationParametersSchema.pipe(
+        z.object({
+          response_json_schema: jsonObjectSchema.optional(),
+          response_schema: jsonObjectSchema.optional(),
+          response_mime_type: z.string().optional(),
+        }) as z.ZodType<
+          {
+            response_json_schema?: { [key: string]: JSONLiteral };
+            response_schema?: { [key: string]: JSONLiteral };
+            response_mime_type?: string;
+          },
+          { [key: string]: JSONLiteral }
+        >
       ),
   }),
 });
@@ -217,7 +285,7 @@ export const toolJSONSchemaSchema = z
 
     if (json == null || !isObject(json)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "The tool JSON schema must be a valid JSON object",
       });
       return z.NEVER;
@@ -229,7 +297,7 @@ export const toolJSONSchemaSchema = z
 
     if (!success) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "The tool JSON schema must be a valid tool schema",
       });
       return z.NEVER;
@@ -273,25 +341,54 @@ export const openAIResponseFormatSchema = z.lazy(() =>
       schema: jsonSchemaZodSchema.describe(
         "The schema itself in JSON schema format"
       ),
-      strict: z.literal(true).describe("The schema must be strict"),
+      strict: z
+        .boolean()
+        .optional()
+        .describe(
+          "Whether to enforce strict parameter validation (OpenAI only)"
+        ),
+      description: z
+        .string()
+        .optional()
+        .describe("An optional description of the schema"),
     }),
   })
 );
 
 export type OpenAIResponseFormat = z.infer<typeof openAIResponseFormatSchema>;
 
-export const openAIResponseFormatJSONSchema = zodToJsonSchema(
-  openAIResponseFormatSchema,
-  {
-    removeAdditionalStrategy: "passthrough",
-  }
+export const openAIResponseFormatJSONSchema = z.toJSONSchema(
+  openAIResponseFormatSchema
+);
+
+export const anthropicResponseFormatSchema = z.object({
+  type: z.literal("json_schema"),
+  schema: jsonSchemaZodSchema.describe(
+    "The schema itself in JSON schema format"
+  ),
+});
+
+export type AnthropicResponseFormat = z.infer<
+  typeof anthropicResponseFormatSchema
+>;
+
+export const anthropicResponseFormatJSONSchema = z.toJSONSchema(
+  anthropicResponseFormatSchema
+);
+
+/**
+ * Google spans carry only the raw JSON schema (no `type`/`name` wrapper).
+ * The editor shows and accepts a plain JSON schema object.
+ */
+export const googleResponseFormatJSONSchema = z.toJSONSchema(
+  jsonSchemaZodSchema.describe("The JSON schema for the response")
 );
 
 const promptTemplateVariablesSchema = z.string().transform((s, ctx) => {
   const { json } = safelyParseJSON(s);
   if (!isStringKeyedObject(json)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "The prompt template variables must be a valid JSON object",
     });
     return z.NEVER;

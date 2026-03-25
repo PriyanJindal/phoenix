@@ -1,11 +1,7 @@
-import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
-
-import { Item, Picker } from "@arizeai/components";
 
 import {
   Button,
-  Flex,
   Label,
   ListBox,
   ListBoxItem,
@@ -21,10 +17,14 @@ import {
  * It supports different sizes, is fully accessible, and follows the design system's styling.
  */
 const meta = {
-  title: "Select",
+  title: "Core/Forms/Select",
   component: Select,
   parameters: {
     layout: "centered",
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/rMddnj6eV2TcQqNkejJ9qX/Core?node-id=264-278",
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -58,9 +58,6 @@ type Story = StoryObj<typeof meta>;
 const options = [
   { id: "1", name: "Option 1" },
   { id: "2", name: "Option 2" },
-  { id: "3", name: "Option 3" },
-  { id: "4", name: "Option 4" },
-  { id: "5", name: "Option 5" },
 ];
 
 const SelectContent = () => (
@@ -170,27 +167,5 @@ export const WithLongOptions: Story = {
         </ListBox>
       </Popover>
     </Select>
-  ),
-};
-
-export const Comparison: Story = {
-  args: {},
-  render: (args) => (
-    <Flex direction="column">
-      <div>
-        <h3>Phoenix Select</h3>
-        <Select {...args}>
-          <SelectContent />
-        </Select>
-      </div>
-      <div>
-        <h3>Arize Picker</h3>
-        <Picker label="Select an option" size="default">
-          {options.map((option) => (
-            <Item key={option.id}>{option.name}</Item>
-          ))}
-        </Picker>
-      </div>
-    </Flex>
   ),
 };

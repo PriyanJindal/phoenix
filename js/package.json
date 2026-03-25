@@ -3,56 +3,64 @@
   "version": "0.0.0",
   "private": true,
   "description": "Monorepo for Arize Phoenix Javascript Tooling",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Arize-ai/phoenix.git"
-  },
-  "scripts": {
-    "prettier:check": "prettier --check .",
-    "prettier:write": "prettier --write .",
-    "type:check": "pnpm run -r type:check",
-    "lint": "eslint . --ext .ts",
-    "build": "pnpm run -r build",
-    "ci:version": "pnpm changeset version",
-    "ci:publish": "pnpm run -r build && pnpm publish -r --access public --provenance"
-  },
   "keywords": [
-    "telemetry",
     "evaluation",
     "llmops",
-    "observability"
+    "observability",
+    "telemetry"
   ],
-  "author": "oss@arize.com",
+  "homepage": "https://github.com/Arize-ai/phoenix/tree/main/js",
+  "bugs": {
+    "url": "https://github.com/Arize-ai/phoenix/issues"
+  },
   "license": "ELv2",
+  "author": "oss@arize.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arize-ai/phoenix.git"
+  },
+  "scripts": {
+    "build": "pnpm run -r build",
+    "ci:publish": "pnpm run -r build && pnpm publish -r --access public --provenance",
+    "ci:version": "pnpm changeset version",
+    "clean": "pnpm run clean:node_modules",
+    "clean:node_modules": "rimraf --glob '**/node_modules/**'",
+    "docs:generate": "typedoc",
+    "docs:preview": "rimraf docs && pnpm run docs:generate && pnpx http-server ./docs -p 8080 -o",
+    "fmt": "oxfmt --config ../.oxfmtrc.jsonc",
+    "fmt:check": "oxfmt --check --config ../.oxfmtrc.jsonc",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "test": "pnpm run -r test",
+    "typecheck": "pnpm run -r typecheck"
+  },
   "devDependencies": {
-    "@changesets/cli": "^2.28.1",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
-    "eslint": "^8.57.1",
+    "@changesets/cli": "^2.29.8",
+    "oxfmt": "^0.33.0",
+    "oxlint": "^1.53.0",
     "pkg-pr-new": "^0.0.39",
-    "prettier": "^3.5.2",
-    "rimraf": "^5.0.10",
-    "tsc-alias": "^1.8.11",
-    "typescript": "^5.8.2",
-    "vitest": "^2.1.9"
+    "rimraf": "^6.1.3",
+    "tsc-alias": "1.8.11",
+    "typedoc": "^0.28.17",
+    "typescript": "^6.0.0",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=10",
     "pnpm": ">=3"
   },
-  "packageManager": "pnpm@10.2.0",
-  "eslintIgnore": [
-    "examples/**/*"
-  ],
+  "packageManager": "pnpm@10.29.3",
   "pnpm": {
     "overrides": {
+      "minimatch": ">=10.2.3",
+      "rollup@<4.59.0": ">=4.59.0",
+      "ajv@<8.18.0": ">=8.18.0",
       "esbuild@<=0.24.2": ">=0.25.0",
-      "vite@>=5.0.0 <5.4.15": ">=5.4.15",
-      "vite@>=5.0.0 <5.4.16": ">=5.4.16",
-      "vite@>=5.0.0 <5.4.18": ">=5.4.18",
-      "@babel/runtime@<7.26.10": ">=7.26.10",
-      "vite@>=5.0.0 <=5.4.18": ">=5.4.19",
-      "vite@>=5.0.0 <5.4.17": ">=5.4.17"
+      "hono@<4.12.4": ">=4.12.4",
+      "@hono/node-server@<1.19.10": ">=1.19.10",
+      "undici@<6.24.0": ">=6.24.0",
+      "express-rate-limit@<8.3.0": ">=8.3.0"
     }
   }
 }

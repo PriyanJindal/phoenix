@@ -1,32 +1,69 @@
 import json
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from openinference.semconv.trace import (
+    MessageAttributes,
     OpenInferenceMimeTypeValues,
     OpenInferenceSpanKindValues,
     SpanAttributes,
+    ToolAttributes,
+    ToolCallAttributes,
 )
 from opentelemetry.semconv.attributes.url_attributes import URL_FULL, URL_PATH
+from sqlalchemy import select
 from strawberry.relay.types import GlobalID
-from vcr.request import Request as VCRRequest
+from vcr.request import Request as VCRRequest  # type: ignore[import-untyped]
 
+from phoenix.db import models
 from phoenix.server.api.types.ChatCompletionSubscriptionPayload import (
     ChatCompletionSubscriptionError,
     ChatCompletionSubscriptionExperiment,
     ChatCompletionSubscriptionResult,
+    EvaluationChunk,
     TextChunk,
     ToolCallChunk,
 )
 from phoenix.server.api.types.Dataset import Dataset
 from phoenix.server.api.types.DatasetExample import DatasetExample
 from phoenix.server.api.types.DatasetVersion import DatasetVersion
+from phoenix.server.api.types.Evaluator import DatasetEvaluator
 from phoenix.server.api.types.Experiment import Experiment
 from phoenix.server.api.types.node import from_global_id
+from phoenix.server.experiments.utils import is_experiment_project_name
+from phoenix.server.types import DbSessionFactory
 from phoenix.trace.attributes import flatten, get_attribute_value
+from tests.unit._helpers import verify_experiment_examples_junction_table
 from tests.unit.graphql import AsyncGraphQLClient
 from tests.unit.vcr import CustomVCR
+
+
+def _assert_spans_equal(span: Mapping[str, Any], subscription_span: Mapping[str, Any]) -> None:
+    """
+    Compare two span dictionaries with relaxed floating-point comparison for latencyMs.
+    SQLite's floating-point arithmetic produces slightly different results than Python.
+    """
+    # Check that both have the same keys
+    assert span.keys() == subscription_span.keys(), (
+        f"Span keys don't match: {span.keys()} vs {subscription_span.keys()}"
+    )
+
+    # Compare each field
+    for key in span.keys():
+        if key == "latencyMs":
+            # Use relaxed comparison for latencyMs due to SQLite precision
+            span_latency = span[key]
+            subscription_latency = subscription_span[key]
+            if span_latency is not None and subscription_latency is not None:
+                assert abs(span_latency - subscription_latency) <= 2.0, (
+                    f"latencyMs difference too large: {span_latency} vs {subscription_latency}"
+                )
+            else:
+                assert span_latency == subscription_latency
+        else:
+            # Strict equality for all other fields
+            assert span[key] == subscription_span[key], f"Mismatch in field '{key}'"
 
 
 class TestChatCompletionSubscription:
@@ -52,10 +89,19 @@ class TestChatCompletionSubscription:
           ... on ChatCompletionSubscriptionError {
             message
           }
+          ... on EvaluationChunk {
+            experimentRunEvaluation {
+              name
+              label
+              score
+              explanation
+              annotatorKind
+            }
+          }
         }
       }
 
-      query SpanQuery($spanId: GlobalID!) {
+      query SpanQuery($spanId: ID!) {
         span: node(id: $spanId) {
           ... on Span {
             ...SpanFragment
@@ -111,16 +157,28 @@ class TestChatCompletionSubscription:
     ) -> None:
         variables = {
             "input": {
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": "Who won the World Cup in 2018? Answer in one word",
-                    }
-                ],
-                "model": {"name": "gpt-4", "providerKey": "OPENAI"},
-                "invocationParameters": [
-                    {"invocationName": "temperature", "valueFloat": 0.1},
-                ],
+                "promptVersion": {
+                    "templateFormat": "NONE",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "Who won the World Cup in 2018? Answer in one word"
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {"temperature": 0.1},
+                    "tools": None,
+                },
+                "repetitions": 1,
             },
         }
         async with gql_client.subscription(
@@ -156,7 +214,7 @@ class TestChatCompletionSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check attributes
         assert span.pop("id") == span_id
@@ -189,13 +247,13 @@ class TestChatCompletionSubscription:
         assert not output
         assert not span.pop("events")
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
         assert cumulative_token_count_total == token_count_total
         assert cumulative_token_count_prompt == token_count_prompt
@@ -205,10 +263,16 @@ class TestChatCompletionSubscription:
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
         assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
-        assert attributes.pop(LLM_INVOCATION_PARAMETERS) == json.dumps({"temperature": 0.1})
+        assert isinstance(invocation_parameters := attributes.pop("llm.invocation_parameters"), str)
+        assert json.loads(invocation_parameters) == {
+            "temperature": 0.1,
+            "stream_options": {"include_usage": True},
+        }
         assert attributes.pop(LLM_TOKEN_COUNT_TOTAL) == token_count_total
         assert attributes.pop(LLM_TOKEN_COUNT_PROMPT) == token_count_prompt
         assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION) == token_count_completion
+        assert attributes.pop(LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ) == 0
+        assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING) == 0
         assert attributes.pop(INPUT_VALUE)
         assert attributes.pop(INPUT_MIME_TYPE) == JSON
         assert attributes.pop(OUTPUT_VALUE)
@@ -243,16 +307,28 @@ class TestChatCompletionSubscription:
     ) -> None:
         variables = {
             "input": {
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": "Who won the World Cup in 2018? Answer in one word",
-                    }
-                ],
-                "model": {"name": "gpt-4", "providerKey": "OPENAI"},
-                "invocationParameters": [
-                    {"invocationName": "temperature", "valueFloat": 0.1},
-                ],
+                "promptVersion": {
+                    "templateFormat": "NONE",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "Who won the World Cup in 2018? Answer in one word"
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {"temperature": 0.1},
+                    "tools": None,
+                },
+                "repetitions": 1,
             },
         }
         async with gql_client.subscription(
@@ -288,7 +364,7 @@ class TestChatCompletionSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check attributes
         assert span.pop("id") == span_id
@@ -305,12 +381,9 @@ class TestChatCompletionSubscription:
         assert not context
         assert span.pop("metadata") is None
         assert span.pop("numDocuments") == 0
-        assert isinstance(token_count_total := span.pop("tokenCountTotal"), int)
-        assert isinstance(token_count_prompt := span.pop("tokenCountPrompt"), int)
-        assert isinstance(token_count_completion := span.pop("tokenCountCompletion"), int)
-        assert token_count_prompt == 0
-        assert token_count_completion == 0
-        assert token_count_total == token_count_prompt + token_count_completion
+        assert span.pop("tokenCountTotal") == 0
+        assert span.pop("tokenCountPrompt") is None
+        assert span.pop("tokenCountCompletion") is None
         assert (input := span.pop("input")).pop("mimeType") == "json"
         assert (input_value := input.pop("value"))
         assert not input
@@ -325,23 +398,27 @@ class TestChatCompletionSubscription:
         assert datetime.fromisoformat(event.pop("timestamp"))
         assert not event
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
-        assert cumulative_token_count_total == token_count_total
-        assert cumulative_token_count_prompt == token_count_prompt
-        assert cumulative_token_count_completion == token_count_completion
+        assert cumulative_token_count_total == 0
+        assert cumulative_token_count_prompt == 0
+        assert cumulative_token_count_completion == 0
         assert span.pop("propagatedStatusCode") == "ERROR"
         assert not span
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
         assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
-        assert attributes.pop(LLM_INVOCATION_PARAMETERS) == json.dumps({"temperature": 0.1})
+        assert isinstance(invocation_parameters := attributes.pop("llm.invocation_parameters"), str)
+        assert json.loads(invocation_parameters) == {
+            "temperature": 0.1,
+            "stream_options": {"include_usage": True},
+        }
         assert attributes.pop(INPUT_VALUE)
         assert attributes.pop(INPUT_MIME_TYPE) == JSON
         assert attributes.pop(LLM_INPUT_MESSAGES) == [
@@ -364,7 +441,7 @@ class TestChatCompletionSubscription:
         openai_api_key: str,
         custom_vcr: CustomVCR,
     ) -> None:
-        get_current_weather_tool_schema = {
+        get_current_weather_tool_schema: dict[str, Any] = {
             "type": "function",
             "function": {
                 "name": "get_current_weather",
@@ -379,21 +456,44 @@ class TestChatCompletionSubscription:
                     },
                     "required": ["location"],
                 },
+                "strict": None,
             },
         }
         variables = {
             "input": {
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": "How's the weather in San Francisco?",
-                    }
-                ],
-                "model": {"name": "gpt-4", "providerKey": "OPENAI"},
-                "tools": [get_current_weather_tool_schema],
-                "invocationParameters": [
-                    {"invocationName": "tool_choice", "valueJson": "auto"},
-                ],
+                "promptVersion": {
+                    "templateFormat": "NONE",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {"text": {"text": "How's the weather in San Francisco?"}}
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": {
+                        "tools": [
+                            {
+                                "function": {
+                                    "name": get_current_weather_tool_schema["function"]["name"],
+                                    "description": get_current_weather_tool_schema["function"][
+                                        "description"
+                                    ],
+                                    "parameters": get_current_weather_tool_schema["function"][
+                                        "parameters"
+                                    ],
+                                },
+                            }
+                        ],
+                        "toolChoice": {"zeroOrMore": True},
+                    },
+                },
+                "repetitions": 1,
             },
         }
         async with gql_client.subscription(
@@ -431,7 +531,7 @@ class TestChatCompletionSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check attributes
         assert span.pop("id") == span_id
@@ -464,13 +564,13 @@ class TestChatCompletionSubscription:
         assert not output
         assert not span.pop("events")
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
         assert cumulative_token_count_total == token_count_total
         assert cumulative_token_count_prompt == token_count_prompt
@@ -480,10 +580,16 @@ class TestChatCompletionSubscription:
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
         assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
-        assert attributes.pop(LLM_INVOCATION_PARAMETERS) == json.dumps({"tool_choice": "auto"})
+        assert isinstance(invocation_paramaters := attributes.pop(LLM_INVOCATION_PARAMETERS), str)
+        assert json.loads(invocation_paramaters) == {
+            "tool_choice": "auto",
+            "stream_options": {"include_usage": True},
+        }
         assert attributes.pop(LLM_TOKEN_COUNT_TOTAL) == token_count_total
         assert attributes.pop(LLM_TOKEN_COUNT_PROMPT) == token_count_prompt
         assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION) == token_count_completion
+        assert attributes.pop(LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ) == 0
+        assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING) == 0
         assert attributes.pop(INPUT_VALUE)
         assert attributes.pop(INPUT_MIME_TYPE) == JSON
         assert attributes.pop(OUTPUT_VALUE)
@@ -507,7 +613,8 @@ class TestChatCompletionSubscription:
         assert function["name"] == "get_current_weather"
         assert json.loads(function["arguments"]) == {"location": "San Francisco"}
         assert (llm_tools := attributes.pop(LLM_TOOLS))
-        assert llm_tools == [{"tool": {"json_schema": json.dumps(get_current_weather_tool_schema)}}]
+        assert len(llm_tools) == 1
+        assert json.loads(llm_tools[0]["tool"]["json_schema"]) == get_current_weather_tool_schema
         assert attributes.pop(LLM_PROVIDER) == "openai"
         assert attributes.pop(LLM_SYSTEM) == "openai"
         assert attributes.pop(URL_FULL) == "https://api.openai.com/v1/chat/completions"
@@ -521,34 +628,54 @@ class TestChatCompletionSubscription:
         custom_vcr: CustomVCR,
     ) -> None:
         tool_call_id = "call_zz1hkqH3IakqnHfVhrrUemlQ"
-        tool_calls = [
-            {
-                "id": tool_call_id,
-                "function": {
-                    "arguments": json.dumps({"city": "San Francisco"}, indent=4),
-                    "name": "get_weather",
-                },
-                "type": "function",
-            }
-        ]
         variables = {
             "input": {
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": "How's the weather in San Francisco?",
+                "promptVersion": {
+                    "templateFormat": "NONE",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {"text": {"text": "How's the weather in San Francisco?"}}
+                                ],
+                            },
+                            {
+                                "role": "AI",
+                                "content": [
+                                    {
+                                        "toolCall": {
+                                            "toolCallId": tool_call_id,
+                                            "toolCall": {
+                                                "type": "function",
+                                                "name": "get_weather",
+                                                "arguments": json.dumps(
+                                                    {"city": "San Francisco"}, indent=4
+                                                ),
+                                            },
+                                        }
+                                    }
+                                ],
+                            },
+                            {
+                                "role": "TOOL",
+                                "content": [
+                                    {
+                                        "toolResult": {
+                                            "toolCallId": tool_call_id,
+                                            "result": "sunny",
+                                        }
+                                    }
+                                ],
+                            },
+                        ]
                     },
-                    {
-                        "role": "AI",
-                        "toolCalls": tool_calls,
-                    },
-                    {
-                        "content": "sunny",
-                        "role": "TOOL",
-                        "toolCallId": tool_call_id,
-                    },
-                ],
-                "model": {"name": "gpt-4", "providerKey": "OPENAI"},
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
             }
         }
         async with gql_client.subscription(
@@ -584,7 +711,7 @@ class TestChatCompletionSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check attributes
         assert span.pop("id") == span_id
@@ -617,13 +744,13 @@ class TestChatCompletionSubscription:
         assert not output
         assert not span.pop("events")
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
         assert cumulative_token_count_total == token_count_total
         assert cumulative_token_count_prompt == token_count_prompt
@@ -632,10 +759,14 @@ class TestChatCompletionSubscription:
         assert not span
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
+        assert isinstance(invocation_paramaters := attributes.pop(LLM_INVOCATION_PARAMETERS), str)
+        assert json.loads(invocation_paramaters) == {"stream_options": {"include_usage": True}}
         assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
         assert attributes.pop(LLM_TOKEN_COUNT_TOTAL) == token_count_total
         assert attributes.pop(LLM_TOKEN_COUNT_PROMPT) == token_count_prompt
         assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION) == token_count_completion
+        assert attributes.pop(LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ) == 0
+        assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING) == 0
         assert attributes.pop(INPUT_VALUE)
         assert attributes.pop(INPUT_MIME_TYPE) == JSON
         assert attributes.pop(OUTPUT_VALUE)
@@ -656,7 +787,7 @@ class TestChatCompletionSubscription:
                     "id": tool_call_id,
                     "function": {
                         "name": "get_weather",
-                        "arguments": '"{\\n    \\"city\\": \\"San Francisco\\"\\n}"',
+                        "arguments": '{"city": "San Francisco"}',
                     },
                 }
             }
@@ -689,17 +820,28 @@ class TestChatCompletionSubscription:
     ) -> None:
         variables = {
             "input": {
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": "Who won the World Cup in 2018? Answer in one word",
-                    }
-                ],
-                "model": {"name": "claude-3-5-sonnet-20240620", "providerKey": "ANTHROPIC"},
-                "invocationParameters": [
-                    {"invocationName": "temperature", "valueFloat": 0.1},
-                    {"invocationName": "max_tokens", "valueInt": 1024},
-                ],
+                "promptVersion": {
+                    "templateFormat": "NONE",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "Who won the World Cup in 2018? Answer in one word"
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "ANTHROPIC",
+                    "modelName": "claude-3-5-sonnet-20240620",
+                    "invocationParameters": {"temperature": 0.1, "max_tokens": 1024},
+                    "tools": None,
+                },
+                "repetitions": 1,
             },
         }
         async with gql_client.subscription(
@@ -735,7 +877,7 @@ class TestChatCompletionSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check attributes
         assert span.pop("id") == span_id
@@ -768,13 +910,13 @@ class TestChatCompletionSubscription:
         assert not output
         assert not span.pop("events")
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
         assert cumulative_token_count_total == token_count_total
         assert cumulative_token_count_prompt == token_count_prompt
@@ -784,9 +926,8 @@ class TestChatCompletionSubscription:
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
         assert attributes.pop(LLM_MODEL_NAME) == "claude-3-5-sonnet-20240620"
-        assert attributes.pop(LLM_INVOCATION_PARAMETERS) == json.dumps(
-            {"temperature": 0.1, "max_tokens": 1024}
-        )
+        assert isinstance(invocation_paramaters := attributes.pop(LLM_INVOCATION_PARAMETERS), str)
+        assert json.loads(invocation_paramaters) == {"temperature": 0.1, "max_tokens": 1024}
         assert attributes.pop(LLM_TOKEN_COUNT_PROMPT) == token_count_prompt
         assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION) == token_count_completion
         assert attributes.pop(INPUT_VALUE)
@@ -841,10 +982,21 @@ class TestChatCompletionOverDatasetSubscription:
               id
             }
           }
+          ... on EvaluationChunk {
+            experimentRunEvaluation {
+              id
+              name
+              label
+              score
+              explanation
+              annotatorKind
+              traceId
+            }
+          }
         }
       }
 
-      query SpanQuery($spanId: GlobalID!) {
+      query SpanQuery($spanId: ID!) {
         span: node(id: $spanId) {
           ... on Span {
             ...SpanFragment
@@ -852,7 +1004,7 @@ class TestChatCompletionOverDatasetSubscription:
         }
       }
 
-      query ExperimentQuery($experimentId: GlobalID!) {
+      query ExperimentQuery($experimentId: ID!) {
         experiment: node(id: $experimentId) {
           ... on Experiment {
             id
@@ -884,6 +1036,9 @@ class TestChatCompletionOverDatasetSubscription:
         trace {
           id
           traceId
+          project {
+            name
+          }
         }
       }
 
@@ -933,21 +1088,36 @@ class TestChatCompletionOverDatasetSubscription:
         openai_api_key: str,
         playground_dataset_with_patch_revision: None,
         custom_vcr: CustomVCR,
+        db: DbSessionFactory,
     ) -> None:
         dataset_id = str(GlobalID(type_name=Dataset.__name__, node_id=str(1)))
         version_id = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
         variables = {
             "input": {
-                "model": {"providerKey": "OPENAI", "name": "gpt-4"},
                 "datasetId": dataset_id,
                 "datasetVersionId": version_id,
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": "What country is {city} in? Answer in one word, no punctuation.",
-                    }
-                ],
-                "templateFormat": "F_STRING",
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
             }
         }
         payloads: dict[Optional[str], list[Any]] = {}
@@ -1025,6 +1195,9 @@ class TestChatCompletionOverDatasetSubscription:
         experiment = experiment_payload["experiment"]
         assert (experiment_id := experiment.pop("id"))
 
+        async with db() as session:
+            await verify_experiment_examples_junction_table(session, experiment_id)
+
         # query for the span via the node interface to ensure that the span
         # recorded in the db contains identical information as the span emitted
         # by the subscription
@@ -1042,7 +1215,7 @@ class TestChatCompletionOverDatasetSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check example 1 span attributes
         assert span.pop("id") == span_id
@@ -1075,13 +1248,13 @@ class TestChatCompletionOverDatasetSubscription:
         assert not output
         assert not span.pop("events")
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
         assert cumulative_token_count_total == token_count_total
         assert cumulative_token_count_prompt == token_count_prompt
@@ -1090,10 +1263,14 @@ class TestChatCompletionOverDatasetSubscription:
         assert not span
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
+        assert isinstance(invocation_paramaters := attributes.pop(LLM_INVOCATION_PARAMETERS), str)
+        assert json.loads(invocation_paramaters) == {"stream_options": {"include_usage": True}}
         assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
         assert attributes.pop(LLM_TOKEN_COUNT_TOTAL) == token_count_total
         assert attributes.pop(LLM_TOKEN_COUNT_PROMPT) == token_count_prompt
         assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION) == token_count_completion
+        assert attributes.pop(LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ) == 0
+        assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING) == 0
         assert attributes.pop(INPUT_VALUE)
         assert attributes.pop(INPUT_MIME_TYPE) == JSON
         assert attributes.pop(OUTPUT_VALUE)
@@ -1113,7 +1290,6 @@ class TestChatCompletionOverDatasetSubscription:
         assert attributes.pop(LLM_SYSTEM) == "openai"
         assert attributes.pop(URL_FULL) == "https://api.openai.com/v1/chat/completions"
         assert attributes.pop(URL_PATH) == "chat/completions"
-        assert attributes.pop(PROMPT_TEMPLATE_VARIABLES) == json.dumps({"city": "Paris"})
         assert not attributes
 
         # check example 2 span
@@ -1129,7 +1305,7 @@ class TestChatCompletionOverDatasetSubscription:
             subscription_span.pop("attributes")
         )
         attributes = dict(flatten(json.loads(attributes)))
-        assert span == subscription_span
+        _assert_spans_equal(span, subscription_span)
 
         # check example 2 span attributes
         assert span.pop("id") == span_id
@@ -1162,13 +1338,13 @@ class TestChatCompletionOverDatasetSubscription:
         assert not output
         assert not span.pop("events")
         assert isinstance(
-            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), int
+            cumulative_token_count_total := span.pop("cumulativeTokenCountTotal"), float
         )
         assert isinstance(
-            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), int
+            cumulative_token_count_prompt := span.pop("cumulativeTokenCountPrompt"), float
         )
         assert isinstance(
-            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), int
+            cumulative_token_count_completion := span.pop("cumulativeTokenCountCompletion"), float
         )
         assert cumulative_token_count_total == token_count_total
         assert cumulative_token_count_prompt == token_count_prompt
@@ -1177,10 +1353,14 @@ class TestChatCompletionOverDatasetSubscription:
         assert not span
 
         assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
+        assert isinstance(invocation_paramaters := attributes.pop(LLM_INVOCATION_PARAMETERS), str)
+        assert json.loads(invocation_paramaters) == {"stream_options": {"include_usage": True}}
         assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
         assert attributes.pop(LLM_TOKEN_COUNT_TOTAL) == token_count_total
         assert attributes.pop(LLM_TOKEN_COUNT_PROMPT) == token_count_prompt
         assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION) == token_count_completion
+        assert attributes.pop(LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ) == 0
+        assert attributes.pop(LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING) == 0
         assert attributes.pop(INPUT_VALUE)
         assert attributes.pop(INPUT_MIME_TYPE) == JSON
         assert attributes.pop(OUTPUT_VALUE)
@@ -1200,7 +1380,6 @@ class TestChatCompletionOverDatasetSubscription:
         assert attributes.pop(LLM_SYSTEM) == "openai"
         assert attributes.pop(URL_FULL) == "https://api.openai.com/v1/chat/completions"
         assert attributes.pop(URL_PATH) == "chat/completions"
-        assert attributes.pop(PROMPT_TEMPLATE_VARIABLES) == json.dumps({"city": "Tokyo"})
         assert not attributes
 
         # check that example 3 has no span
@@ -1219,7 +1398,8 @@ class TestChatCompletionOverDatasetSubscription:
         type_name, _ = from_global_id(GlobalID.from_id(experiment_id))
         assert type_name == Experiment.__name__
         assert experiment.pop("name") == "playground-experiment"
-        assert experiment.pop("projectName") == "playground"
+        project_name = experiment.pop("projectName")
+        assert is_experiment_project_name(project_name)
         assert experiment.pop("metadata") == {}
         assert isinstance(created_at := experiment.pop("createdAt"), str)
         assert isinstance(updated_at := experiment.pop("updatedAt"), str)
@@ -1243,11 +1423,13 @@ class TestChatCompletionOverDatasetSubscription:
         )
         assert run.pop("error") is None
         assert isinstance(run_output := run.pop("output"), dict)
-        assert set(run_output.keys()) == {"messages"}
+        assert set(run_output.keys()) == {"messages", "available_tools"}
         assert (trace_id := run.pop("traceId")) is not None
         trace = run.pop("trace")
         assert trace.pop("id")
         assert trace.pop("traceId") == trace_id
+        project = trace.pop("project")
+        assert project["name"] == project_name
         assert not trace
         assert not run
 
@@ -1266,11 +1448,13 @@ class TestChatCompletionOverDatasetSubscription:
         )
         assert run.pop("error") is None
         assert isinstance(run_output := run.pop("output"), dict)
-        assert set(run_output.keys()) == {"messages"}
+        assert set(run_output.keys()) == {"messages", "available_tools"}
         assert (trace_id := run.pop("traceId")) is not None
         trace = run.pop("trace")
         assert trace.pop("id")
         assert trace.pop("traceId") == trace_id
+        project = trace.pop("project")
+        assert project["name"] == project_name
         assert not trace
         assert not run
 
@@ -1302,24 +1486,39 @@ class TestChatCompletionOverDatasetSubscription:
         cities_and_countries: list[tuple[str, str]],
         playground_city_and_country_dataset: None,
         custom_vcr: CustomVCR,
+        db: DbSessionFactory,
     ) -> None:
         dataset_id = str(GlobalID(type_name=Dataset.__name__, node_id=str(1)))
         version_id = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
         variables = {
             "input": {
-                "model": {"providerKey": "OPENAI", "name": "gpt-4"},
                 "datasetId": dataset_id,
                 "datasetVersionId": version_id,
-                "messages": [
-                    {
-                        "role": "USER",
-                        "content": (
-                            "What country is {city} in? "
-                            "Answer with the country name only without punctuation."
-                        ),
-                    }
-                ],
-                "templateFormat": "F_STRING",
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": (
+                                                "What country is {city} in? "
+                                                "Answer with the country name only without punctuation."
+                                            )
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
             }
         }
         payloads: dict[Optional[str], list[Any]] = {}
@@ -1386,7 +1585,1052 @@ class TestChatCompletionOverDatasetSubscription:
         # check experiment payload
         assert len(payloads[None]) == 1
         assert (experiment := payloads[None].pop()["chatCompletionOverDataset"]["experiment"])
-        assert isinstance(experiment["id"], str)
+        experiment_id = experiment["id"]
+        assert isinstance(experiment_id, str)
+
+        async with db() as session:
+            await verify_experiment_examples_junction_table(session, experiment_id)
+
+    async def test_experiment_with_single_split_filters_examples(
+        self,
+        gql_client: AsyncGraphQLClient,
+        openai_api_key: str,
+        playground_dataset_with_splits: None,
+        custom_vcr: CustomVCR,
+        db: DbSessionFactory,
+    ) -> None:
+        """Test that providing a single split ID filters examples correctly."""
+        dataset_id = str(GlobalID(type_name=Dataset.__name__, node_id=str(1)))
+        version_id = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
+        train_split_id = str(GlobalID(type_name="DatasetSplit", node_id=str(1)))
+
+        variables = {
+            "input": {
+                "datasetId": dataset_id,
+                "datasetVersionId": version_id,
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
+                "splitIds": [train_split_id],  # Only train split
+            }
+        }
+
+        payloads: dict[Optional[str], list[Any]] = {}
+        async with gql_client.subscription(
+            query=self.QUERY,
+            variables=variables,
+            operation_name="ChatCompletionOverDatasetSubscription",
+        ) as subscription:
+            custom_vcr.register_matcher(
+                _request_bodies_contain_same_city.__name__, _request_bodies_contain_same_city
+            )
+            with custom_vcr.use_cassette(match_on=[_request_bodies_contain_same_city.__name__]):
+                async for payload in subscription.stream():
+                    if (
+                        dataset_example_id := payload["chatCompletionOverDataset"][
+                            "datasetExampleId"
+                        ]
+                    ) not in payloads:
+                        payloads[dataset_example_id] = []
+                    payloads[dataset_example_id].append(payload)
+
+        # Should only have examples 1, 2, 3 (train split) + experiment payload
+        # Examples 4 and 5 (test split) should NOT be present
+        train_example_ids = [
+            str(GlobalID(type_name=DatasetExample.__name__, node_id=str(i))) for i in range(1, 4)
+        ]
+        test_example_ids = [
+            str(GlobalID(type_name=DatasetExample.__name__, node_id=str(i))) for i in range(4, 6)
+        ]
+
+        assert set(payloads.keys()) == set(train_example_ids) | {None}
+        for test_id in test_example_ids:
+            assert test_id not in payloads, f"Test example {test_id} should not be in results"
+
+        # Verify experiment payload exists
+        assert len(payloads[None]) == 1
+        assert (experiment_payload := payloads[None][0]["chatCompletionOverDataset"])[
+            "__typename"
+        ] == ChatCompletionSubscriptionExperiment.__name__
+        experiment_id = experiment_payload["experiment"]["id"]
+
+        # Verify experiment has the correct split association in DB
+        async with db() as session:
+            _, exp_id = from_global_id(GlobalID.from_id(experiment_id))
+            result = await session.execute(
+                select(models.ExperimentDatasetSplit).where(
+                    models.ExperimentDatasetSplit.experiment_id == exp_id
+                )
+            )
+            split_links = result.scalars().all()
+            assert len(split_links) == 1
+            assert split_links[0].dataset_split_id == 1  # train split
+
+    async def test_experiment_with_multiple_splits(
+        self,
+        gql_client: AsyncGraphQLClient,
+        openai_api_key: str,
+        playground_dataset_with_splits: None,
+        custom_vcr: CustomVCR,
+        db: DbSessionFactory,
+    ) -> None:
+        """Test that providing multiple split IDs includes examples from all specified splits."""
+        dataset_id = str(GlobalID(type_name=Dataset.__name__, node_id=str(1)))
+        version_id = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
+        train_split_id = str(GlobalID(type_name="DatasetSplit", node_id=str(1)))
+        test_split_id = str(GlobalID(type_name="DatasetSplit", node_id=str(2)))
+
+        variables = {
+            "input": {
+                "datasetId": dataset_id,
+                "datasetVersionId": version_id,
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
+                "splitIds": [train_split_id, test_split_id],  # Both splits
+            }
+        }
+
+        payloads: dict[Optional[str], list[Any]] = {}
+        async with gql_client.subscription(
+            query=self.QUERY,
+            variables=variables,
+            operation_name="ChatCompletionOverDatasetSubscription",
+        ) as subscription:
+            custom_vcr.register_matcher(
+                _request_bodies_contain_same_city.__name__, _request_bodies_contain_same_city
+            )
+            with custom_vcr.use_cassette(match_on=[_request_bodies_contain_same_city.__name__]):
+                async for payload in subscription.stream():
+                    if (
+                        dataset_example_id := payload["chatCompletionOverDataset"][
+                            "datasetExampleId"
+                        ]
+                    ) not in payloads:
+                        payloads[dataset_example_id] = []
+                    payloads[dataset_example_id].append(payload)
+
+        # Should have all examples 1-5 + experiment payload
+        all_example_ids = [
+            str(GlobalID(type_name=DatasetExample.__name__, node_id=str(i))) for i in range(1, 6)
+        ]
+        assert set(payloads.keys()) == set(all_example_ids) | {None}
+
+        # Verify experiment has both split associations in DB
+        assert len(payloads[None]) == 1
+        experiment_id = payloads[None][0]["chatCompletionOverDataset"]["experiment"]["id"]
+
+        async with db() as session:
+            _, exp_id = from_global_id(GlobalID.from_id(experiment_id))
+            result = await session.execute(
+                select(models.ExperimentDatasetSplit)
+                .where(models.ExperimentDatasetSplit.experiment_id == exp_id)
+                .order_by(models.ExperimentDatasetSplit.dataset_split_id)
+            )
+            split_links = result.scalars().all()
+            assert len(split_links) == 2
+            assert split_links[0].dataset_split_id == 1  # train split
+            assert split_links[1].dataset_split_id == 2  # test split
+
+    async def test_experiment_without_splits_includes_all_examples(
+        self,
+        gql_client: AsyncGraphQLClient,
+        openai_api_key: str,
+        playground_dataset_with_splits: None,
+        custom_vcr: CustomVCR,
+        db: DbSessionFactory,
+    ) -> None:
+        """Test backward compatibility: when no splits are specified, all examples are included."""
+        dataset_id = str(GlobalID(type_name=Dataset.__name__, node_id=str(1)))
+        version_id = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
+
+        variables = {
+            "input": {
+                "datasetId": dataset_id,
+                "datasetVersionId": version_id,
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
+                # No splitIds provided
+            }
+        }
+
+        payloads: dict[Optional[str], list[Any]] = {}
+        async with gql_client.subscription(
+            query=self.QUERY,
+            variables=variables,
+            operation_name="ChatCompletionOverDatasetSubscription",
+        ) as subscription:
+            custom_vcr.register_matcher(
+                _request_bodies_contain_same_city.__name__, _request_bodies_contain_same_city
+            )
+            with custom_vcr.use_cassette(match_on=[_request_bodies_contain_same_city.__name__]):
+                async for payload in subscription.stream():
+                    if (
+                        dataset_example_id := payload["chatCompletionOverDataset"][
+                            "datasetExampleId"
+                        ]
+                    ) not in payloads:
+                        payloads[dataset_example_id] = []
+                    payloads[dataset_example_id].append(payload)
+
+        # Should have all examples 1-5 + experiment payload
+        all_example_ids = [
+            str(GlobalID(type_name=DatasetExample.__name__, node_id=str(i))) for i in range(1, 6)
+        ]
+        assert set(payloads.keys()) == set(all_example_ids) | {None}
+
+        # Verify experiment has NO split associations in DB
+        assert len(payloads[None]) == 1
+        experiment_id = payloads[None][0]["chatCompletionOverDataset"]["experiment"]["id"]
+
+        async with db() as session:
+            _, exp_id = from_global_id(GlobalID.from_id(experiment_id))
+            result = await session.execute(
+                select(models.ExperimentDatasetSplit).where(
+                    models.ExperimentDatasetSplit.experiment_id == exp_id
+                )
+            )
+            split_links = result.scalars().all()
+            assert len(split_links) == 0  # No splits associated
+
+    async def test_evaluator_emits_evaluation_chunk_and_persists_annotation(
+        self,
+        gql_client: AsyncGraphQLClient,
+        openai_api_key: str,
+        single_example_dataset: models.Dataset,
+        assign_correctness_llm_evaluator_to_dataset: Callable[
+            [int], Awaitable[models.DatasetEvaluators]
+        ],
+        assign_exact_match_builtin_evaluator_to_dataset: Callable[
+            [int], Awaitable[models.DatasetEvaluators]
+        ],
+        custom_vcr: CustomVCR,
+        db: DbSessionFactory,
+    ) -> None:
+        llm_dataset_evaluator = await assign_correctness_llm_evaluator_to_dataset(
+            single_example_dataset.id
+        )
+        llm_evaluator_gid = str(
+            GlobalID(type_name=DatasetEvaluator.__name__, node_id=str(llm_dataset_evaluator.id))
+        )
+        builtin_dataset_evaluator = await assign_exact_match_builtin_evaluator_to_dataset(
+            single_example_dataset.id
+        )
+        builtin_evaluator_gid = str(
+            GlobalID(
+                type_name=DatasetEvaluator.__name__,
+                node_id=str(builtin_dataset_evaluator.id),
+            )
+        )
+
+        dataset_gid = str(
+            GlobalID(type_name=Dataset.__name__, node_id=str(single_example_dataset.id))
+        )
+        version_gid = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
+        variables = {
+            "input": {
+                "datasetId": dataset_gid,
+                "datasetVersionId": version_gid,
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
+                "tracingEnabled": True,
+                "evaluators": [
+                    {
+                        "id": llm_evaluator_gid,
+                        "name": "correctness",
+                        "inputMapping": {
+                            "pathMapping": {
+                                "input": "$.input",
+                                "output": "$.output",
+                            },
+                        },
+                    },
+                    {
+                        "id": builtin_evaluator_gid,
+                        "name": "exact-match",
+                        "inputMapping": {
+                            "literalMapping": {"expected": "France"},
+                            "pathMapping": {"actual": "$.output.messages[0].content"},
+                        },
+                    },
+                ],
+            }
+        }
+
+        payloads: dict[Optional[str], list[Any]] = {}
+        evaluation_chunks: list[Any] = []
+
+        async with gql_client.subscription(
+            query=self.QUERY,
+            variables=variables,
+            operation_name="ChatCompletionOverDatasetSubscription",
+        ) as subscription:
+            with custom_vcr.use_cassette():
+                async for payload in subscription.stream():
+                    typename = payload["chatCompletionOverDataset"]["__typename"]
+                    if typename == EvaluationChunk.__name__:
+                        evaluation_chunks.append(payload["chatCompletionOverDataset"])
+                    else:
+                        dataset_example_id = payload["chatCompletionOverDataset"][
+                            "datasetExampleId"
+                        ]
+                        if dataset_example_id not in payloads:
+                            payloads[dataset_example_id] = []
+                        payloads[dataset_example_id].append(payload)
+
+        assert len(evaluation_chunks) == 2
+        llm_chunk = next(
+            chunk
+            for chunk in evaluation_chunks
+            if chunk["experimentRunEvaluation"]["name"] == "correctness"
+        )
+        assert llm_chunk["__typename"] == EvaluationChunk.__name__
+        llm_annotation = llm_chunk["experimentRunEvaluation"]
+        assert llm_annotation is not None
+        assert llm_annotation["annotatorKind"] == "LLM"
+        builtin_chunk = next(
+            chunk
+            for chunk in evaluation_chunks
+            if chunk["experimentRunEvaluation"]["name"] == "exact-match"
+        )
+        assert builtin_chunk["__typename"] == EvaluationChunk.__name__
+        builtin_annotation = builtin_chunk["experimentRunEvaluation"]
+        assert builtin_annotation is not None
+        assert builtin_annotation["annotatorKind"] == "CODE"
+
+        async with db() as session:
+            result = await session.execute(select(models.ExperimentRunAnnotation))
+            annotations = result.scalars().all()
+            assert len(annotations) == 2
+
+            llm_annotation_orm = next(
+                annotation for annotation in annotations if annotation.name == "correctness"
+            )
+            assert llm_annotation_orm.annotator_kind == "LLM"
+            assert llm_annotation_orm.experiment_run_id is not None
+
+            builtin_annotation_orm = next(
+                annotation for annotation in annotations if annotation.name == "exact-match"
+            )
+            assert builtin_annotation_orm.annotator_kind == "CODE"
+            assert builtin_annotation_orm.experiment_run_id is not None
+
+            llm_traces_result = await session.scalars(
+                select(models.Trace).where(
+                    models.Trace.project_rowid == llm_dataset_evaluator.project_id,
+                )
+            )
+            llm_traces = llm_traces_result.all()
+            assert len(llm_traces) == 1
+            llm_evaluator_trace = llm_traces[0]
+
+            llm_spans_result = await session.execute(
+                select(models.Span).where(
+                    models.Span.trace_rowid == llm_evaluator_trace.id,
+                )
+            )
+            llm_spans = llm_spans_result.scalars().all()
+            assert len(llm_spans) == 5
+
+            builtin_traces_result = await session.scalars(
+                select(models.Trace).where(
+                    models.Trace.project_rowid == builtin_dataset_evaluator.project_id,
+                )
+            )
+            builtin_traces = builtin_traces_result.all()
+            assert len(builtin_traces) == 1
+            builtin_evaluator_trace = builtin_traces[0]
+
+            builtin_spans_result = await session.execute(
+                select(models.Span).where(
+                    models.Span.trace_rowid == builtin_evaluator_trace.id,
+                )
+            )
+            builtin_spans = builtin_spans_result.scalars().all()
+            assert len(builtin_spans) == 4
+
+            # Parse LLM evaluator spans
+            llm_evaluator_span = None
+            llm_input_mapping_span = None
+            llm_prompt_span = None
+            llm_llm_span = None
+            llm_parse_span = None
+            for span in llm_spans:
+                if span.span_kind == "EVALUATOR":
+                    llm_evaluator_span = span
+                elif span.span_kind == "CHAIN" and span.name == "Input Mapping":
+                    llm_input_mapping_span = span
+                elif span.span_kind == "PROMPT" and span.name.startswith("Prompt:"):
+                    llm_prompt_span = span
+                elif span.span_kind == "LLM":
+                    llm_llm_span = span
+                elif span.span_kind == "CHAIN" and span.name == "Parse Eval Result":
+                    llm_parse_span = span
+
+            assert llm_evaluator_span is not None
+            assert llm_evaluator_span.parent_id is None
+            assert llm_input_mapping_span is not None
+            assert llm_input_mapping_span.parent_id == llm_evaluator_span.span_id
+            assert llm_prompt_span is not None
+            assert llm_prompt_span.parent_id == llm_evaluator_span.span_id
+            assert llm_llm_span is not None
+            assert llm_llm_span.parent_id == llm_evaluator_span.span_id
+            assert llm_parse_span is not None
+            assert llm_parse_span.parent_id == llm_evaluator_span.span_id
+
+            # LLM evaluator span
+            assert llm_evaluator_span.name == "Evaluator: correctness"
+            assert llm_evaluator_span.span_kind == "EVALUATOR"
+            attributes = dict(flatten(llm_evaluator_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "EVALUATOR"
+            raw_input_value = attributes.pop(INPUT_VALUE)
+            assert raw_input_value is not None
+            input_value = json.loads(raw_input_value)
+            assert set(input_value.keys()) == {"input", "output", "reference", "metadata"}
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            raw_output_value = attributes.pop(OUTPUT_VALUE)
+            assert raw_output_value is not None
+            output_value = json.loads(raw_output_value)
+            assert set(output_value.keys()) == {"results"}
+            assert len(output_value["results"]) == 1
+            assert set(output_value["results"][0].keys()) == {
+                "name",
+                "label",
+                "score",
+                "explanation",
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+            assert not llm_evaluator_span.events
+            assert llm_evaluator_span.status_code == "OK"
+            assert not llm_evaluator_span.status_message
+
+            # input mapping span
+            assert llm_input_mapping_span.name == "Input Mapping"
+            assert llm_input_mapping_span.span_kind == "CHAIN"
+            assert llm_input_mapping_span.status_code == "OK"
+            assert not llm_input_mapping_span.status_message
+            assert not llm_input_mapping_span.events
+            attributes = dict(flatten(llm_input_mapping_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "CHAIN"
+            input_value = json.loads(attributes.pop(INPUT_VALUE))
+            assert input_value == {
+                "input_mapping": {
+                    "path_mapping": {"input": "$.input", "output": "$.output"},
+                    "literal_mapping": {},
+                },
+                "template_variables": {
+                    "input": {"city": "Paris"},
+                    "output": {
+                        "available_tools": [],
+                        "messages": [{"content": "France", "role": "assistant"}],
+                    },
+                    "reference": {"country": "France"},
+                    "metadata": {},
+                },
+            }
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            output_value = json.loads(attributes.pop(OUTPUT_VALUE))
+            assert output_value == {
+                "input": "{'city': 'Paris'}",
+                "output": "{'messages': [{'role': 'assistant', 'content': 'France'}], 'available_tools': []}",
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+            # Prompt span
+            assert llm_prompt_span.name == "Prompt: correctness-prompt"
+            assert llm_prompt_span.span_kind == "PROMPT"
+            assert llm_prompt_span.status_code == "OK"
+            assert not llm_prompt_span.status_message
+            assert not llm_prompt_span.events
+            attributes = dict(flatten(llm_prompt_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "PROMPT"
+            input_value = json.loads(attributes.pop(INPUT_VALUE))
+            assert input_value == {
+                "input": "{'city': 'Paris'}",
+                "output": "{'messages': [{'role': 'assistant', 'content': 'France'}], 'available_tools': []}",
+            }
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            output_value = json.loads(attributes.pop(OUTPUT_VALUE))
+            assert output_value == {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an evaluator that assesses the correctness of outputs.",
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "Input: {'city': 'Paris'}\n\n"
+                            "Output: {'messages': [{'role': 'assistant', 'content': 'France'}], "
+                            "'available_tools': []}\n\n"
+                            "Is this output correct?"
+                        ),
+                    },
+                ]
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+            # llm span
+            assert llm_llm_span.name == "ChatCompletion"
+            assert llm_llm_span.span_kind == "LLM"
+            assert llm_llm_span.status_code == "OK"
+            assert not llm_llm_span.status_message
+            assert llm_llm_span.llm_token_count_prompt is not None
+            assert llm_llm_span.llm_token_count_prompt > 0
+            assert llm_llm_span.llm_token_count_completion is not None
+            assert llm_llm_span.llm_token_count_completion > 0
+            assert llm_llm_span.cumulative_llm_token_count_prompt > 0
+            assert llm_llm_span.cumulative_llm_token_count_completion > 0
+            attributes = dict(flatten(llm_llm_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "LLM"
+            assert attributes.pop(LLM_MODEL_NAME) == "gpt-4"
+            assert attributes.pop(LLM_PROVIDER) == "openai"
+            assert attributes.pop(LLM_SYSTEM) == "openai"
+            assert attributes.pop(URL_FULL) == "https://api.openai.com/v1/chat/completions"
+            assert attributes.pop(URL_PATH) == "chat/completions"
+            assert attributes.pop(f"{LLM_INPUT_MESSAGES}.0.{MESSAGE_ROLE}") == "system"
+            assert (
+                "evaluator" in attributes.pop(f"{LLM_INPUT_MESSAGES}.0.{MESSAGE_CONTENT}").lower()
+            )
+            assert attributes.pop(f"{LLM_INPUT_MESSAGES}.1.{MESSAGE_ROLE}") == "user"
+            assert "Paris" in attributes.pop(f"{LLM_INPUT_MESSAGES}.1.{MESSAGE_CONTENT}")
+            token_count_attribute_keys = [
+                attribute_key
+                for attribute_key in attributes
+                if attribute_key.startswith("llm.token_count.")
+            ]
+            for key in token_count_attribute_keys:
+                assert isinstance(attributes.pop(key), int)
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            raw_output_value = attributes.pop(OUTPUT_VALUE)
+            output_value = json.loads(raw_output_value)
+            messages = output_value.pop("messages")
+            assert not output_value
+            assert messages is not None
+            assert len(messages) == 1
+            message = messages[0]
+            assert message.pop("role") == "assistant"
+            tool_calls = message.pop("tool_calls")
+            assert not message
+            assert len(tool_calls) == 1
+            tool_call = tool_calls[0]
+            assert tool_call.pop("id") == "call_aABUz9QoikDpYXHXhUkahsNF"
+            function = tool_call.pop("function")
+            assert not tool_call
+            assert function.pop("name") == "correctness"
+            tool_call_arguments = function.pop("arguments")
+            assert tool_call_arguments is not None
+            assert json.loads(tool_call_arguments) == {
+                "label": "incorrect",
+            }
+            assert not function
+            assert attributes.pop(f"{LLM_OUTPUT_MESSAGES}.0.{MESSAGE_ROLE}") == "assistant"
+            assert isinstance(
+                attributes.pop(
+                    f"{LLM_OUTPUT_MESSAGES}.0.{MessageAttributes.MESSAGE_TOOL_CALLS}.0.{TOOL_CALL_ID}"
+                ),
+                str,
+            )
+            assert (
+                attributes.pop(
+                    f"{LLM_OUTPUT_MESSAGES}.0.{MessageAttributes.MESSAGE_TOOL_CALLS}.0.{TOOL_CALL_FUNCTION_NAME}"
+                )
+                == "correctness"
+            )
+            arguments = attributes.pop(
+                f"{LLM_OUTPUT_MESSAGES}.0.{MessageAttributes.MESSAGE_TOOL_CALLS}.0.{TOOL_CALL_FUNCTION_ARGUMENTS}"
+            )
+            assert arguments is not None
+            assert json.loads(arguments) == {"label": "incorrect"}
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            assert isinstance(attributes.pop(INPUT_VALUE), str)
+            assert isinstance(attributes.pop(LLM_INVOCATION_PARAMETERS), str)
+            tool_json_schema = json.loads(attributes.pop(f"{LLM_TOOLS}.0.{TOOL_JSON_SCHEMA}"))
+            assert tool_json_schema["type"] == "function"
+            assert tool_json_schema["function"]["name"] == "correctness"
+            assert not attributes
+
+            # span costs for evaluator trace
+            span_costs_result = await session.execute(
+                select(models.SpanCost).where(models.SpanCost.trace_rowid == llm_evaluator_trace.id)
+            )
+            span_costs = span_costs_result.scalars().all()
+            assert len(span_costs) == 1
+            span_cost = span_costs[0]
+            assert span_cost.span_rowid == llm_llm_span.id
+            assert span_cost.trace_rowid == llm_llm_span.trace_rowid
+            assert span_cost.model_id is not None
+            assert span_cost.span_start_time == llm_llm_span.start_time
+            assert span_cost.total_cost is not None
+            assert span_cost.total_cost > 0
+            assert span_cost.total_tokens == (
+                llm_llm_span.llm_token_count_prompt + llm_llm_span.llm_token_count_completion
+            )
+            assert span_cost.prompt_tokens == llm_llm_span.llm_token_count_prompt
+            assert span_cost.prompt_cost is not None
+            assert span_cost.prompt_cost > 0
+            assert span_cost.completion_tokens == llm_llm_span.llm_token_count_completion
+            assert span_cost.completion_cost is not None
+            assert span_cost.completion_cost > 0
+
+            # span cost details for evaluator trace
+            span_cost_details_result = await session.execute(
+                select(models.SpanCostDetail).where(
+                    models.SpanCostDetail.span_cost_id == span_cost.id
+                )
+            )
+            span_cost_details = span_cost_details_result.scalars().all()
+            assert len(span_cost_details) >= 2
+            input_detail = next(
+                d for d in span_cost_details if d.is_prompt and d.token_type == "input"
+            )
+            output_detail = next(
+                d for d in span_cost_details if not d.is_prompt and d.token_type == "output"
+            )
+            assert input_detail.span_cost_id == span_cost.id
+            assert input_detail.token_type == "input"
+            assert input_detail.is_prompt is True
+            assert input_detail.tokens == llm_llm_span.llm_token_count_prompt
+            assert input_detail.cost is not None
+            assert input_detail.cost > 0
+            assert input_detail.cost_per_token is not None
+            assert output_detail.span_cost_id == span_cost.id
+            assert output_detail.token_type == "output"
+            assert output_detail.is_prompt is False
+            assert output_detail.tokens == llm_llm_span.llm_token_count_completion
+            assert output_detail.cost is not None
+            assert output_detail.cost > 0
+            assert output_detail.cost_per_token is not None
+
+            # chain span
+            assert llm_parse_span.name == "Parse Eval Result"
+            assert llm_parse_span.span_kind == "CHAIN"
+            assert llm_parse_span.status_code == "OK"
+            assert not llm_parse_span.status_message
+            assert not llm_parse_span.events
+            attributes = dict(flatten(llm_parse_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "CHAIN"
+            input_value = json.loads(attributes.pop(INPUT_VALUE))
+            assert set(input_value.keys()) == {"tool_calls", "output_configs"}
+            tool_calls = input_value["tool_calls"]
+            assert len(tool_calls) == 1
+            tool_call = next(iter(tool_calls.values()))
+            assert tool_call["name"] == "correctness"
+            assert input_value["output_configs"] == {
+                "correctness": {
+                    "values": [
+                        {"label": "correct", "score": 1.0},
+                        {"label": "incorrect", "score": 0.0},
+                    ]
+                }
+            }
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            output_value = json.loads(attributes.pop(OUTPUT_VALUE))
+            assert output_value == {
+                "results": [
+                    {
+                        "name": "correctness",
+                        "label": "incorrect",
+                        "score": 0.0,
+                        "explanation": None,
+                    }
+                ]
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+            # built-in evaluator spans
+            builtin_evaluator_span = None
+            builtin_input_mapping_span = None
+            builtin_execution_span = None
+            builtin_parse_span = None
+            for span in builtin_spans:
+                if span.span_kind == "EVALUATOR":
+                    builtin_evaluator_span = span
+                elif span.span_kind == "CHAIN":
+                    if span.name == "Input Mapping":
+                        builtin_input_mapping_span = span
+                    elif span.name == "exact_match":
+                        builtin_execution_span = span
+                    elif span.name == "Parse Eval Result":
+                        builtin_parse_span = span
+
+            assert builtin_evaluator_span is not None
+            assert builtin_input_mapping_span is not None
+            assert builtin_execution_span is not None
+            assert builtin_parse_span is not None
+
+            # Verify span hierarchy
+            assert builtin_evaluator_span.parent_id is None
+            assert builtin_input_mapping_span.parent_id == builtin_evaluator_span.span_id
+            assert builtin_execution_span.parent_id == builtin_evaluator_span.span_id
+            assert builtin_parse_span.parent_id == builtin_evaluator_span.span_id
+
+            # Built-in evaluator span
+            assert builtin_evaluator_span.name == "Evaluator: exact-match"
+            assert builtin_evaluator_span.span_kind == "EVALUATOR"
+            assert builtin_evaluator_span.status_code == "OK"
+            assert not builtin_evaluator_span.status_message
+            assert not builtin_evaluator_span.events
+            attributes = dict(flatten(builtin_evaluator_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "EVALUATOR"
+            assert json.loads(attributes.pop(INPUT_VALUE)) == {
+                "input": {"city": "Paris"},
+                "output": {
+                    "messages": [{"role": "assistant", "content": "France"}],
+                    "available_tools": [],
+                },
+                "reference": {"country": "France"},
+                "metadata": {},
+            }
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            assert json.loads(attributes.pop(OUTPUT_VALUE)) == {
+                "label": "true",
+                "score": 1.0,
+                "explanation": "expected matches actual",
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+            # Built-in input mapping span
+            assert builtin_input_mapping_span.name == "Input Mapping"
+            assert builtin_input_mapping_span.span_kind == "CHAIN"
+            assert builtin_input_mapping_span.status_code == "OK"
+            assert not builtin_input_mapping_span.status_message
+            assert not builtin_input_mapping_span.events
+            attributes = dict(
+                flatten(builtin_input_mapping_span.attributes, recurse_on_sequence=True)
+            )
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "CHAIN"
+            assert json.loads(attributes.pop(INPUT_VALUE)) == {
+                "input_mapping": {
+                    "path_mapping": {"actual": "$.output.messages[0].content"},
+                    "literal_mapping": {"expected": "France"},
+                },
+                "template_variables": {
+                    "input": {"city": "Paris"},
+                    "output": {
+                        "messages": [{"role": "assistant", "content": "France"}],
+                        "available_tools": [],
+                    },
+                    "reference": {"country": "France"},
+                    "metadata": {},
+                },
+            }
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            assert json.loads(attributes.pop(OUTPUT_VALUE)) == {
+                "expected": "France",
+                "actual": "France",
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+            assert builtin_execution_span.name == "exact_match"
+            assert builtin_execution_span.span_kind == "CHAIN"
+            assert builtin_execution_span.status_code == "OK"
+            assert not builtin_execution_span.status_message
+            assert not builtin_execution_span.events
+            attributes = dict(flatten(builtin_execution_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "CHAIN"
+            assert json.loads(attributes.pop(INPUT_VALUE)) == {
+                "expected": "France",
+                "actual": "France",
+                "case_sensitive": True,
+            }
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            assert json.loads(attributes.pop(OUTPUT_VALUE)) is True
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+            # Built-in parse span (Parse Eval Result)
+            assert builtin_parse_span.name == "Parse Eval Result"
+            assert builtin_parse_span.span_kind == "CHAIN"
+            assert not builtin_parse_span.status_message
+            assert not builtin_parse_span.events
+            attributes = dict(flatten(builtin_parse_span.attributes, recurse_on_sequence=True))
+            assert attributes.pop(OPENINFERENCE_SPAN_KIND) == "CHAIN"
+            assert json.loads(attributes.pop(INPUT_VALUE)) is True
+            assert attributes.pop(INPUT_MIME_TYPE) == JSON
+            output_value = json.loads(attributes.pop(OUTPUT_VALUE))
+            assert output_value == {
+                "label": "true",
+                "score": 1.0,
+                "explanation": "expected matches actual",
+            }
+            assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
+            assert not attributes
+
+    async def test_evaluator_not_emitted_when_task_errors(
+        self,
+        gql_client: AsyncGraphQLClient,
+        openai_api_key: str,
+        single_example_dataset: models.Dataset,
+        assign_correctness_llm_evaluator_to_dataset: Callable[
+            [int], Awaitable[models.DatasetEvaluators]
+        ],
+        custom_vcr: CustomVCR,
+        db: DbSessionFactory,
+    ) -> None:
+        dataset_evaluator = await assign_correctness_llm_evaluator_to_dataset(
+            single_example_dataset.id
+        )
+        evaluator_gid = str(
+            GlobalID(type_name=DatasetEvaluator.__name__, node_id=str(dataset_evaluator.id))
+        )
+        dataset_gid = str(
+            GlobalID(type_name=Dataset.__name__, node_id=str(single_example_dataset.id))
+        )
+        version_gid = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
+        variables = {
+            "input": {
+                "datasetId": dataset_gid,
+                "datasetVersionId": version_gid,
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-nonexistent-model",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
+                "evaluators": [
+                    {
+                        "id": evaluator_gid,
+                        "name": "correctness",
+                        "inputMapping": {
+                            "pathMapping": {
+                                "input": "$.input",
+                                "output": "$.output",
+                            },
+                        },
+                    }
+                ],
+            }
+        }
+
+        error_chunks: list[Any] = []
+        evaluation_chunks: list[Any] = []
+
+        async with gql_client.subscription(
+            query=self.QUERY,
+            variables=variables,
+            operation_name="ChatCompletionOverDatasetSubscription",
+        ) as subscription:
+            with custom_vcr.use_cassette():
+                async for payload in subscription.stream():
+                    typename = payload["chatCompletionOverDataset"]["__typename"]
+                    if typename == ChatCompletionSubscriptionError.__name__:
+                        error_chunks.append(payload["chatCompletionOverDataset"])
+                    elif typename == EvaluationChunk.__name__:
+                        evaluation_chunks.append(payload["chatCompletionOverDataset"])
+
+        # Verify we got an error chunk (message may mention model or be a connection/API error)
+        assert len(error_chunks) == 1
+        assert len(error_chunks[0]["message"]) > 0
+
+        # Verify no evaluation chunks were emitted
+        assert len(evaluation_chunks) == 0
+
+        # Verify no experiment run annotations were persisted
+        async with db() as session:
+            result = await session.execute(select(models.ExperimentRunAnnotation))
+            annotations = result.scalars().all()
+            assert len(annotations) == 0
+
+    async def test_builtin_evaluator_uses_name(
+        self,
+        gql_client: AsyncGraphQLClient,
+        openai_api_key: str,
+        single_example_dataset: models.Dataset,
+        assign_exact_match_builtin_evaluator_to_dataset: Callable[
+            [int], Awaitable[models.DatasetEvaluators]
+        ],
+        custom_vcr: CustomVCR,
+        db: DbSessionFactory,
+    ) -> None:
+        """Test that builtin evaluators use name for annotation names in dataset runs."""
+        builtin_dataset_evaluator = await assign_exact_match_builtin_evaluator_to_dataset(
+            single_example_dataset.id
+        )
+        evaluator_gid = str(
+            GlobalID(
+                type_name=DatasetEvaluator.__name__,
+                node_id=str(builtin_dataset_evaluator.id),
+            )
+        )
+        custom_name = "my-dataset-exact-match"
+        dataset_gid = str(
+            GlobalID(type_name=Dataset.__name__, node_id=str(single_example_dataset.id))
+        )
+        version_gid = str(GlobalID(type_name=DatasetVersion.__name__, node_id=str(1)))
+        variables = {
+            "input": {
+                "datasetId": dataset_gid,
+                "datasetVersionId": version_gid,
+                "promptVersion": {
+                    "templateFormat": "F_STRING",
+                    "template": {
+                        "messages": [
+                            {
+                                "role": "USER",
+                                "content": [
+                                    {
+                                        "text": {
+                                            "text": "What country is {city} in? Answer in one word, no punctuation."
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "modelProvider": "OPENAI",
+                    "modelName": "gpt-4",
+                    "invocationParameters": {},
+                    "tools": None,
+                },
+                "repetitions": 1,
+                "evaluators": [
+                    {
+                        "id": evaluator_gid,
+                        "name": custom_name,
+                        "inputMapping": {
+                            "literalMapping": {
+                                "expected": "test",
+                                "actual": "test",
+                            },
+                        },
+                    }
+                ],
+            }
+        }
+
+        evaluation_chunks: list[Any] = []
+
+        custom_vcr.register_matcher(
+            _request_bodies_contain_same_city.__name__, _request_bodies_contain_same_city
+        )
+        async with gql_client.subscription(
+            query=self.QUERY,
+            variables=variables,
+            operation_name="ChatCompletionOverDatasetSubscription",
+        ) as subscription:
+            with custom_vcr.use_cassette():
+                async for payload in subscription.stream():
+                    typename = payload["chatCompletionOverDataset"]["__typename"]
+                    if typename == EvaluationChunk.__name__:
+                        evaluation_chunks.append(payload["chatCompletionOverDataset"])
+
+        # Verify we got exactly 1 evaluation chunk with custom display name
+        assert len(evaluation_chunks) == 1
+        eval_chunk = evaluation_chunks[0]
+        eval_annotation = eval_chunk["experimentRunEvaluation"]
+        assert eval_annotation["name"] == custom_name
+        assert eval_annotation["annotatorKind"] == "CODE"
+
+        # Verify experiment run annotation was persisted with name
+        async with db() as session:
+            result = await session.execute(select(models.ExperimentRunAnnotation))
+            annotations = result.scalars().all()
+            assert len(annotations) == 1
+
+            annotation = annotations[0]
+            assert annotation.name == custom_name
+            assert annotation.annotator_kind == "CODE"
 
 
 def _request_bodies_contain_same_city(request1: VCRRequest, request2: VCRRequest) -> None:
@@ -1399,10 +2643,17 @@ def _extract_city(body: str) -> str:
     raise ValueError(f"Could not extract city from body: {body}")
 
 
+# span kind values
 LLM = OpenInferenceSpanKindValues.LLM.value
 JSON = OpenInferenceMimeTypeValues.JSON.value
 TEXT = OpenInferenceMimeTypeValues.TEXT.value
 
+# message attributes
+MESSAGE_CONTENT = MessageAttributes.MESSAGE_CONTENT
+MESSAGE_ROLE = MessageAttributes.MESSAGE_ROLE
+
+
+# span attributes
 OPENINFERENCE_SPAN_KIND = SpanAttributes.OPENINFERENCE_SPAN_KIND
 LLM_MODEL_NAME = SpanAttributes.LLM_MODEL_NAME
 LLM_SYSTEM = SpanAttributes.LLM_SYSTEM
@@ -1410,6 +2661,12 @@ LLM_INVOCATION_PARAMETERS = SpanAttributes.LLM_INVOCATION_PARAMETERS
 LLM_TOKEN_COUNT_TOTAL = SpanAttributes.LLM_TOKEN_COUNT_TOTAL
 LLM_TOKEN_COUNT_PROMPT = SpanAttributes.LLM_TOKEN_COUNT_PROMPT
 LLM_TOKEN_COUNT_COMPLETION = SpanAttributes.LLM_TOKEN_COUNT_COMPLETION
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ = SpanAttributes.LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ
+LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING = (
+    SpanAttributes.LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING
+)
+LLM_TOKEN_COUNT_PROMPT_DETAILS_AUDIO = SpanAttributes.LLM_TOKEN_COUNT_PROMPT_DETAILS_AUDIO
+LLM_TOKEN_COUNT_COMPLETION_DETAILS_AUDIO = SpanAttributes.LLM_TOKEN_COUNT_COMPLETION_DETAILS_AUDIO
 LLM_INPUT_MESSAGES = SpanAttributes.LLM_INPUT_MESSAGES
 LLM_OUTPUT_MESSAGES = SpanAttributes.LLM_OUTPUT_MESSAGES
 LLM_PROVIDER = SpanAttributes.LLM_PROVIDER
@@ -1419,3 +2676,14 @@ INPUT_MIME_TYPE = SpanAttributes.INPUT_MIME_TYPE
 OUTPUT_VALUE = SpanAttributes.OUTPUT_VALUE
 OUTPUT_MIME_TYPE = SpanAttributes.OUTPUT_MIME_TYPE
 PROMPT_TEMPLATE_VARIABLES = SpanAttributes.LLM_PROMPT_TEMPLATE_VARIABLES
+
+# tool attributes
+TOOL_JSON_SCHEMA = ToolAttributes.TOOL_JSON_SCHEMA
+
+# tool call attributes
+TOOL_CALL_ID = ToolCallAttributes.TOOL_CALL_ID
+TOOL_CALL_FUNCTION_ARGUMENTS = ToolCallAttributes.TOOL_CALL_FUNCTION_ARGUMENTS_JSON
+TOOL_CALL_FUNCTION_NAME = ToolCallAttributes.TOOL_CALL_FUNCTION_NAME
+
+# mime type values
+JSON = OpenInferenceMimeTypeValues.JSON.value

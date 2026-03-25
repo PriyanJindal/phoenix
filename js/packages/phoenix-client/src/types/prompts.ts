@@ -1,4 +1,4 @@
-import { components } from "../__generated__/api/v1";
+import type { components } from "../__generated__/api/v1";
 
 /**
  * Supported prompt model providers
@@ -7,7 +7,16 @@ export type PromptModelProvider =
   | "OPENAI"
   | "AZURE_OPENAI"
   | "ANTHROPIC"
-  | "GOOGLE";
+  | "GOOGLE"
+  | "DEEPSEEK"
+  | "XAI"
+  | "OLLAMA"
+  | "AWS"
+  | "CEREBRAS"
+  | "FIREWORKS"
+  | "GROQ"
+  | "MOONSHOT"
+  | "PERPLEXITY";
 
 /**
  * Supported prompt provider SDKs
@@ -106,6 +115,30 @@ export type AnthropicInvocationParameters =
  */
 export type GoogleInvocationParameters =
   components["schemas"]["PromptGoogleInvocationParametersContent"];
+
+/**
+ * The invocation parameters for a prompt version for DeepSeek.
+ */
+export type DeepSeekInvocationParameters =
+  components["schemas"]["PromptDeepSeekInvocationParametersContent"];
+
+/**
+ * The invocation parameters for a prompt version for xAI.
+ */
+export type XAIInvocationParameters =
+  components["schemas"]["PromptXAIInvocationParametersContent"];
+
+/**
+ * The invocation parameters for a prompt version for Ollama.
+ */
+export type OllamaInvocationParameters =
+  components["schemas"]["PromptOllamaInvocationParametersContent"];
+
+/**
+ * The invocation parameters for a prompt version for AWS.
+ */
+export type AwsInvocationParameters =
+  components["schemas"]["PromptAwsInvocationParametersContent"];
 
 /**
  * The format of the prompt template message(s).

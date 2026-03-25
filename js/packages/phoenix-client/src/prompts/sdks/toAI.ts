@@ -1,45 +1,48 @@
+import type { ModelMessage, ToolChoice, ToolSet } from "ai";
 import invariant from "tiny-invariant";
+
 import {
   safelyConvertMessageToProvider,
   safelyConvertToolChoiceToProvider,
   safelyConvertToolDefinitionToProvider,
 } from "../../schemas/llm/converters";
+import { findToolDefinitionName } from "../../schemas/llm/utils";
 import { formatPromptMessages } from "../../utils/formatPromptMessages";
-import { Variables, toSDKParamsBase } from "./types";
-import {
-  type streamText,
-  type generateText,
-  type ToolSet,
-  type Tool,
-} from "ai";
-import { VercelAIToolChoice } from "../../schemas/llm/vercel/toolChoiceSchemas";
+import type { Variables, toSDKParamsBase } from "./types";
 
-export type PartialStreamTextParams = Omit<
-  Parameters<typeof streamText>[0] | Parameters<typeof generateText>[0],
-  "model"
->;
+export type PartialAIParams = {
+  messages: ModelMessage[];
+  /**
+The tools that the model can call. The model needs to support calling tools.
+    */
+  tools?: ToolSet;
+  /**
+The tool choice strategy. Default: 'auto'.
+     */
+  toolChoice?: ToolChoice<ToolSet>;
+};
 
 export type ToAIParams<V extends Variables> = toSDKParamsBase<V>;
 
 /**
  * Converts a Phoenix prompt to Vercel AI sdk params.
  *
- * - note: To use response format, you must pass `prompt.response_format.json` to generateObject or streamObject
- *   directly, through the `schema` argument.
+ * - note: To use response format, you must pass `prompt.response_format.json_schema.schema` to generateObject or streamObject
+ *   via `jsonSchema()`, through the `schema` argument.
  */
 export const toAI = <V extends Variables>({
   prompt,
   variables,
-}: ToAIParams<V>): PartialStreamTextParams | null => {
+}: ToAIParams<V>): PartialAIParams | null => {
   // eslint-disable-next-line no-console
   console.warn(
     "Prompt invocation parameters not currently supported in AI SDK, falling back to default invocation parameters"
   );
   try {
     // parts of the prompt that can be directly converted to OpenAI params
-    const baseCompletionParams = {
+    const baseCompletionParams: Partial<PartialAIParams> = {
       // Invocation parameters are validated on the phoenix-side
-    } satisfies Partial<PartialStreamTextParams>;
+    };
 
     if (!("messages" in prompt.template)) {
       return null;
@@ -55,7 +58,7 @@ export const toAI = <V extends Variables>({
       );
     }
 
-    const messages = formattedMessages.map((message) => {
+    const messages: ModelMessage[] = formattedMessages.map((message) => {
       const vercelAIMessage = safelyConvertMessageToProvider({
         message,
         targetProvider: "VERCEL_AI",
@@ -64,36 +67,41 @@ export const toAI = <V extends Variables>({
       return vercelAIMessage;
     });
 
-    // convert tools to Vercel AI tool set, which is a map of tool name to tool
-    let tools: ToolSet | undefined = prompt.tools?.tools.reduce((acc, tool) => {
-      if (!tool.function.parameters) {
-        return acc;
+    let tools: ToolSet | undefined;
+    if (prompt.tools?.tools && prompt.tools.tools.length > 0) {
+      const toolsRecord: Record<string, unknown> = {};
+      for (const tool of prompt.tools.tools) {
+        const name = findToolDefinitionName(tool);
+        invariant(name, "Tool definition name is not valid");
+        const converted = safelyConvertToolDefinitionToProvider({
+          toolDefinition: tool,
+          targetProvider: "VERCEL_AI",
+        });
+        invariant(converted, "Tool definition is not valid");
+        toolsRecord[name] = converted;
       }
-      const vercelAIToolDefinition = safelyConvertToolDefinitionToProvider({
-        toolDefinition: tool,
-        targetProvider: "VERCEL_AI",
-      });
-      invariant(vercelAIToolDefinition, "Tool definition is not valid");
-      acc[tool.function.name] = vercelAIToolDefinition satisfies Tool;
-      return acc;
-    }, {} as ToolSet);
-    const hasTools = Object.keys(tools ?? {}).length > 0;
-    tools = hasTools ? tools : undefined;
+      tools =
+        Object.keys(toolsRecord).length > 0
+          ? (toolsRecord as ToolSet)
+          : undefined;
+    }
 
-    let toolChoice: VercelAIToolChoice | undefined =
-      safelyConvertToolChoiceToProvider({
-        toolChoice: prompt.tools?.tool_choice,
-        targetProvider: "VERCEL_AI",
-      }) || undefined;
-    toolChoice = hasTools ? toolChoice : undefined;
+    let toolChoice: PartialAIParams["toolChoice"];
+    if (tools && prompt.tools?.tool_choice) {
+      toolChoice =
+        safelyConvertToolChoiceToProvider({
+          toolChoice: prompt.tools.tool_choice,
+          targetProvider: "VERCEL_AI",
+        }) ?? undefined;
+    }
 
     // combine base and computed params
-    const completionParams = {
+    const completionParams: PartialAIParams = {
       ...baseCompletionParams,
       messages,
-      tools,
-      toolChoice,
-    } satisfies Partial<PartialStreamTextParams>;
+      ...(tools !== undefined && { tools }),
+      ...(toolChoice !== undefined && { toolChoice }),
+    };
 
     return completionParams;
   } catch (error) {

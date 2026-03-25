@@ -61,8 +61,8 @@ class UnhandledWebSocketEvent(ASGIWebSocketTransportError):
 
 
 class ASGIWebSocketAsyncNetworkStream(AsyncNetworkStream):
-    def __init__(self, app: ASGIApp, scope: Scope) -> None:
-        self.app = app
+    def __init__(self, asgi_app: ASGIApp, scope: Scope) -> None:
+        self.app = asgi_app
         self.scope = scope
         self._receive_queue: asyncio.Queue[Message] = asyncio.Queue()
         self._send_queue: asyncio.Queue[Message] = asyncio.Queue()
@@ -117,7 +117,7 @@ class ASGIWebSocketAsyncNetworkStream(AsyncNetworkStream):
             else:
                 data_bytes: typing.Optional[bytes] = message.get("bytes")
                 if data_bytes is not None:
-                    event = wsproto.events.BytesMessage(data_bytes)
+                    event = wsproto.events.BytesMessage(bytearray(data_bytes))
                 else:
                     # If neither text nor bytes are provided, raise an error
                     raise ValueError("websocket.send message missing 'text' or 'bytes'")
@@ -143,6 +143,8 @@ class ASGIWebSocketAsyncNetworkStream(AsyncNetworkStream):
                 await self.send({"type": "websocket.receive", "text": event.data})
             elif isinstance(event, wsproto.events.BytesMessage):
                 await self.send({"type": "websocket.receive", "bytes": event.data})
+            elif isinstance(event, wsproto.events.Ping):
+                await self.send({"type": "websocket.pong"})
             else:
                 raise UnhandledWebSocketEvent(event)
 

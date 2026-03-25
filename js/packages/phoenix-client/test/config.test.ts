@@ -1,14 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { defaultGetEnvironmentOptions } from "../src/config";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { getMergedOptions } from "../src";
+import { defaultGetEnvironmentOptions } from "../src/config";
 
 describe("Phoenix client configuration", () => {
-  // Store original process.env
-  const originalEnv = process.env;
-
   beforeEach(() => {
     // Reset process.env before each test
-    process.env = { ...originalEnv };
+    process.env = {};
   });
 
   describe("environment parsing", () => {

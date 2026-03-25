@@ -1,13 +1,14 @@
-import { describe, it, assertType, expect } from "vitest";
-import { toSDK } from "../../../src/prompts/sdks/toSDK";
-import { PromptVersion } from "../../../src/types/prompts";
+import type { MessageCreateParams } from "@anthropic-ai/sdk/resources/index";
 import invariant from "tiny-invariant";
-import type { MessageCreateParams } from "@anthropic-ai/sdk/resources";
+import { assertType, describe, expect, it } from "vitest";
+
 import { toAnthropic } from "../../../src/prompts/sdks/toAnthropic";
+import { toSDK } from "../../../src/prompts/sdks/toSDK";
+import type { PromptVersion } from "../../../src/types/prompts";
 import {
   BASE_MOCK_PROMPT_VERSION,
-  BASE_MOCK_PROMPT_VERSION_TOOLS,
   BASE_MOCK_PROMPT_VERSION_RESPONSE_FORMAT,
+  BASE_MOCK_PROMPT_VERSION_TOOLS,
 } from "./data";
 
 describe("toAnthropic type compatibility", () => {

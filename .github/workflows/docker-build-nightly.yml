@@ -27,13 +27,13 @@ jobs:
         id: set-base-image
         run: |
           if [ "${{ matrix.variant }}" == "root" ]; then
-            echo "BASE_IMAGE=gcr.io/distroless/python3-debian12" >> $GITHUB_ENV
+            echo "BASE_IMAGE=gcr.io/distroless/python3-debian13" >> $GITHUB_ENV
           elif [ "${{ matrix.variant }}" == "debug" ]; then
-            echo "BASE_IMAGE=gcr.io/distroless/python3-debian12:debug" >> $GITHUB_ENV
+            echo "BASE_IMAGE=gcr.io/distroless/python3-debian13:debug" >> $GITHUB_ENV
           elif [ "${{ matrix.variant }}" == "nonroot" ]; then
-            echo "BASE_IMAGE=gcr.io/distroless/python3-debian12:nonroot" >> $GITHUB_ENV
+            echo "BASE_IMAGE=gcr.io/distroless/python3-debian13:nonroot" >> $GITHUB_ENV
           else
-            echo "BASE_IMAGE=gcr.io/distroless/python3-debian12" >> $GITHUB_ENV
+            echo "BASE_IMAGE=gcr.io/distroless/python3-debian13" >> $GITHUB_ENV
           fi
 
       - name: Set up Docker Buildx
@@ -77,3 +77,20 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+
+  slack:
+    name: Slack notification
+    needs: [push_to_registry]
+    if: always() && needs.push_to_registry.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send message to Slack
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "type": "mrkdwn",
+              "text": ":x: Docker Nightly Publication Failed\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }

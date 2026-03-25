@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bf918f2e398472997db963770f08ab60>>
+ * @generated SignedSource<<b1c4ab21273a7899016b88ebd5549c1c>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,6 +14,11 @@ export type ExamplesTableFragment$data = {
   readonly examples: {
     readonly edges: ReadonlyArray<{
       readonly example: {
+        readonly datasetSplits: ReadonlyArray<{
+          readonly color: string;
+          readonly id: string;
+          readonly name: string;
+        }>;
         readonly id: string;
         readonly revision: {
           readonly input: any;
@@ -57,9 +62,19 @@ return {
       "name": "datasetVersionId"
     },
     {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "filter"
+    },
+    {
       "defaultValue": 100,
       "kind": "LocalArgument",
       "name": "first"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "splitIds"
     }
   ],
   "kind": "Fragment",
@@ -100,6 +115,16 @@ return {
           "kind": "Variable",
           "name": "datasetVersionId",
           "variableName": "datasetVersionId"
+        },
+        {
+          "kind": "Variable",
+          "name": "filter",
+          "variableName": "filter"
+        },
+        {
+          "kind": "Variable",
+          "name": "splitIds",
+          "variableName": "splitIds"
         }
       ],
       "concreteType": "DatasetExampleConnection",
@@ -124,6 +149,32 @@ return {
               "plural": false,
               "selections": [
                 (v1/*: any*/),
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "DatasetSplit",
+                  "kind": "LinkedField",
+                  "name": "datasetSplits",
+                  "plural": true,
+                  "selections": [
+                    (v1/*: any*/),
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "name",
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "color",
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
                 {
                   "alias": null,
                   "args": null,
@@ -222,6 +273,6 @@ return {
 };
 })();
 
-(node as any).hash = "e04e697cdb44ab2dd115f4562211f6a4";
+(node as any).hash = "ebe08bedf9904f2cb003b0ebc5d3f682";
 
 export default node;

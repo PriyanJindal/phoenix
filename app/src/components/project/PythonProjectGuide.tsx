@@ -1,9 +1,8 @@
-import React from "react";
-
-import { TabbedCard } from "@arizeai/components";
+import { useState } from "react";
 
 import {
   ExternalLink,
+  Flex,
   Heading,
   Tab,
   TabList,
@@ -12,40 +11,26 @@ import {
   Text,
   View,
 } from "@phoenix/components";
+import { BashBlockWithCopy } from "@phoenix/components/code/BashBlockWithCopy";
 import { CodeWrap } from "@phoenix/components/code/CodeWrap";
+import { PackageManagerCommandBlock } from "@phoenix/components/code/PackageManagerCommandBlock";
 import { PythonBlockWithCopy } from "@phoenix/components/code/PythonBlockWithCopy";
-import { BASE_URL } from "@phoenix/config";
 
-import { IsAdmin } from "../auth";
-
-import { HOSTED_PHOENIX_URL, IS_HOSTED_DEPLOYMENT } from "./hosting";
+import { GenerateAPIKeyButton, IsAdmin, IsAuthenticated } from "../auth";
+import { IS_HOSTED_DEPLOYMENT } from "./hosting";
 import { PythonIntegrations } from "./Integrations";
+import {
+  getEnvironmentVariables,
+  getOtelInitCodePython,
+} from "./integrationSnippets";
 
 const PHOENIX_OTEL_DOC_LINK =
-  "https://docs.arize.com/phoenix/tracing/how-to-tracing/setup-tracing";
+  "https://arize.com/docs/phoenix/tracing/how-to-tracing/setup-tracing";
 
 const OTEL_DOC_LINK =
-  "https://docs.arize.com/phoenix/tracing/how-to-tracing/setup-tracing/setup-tracing-python/using-otel-python-directly";
+  "https://arize.com/docs/phoenix/tracing/how-to-tracing/setup-tracing/setup-tracing-python/using-otel-python-directly";
 const PHOENIX_ENVIRONMENT_VARIABLES_LINK =
-  "https://docs.arize.com/phoenix/setup/configuration";
-
-const INSTALL_PHOENIX_OTEL_PYTHON = `pip install arize-phoenix-otel`;
-const INSTALL_OPENAI_INSTRUMENTATION_PYTHON = `pip install openinference-instrumentation-openai openai`;
-
-function getEnvironmentVariablesPython({
-  isAuthEnabled,
-  isHosted,
-}: {
-  isAuthEnabled: boolean;
-  isHosted: boolean;
-}): string {
-  if (isHosted) {
-    return `PHOENIX_CLIENT_HEADERS='api_key=<your-api-key>'\nPHOENIX_COLLECTOR_ENDPOINT='${HOSTED_PHOENIX_URL}'`;
-  } else if (isAuthEnabled) {
-    return `PHOENIX_API_KEY='<your-api-key>'`;
-  }
-  return `PHOENIX_COLLECTOR_ENDPOINT='${BASE_URL}'`;
-}
+  "https://arize.com/docs/phoenix/setup/configuration";
 
 const INSTRUMENT_OPENAI_PYTHON = `from openinference.instrumentation.openai import OpenAIInstrumentor
 
@@ -67,19 +52,6 @@ chat_completion = client.chat.completions.create(
     ],
     model="gpt-3.5-turbo",
 )`;
-const getOtelInitCodePython = ({
-  isHosted,
-  projectName,
-}: {
-  isHosted: boolean;
-  projectName: string;
-}) => {
-  return `from phoenix.otel import register\n
-tracer_provider = register(
-  project_name="${projectName}",
-  endpoint="${(isHosted ? HOSTED_PHOENIX_URL : BASE_URL) + "/v1/traces"}"
-)`;
-};
 
 type PythonProjectGuideProps = {
   /**
@@ -90,9 +62,11 @@ type PythonProjectGuideProps = {
 export function PythonProjectGuide(props: PythonProjectGuideProps) {
   const isHosted = IS_HOSTED_DEPLOYMENT;
   const isAuthEnabled = window.Config.authenticationEnabled;
-  const environmentVariablesPython = getEnvironmentVariablesPython({
+  const [generatedApiKey, setGeneratedApiKey] = useState<string | null>(null);
+  const environmentVariablesPython = getEnvironmentVariables({
     isAuthEnabled,
     isHosted,
+    apiKey: generatedApiKey ?? undefined,
   });
 
   const projectName = props.projectName || "your-next-llm-project";
@@ -110,25 +84,41 @@ export function PythonProjectGuide(props: PythonProjectGuideProps) {
           configure your application to send traces to Phoenix.
         </Text>
       </View>
-      <CodeWrap>
-        <PythonBlockWithCopy value={INSTALL_PHOENIX_OTEL_PYTHON} />
-      </CodeWrap>
+      <PackageManagerCommandBlock
+        language="Python"
+        packages={["arize-phoenix-otel"]}
+      />
       <View paddingTop="size-200" paddingBottom="size-100">
         <Heading level={2} weight="heavy">
           Setup your Environment
         </Heading>
       </View>
       <View paddingBottom="size-100">
-        <Text>
-          <b>arize-phoenix-otel</b> automatically picks up your configuration
-          from{" "}
-          <ExternalLink href={PHOENIX_ENVIRONMENT_VARIABLES_LINK}>
-            environment variables
-          </ExternalLink>
-        </Text>
+        <Flex
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          gap="size-100"
+        >
+          <Text>
+            <b>arize-phoenix-otel</b> automatically picks up your configuration
+            from{" "}
+            <ExternalLink href={PHOENIX_ENVIRONMENT_VARIABLES_LINK}>
+              environment variables
+            </ExternalLink>
+          </Text>
+          {isAuthEnabled && !generatedApiKey ? (
+            <IsAuthenticated>
+              <GenerateAPIKeyButton
+                onApiKeyGenerated={setGeneratedApiKey}
+                keyName="project-setup-generated"
+              />
+            </IsAuthenticated>
+          ) : null}
+        </Flex>
       </View>
       <CodeWrap>
-        <PythonBlockWithCopy value={environmentVariablesPython} />
+        <BashBlockWithCopy value={environmentVariablesPython} />
       </CodeWrap>
       {isAuthEnabled ? (
         <View paddingBottom="size-100" paddingTop="size-100">
@@ -160,9 +150,7 @@ export function PythonProjectGuide(props: PythonProjectGuideProps) {
       </View>
       <View paddingBottom="size-100">
         <CodeWrap>
-          <PythonBlockWithCopy
-            value={getOtelInitCodePython({ projectName, isHosted })}
-          />
+          <PythonBlockWithCopy value={getOtelInitCodePython({ projectName })} />
         </CodeWrap>
       </View>
       {!isHosted ? (
@@ -187,7 +175,7 @@ export function PythonProjectGuide(props: PythonProjectGuideProps) {
           is traces.
         </Text>
       </View>
-      <TabbedCard variant="compact">
+      <View borderColor="default" borderWidth="thin" borderRadius="medium">
         <Tabs>
           <TabList>
             <Tab id="instrumentation">Instrumentation</Tab>
@@ -207,7 +195,7 @@ export function PythonProjectGuide(props: PythonProjectGuideProps) {
               </View>
               <Text>
                 For more integrations, checkout our{" "}
-                <ExternalLink href="https://docs.arize.com/phoenix/tracing/integrations-tracing">
+                <ExternalLink href="https://arize.com/docs/phoenix/tracing/integrations-tracing">
                   comprehensive guide
                 </ExternalLink>
               </Text>
@@ -222,11 +210,10 @@ export function PythonProjectGuide(props: PythonProjectGuideProps) {
                 </ExternalLink>{" "}
                 instrumentation as well as <b>openai</b>
               </p>
-              <CodeWrap>
-                <PythonBlockWithCopy
-                  value={INSTALL_OPENAI_INSTRUMENTATION_PYTHON}
-                />
-              </CodeWrap>
+              <PackageManagerCommandBlock
+                language="Python"
+                packages={["openinference-instrumentation-openai", "openai"]}
+              />
               <p>
                 Instrument <b>openai</b> at the beginning of your code
               </p>
@@ -247,7 +234,7 @@ export function PythonProjectGuide(props: PythonProjectGuideProps) {
             </View>
           </TabPanel>
         </Tabs>
-      </TabbedCard>
+      </View>
     </div>
   );
 }

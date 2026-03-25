@@ -1,68 +1,63 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
 import { css } from "@emotion/react";
+import type { Meta } from "@storybook/react";
 
-import { Button, ButtonProps } from "@phoenix/components";
-import { Keyboard, VisuallyHidden } from "@phoenix/components/content";
+import { Button } from "@phoenix/components";
+import { Keyboard, VisuallyHidden } from "@phoenix/components/core/content";
 const meta: Meta = {
-  title: "Button",
+  title: "Core/Actions/Button",
   component: Button,
   parameters: {
     layout: "centered",
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/rMddnj6eV2TcQqNkejJ9qX/Core?node-id=111-2047",
+    },
   },
 };
 
 export default meta;
 
-const Template: StoryFn<ButtonProps> = (args) => <Button {...args} />;
-
-/**
- * Buttons are used to perform actions within the UI
- */
-export const Default = Template.bind({});
-
-Default.args = {
-  children: "Button",
+export const Default = {
+  args: {
+    children: "Button",
+  },
 };
 
-/**
- * Use the `variant` prop to change the appearance of the button
- */
-export const Danger = Template.bind({});
-
-Danger.args = {
-  children: "Danger",
-  variant: "danger",
+export const Danger = {
+  args: {
+    children: "Danger",
+    variant: "danger",
+  },
 };
 
-export const CustomCSS = Template.bind({});
-
-CustomCSS.args = {
-  css: css`
-    --button-border-color: pink;
-  `,
-  children: "Custom",
+export const CustomCSS = {
+  args: {
+    css: css`
+      --button-border-color: pink;
+    `,
+    children: "Custom",
+  },
 };
 
-export const Quiet = Template.bind({});
-
-Quiet.args = {
-  children: "Quiet",
-  variant: "quiet",
+export const Quiet = {
+  args: {
+    children: "Quiet",
+    variant: "quiet",
+  },
 };
 
-export const WithKeyboard = Template.bind({});
-
-WithKeyboard.args = {
-  children: "With Keyboard",
-  size: "S",
-  variant: "primary",
-  trailingVisual: (
-    <Keyboard>
-      <VisuallyHidden>modifier</VisuallyHidden>
-      <span aria-hidden="true">⌘</span>
-      <VisuallyHidden>enter</VisuallyHidden>
-      <span aria-hidden="true">⏎</span>
-    </Keyboard>
-  ),
+export const WithKeyboard = {
+  args: {
+    children: "With Keyboard",
+    size: "S",
+    variant: "primary",
+    trailingVisual: (
+      <Keyboard>
+        <VisuallyHidden>modifier</VisuallyHidden>
+        <span aria-hidden="true">⌘</span>
+        <VisuallyHidden>enter</VisuallyHidden>
+        <span aria-hidden="true">⏎</span>
+      </Keyboard>
+    ),
+  },
 };

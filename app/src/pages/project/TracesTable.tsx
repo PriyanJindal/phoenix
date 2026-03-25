@@ -1,6 +1,21 @@
+import { css } from "@emotion/react";
+import type {
+  CellContext,
+  ColumnDef,
+  ExpandedState,
+  SortingState,
+  Table,
+} from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  getExpandedRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 /* eslint-disable react/prop-types */
+import type { ComponentProps } from "react";
 import React, {
-  ComponentProps,
   Fragment,
   startTransition,
   useCallback,
@@ -11,26 +26,22 @@ import React, {
 } from "react";
 import { graphql, usePaginationFragment } from "react-relay";
 import { useNavigate, useParams } from "react-router";
+
 import {
-  CellContext,
-  ColumnDef,
-  ExpandedState,
-  flexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getSortedRowModel,
-  SortingState,
-  Table,
-  useReactTable,
-} from "@tanstack/react-table";
-import { css } from "@emotion/react";
-
-import { Content, ContextualHelp } from "@arizeai/components";
-
-import { Flex, Heading, Icon, Icons, Link, View } from "@phoenix/components";
+  CopyToClipboardButton,
+  Flex,
+  Heading,
+  Icon,
+  Icons,
+  Link,
+  Text,
+  View,
+} from "@phoenix/components";
 import { AnnotationSummaryGroupTokens } from "@phoenix/components/annotation/AnnotationSummaryGroup";
 import { MeanScore } from "@phoenix/components/annotation/MeanScore";
-import { TextCell } from "@phoenix/components/table";
+import { ContextualHelp } from "@phoenix/components/core/tooltip/ContextualHelp";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
+import { CellWithControlsWrap, TextCell } from "@phoenix/components/table";
 import { IndeterminateCheckboxCell } from "@phoenix/components/table/IndeterminateCheckboxCell";
 import { selectableTableCSS } from "@phoenix/components/table/styles";
 import { TableExpandButton } from "@phoenix/components/table/TableExpandButton";
@@ -38,10 +49,11 @@ import { TimestampCell } from "@phoenix/components/table/TimestampCell";
 import { LatencyText } from "@phoenix/components/trace/LatencyText";
 import { SpanKindToken } from "@phoenix/components/trace/SpanKindToken";
 import { SpanStatusCodeIcon } from "@phoenix/components/trace/SpanStatusCodeIcon";
-import { TokenCount } from "@phoenix/components/trace/TokenCount";
-import { ISpanItem } from "@phoenix/components/trace/types";
-import { createSpanTree, SpanTreeNode } from "@phoenix/components/trace/utils";
-import { Truncate } from "@phoenix/components/utility/Truncate";
+import { TraceTokenCosts } from "@phoenix/components/trace/TraceTokenCosts";
+import { TraceTokenCount } from "@phoenix/components/trace/TraceTokenCount";
+import type { ISpanItem } from "@phoenix/components/trace/types";
+import type { SpanTreeNode } from "@phoenix/components/trace/utils";
+import { createSpanTree } from "@phoenix/components/trace/utils";
 import { SELECTED_SPAN_NODE_ID_PARAM } from "@phoenix/constants/searchParams";
 import { useStreamState } from "@phoenix/contexts/StreamStateContext";
 import { useTracingContext } from "@phoenix/contexts/TracingContext";
@@ -49,12 +61,12 @@ import { SummaryValueLabels } from "@phoenix/pages/project/AnnotationSummary";
 import { MetadataTableCell } from "@phoenix/pages/project/MetadataTableCell";
 import { useTracePagination } from "@phoenix/pages/trace/TracePaginationContext";
 
-import {
+import type {
   SpanStatusCode,
   TracesTable_spans$data,
   TracesTable_spans$key,
 } from "./__generated__/TracesTable_spans.graphql";
-import { TracesTableQuery } from "./__generated__/TracesTableQuery.graphql";
+import type { TracesTableQuery } from "./__generated__/TracesTableQuery.graphql";
 import { DEFAULT_PAGE_SIZE } from "./constants";
 import { ProjectTableEmpty } from "./ProjectTableEmpty";
 import { RetrievalEvaluationLabel } from "./RetrievalEvaluationLabel";
@@ -100,6 +112,7 @@ const TableBody = <
 }: {
   table: Table<T>;
 }) => {
+  "use no memo";
   const navigate = useNavigate();
   const { traceId } = useParams();
   return (
@@ -157,7 +170,7 @@ const MetadataCell = <TData extends ISpanItem, TValue>({
 
 const trCSS = css`
   &[data-is-additional-row="true"] {
-    box-shadow: inset 0 -10px 20px var(--ac-global-color-grey-100);
+    box-shadow: inset 0 -10px 20px var(--global-color-gray-100);
   }
 `;
 
@@ -198,10 +211,7 @@ export function TracesTable(props: TracesTableProps) {
         @argumentDefinitions(
           after: { type: "String", defaultValue: null }
           first: { type: "Int", defaultValue: 30 }
-          sort: {
-            type: "SpanSort"
-            defaultValue: { col: startTime, dir: desc }
-          }
+          sort: { type: "SpanSort", defaultValue: { col: startTime, dir: desc } }
           filterCondition: { type: "String", defaultValue: null }
         ) {
           name
@@ -222,10 +232,9 @@ export function TracesTable(props: TracesTableProps) {
                 metadata
                 statusCode
                 startTime
+                endTime
                 latencyMs
                 cumulativeTokenCountTotal
-                cumulativeTokenCountPrompt
-                cumulativeTokenCountCompletion
                 parentId
                 input {
                   value: truncatedValue
@@ -238,6 +247,11 @@ export function TracesTable(props: TracesTableProps) {
                   id
                   traceId
                   numSpans
+                  costSummary {
+                    total {
+                      cost
+                    }
+                  }
                 }
                 spanAnnotations {
                   id
@@ -270,11 +284,10 @@ export function TracesTable(props: TracesTableProps) {
                       name
                       statusCode: propagatedStatusCode
                       startTime
+                      endTime
                       latencyMs
                       parentId
                       cumulativeTokenCountTotal: tokenCountTotal
-                      cumulativeTokenCountPrompt: tokenCountPrompt
-                      cumulativeTokenCountCompletion: tokenCountCompletion
                       input {
                         value: truncatedValue
                       }
@@ -411,16 +424,16 @@ export function TracesTable(props: TracesTableProps) {
     () => [
       {
         header: () => (
-          <Flex direction="row" gap="size-50">
+          <Flex direction="row" gap="size-50" alignItems="center">
             <span>Annotations</span>
             <ContextualHelp>
               <Heading level={3} weight="heavy">
                 Annotations
               </Heading>
-              <Content>
+              <Text>
                 Evaluations and human annotations logged via the API or set via
                 the UI.
-              </Content>
+              </Text>
             </ContextualHelp>
           </Flex>
         ),
@@ -478,13 +491,13 @@ export function TracesTable(props: TracesTableProps) {
     () => [
       {
         id: "select",
-        maxSize: 10,
+        maxSize: 32,
         header: ({ table }) => (
           <IndeterminateCheckboxCell
             {...{
-              checked: table.getIsAllRowsSelected(),
-              indeterminate: table.getIsSomeRowsSelected(),
-              onChange: table.getToggleAllRowsSelectedHandler(),
+              isSelected: table.getIsAllRowsSelected(),
+              isIndeterminate: table.getIsSomeRowsSelected(),
+              onChange: table.toggleAllRowsSelected,
             }}
           />
         ),
@@ -495,10 +508,10 @@ export function TracesTable(props: TracesTableProps) {
           return (
             <IndeterminateCheckboxCell
               {...{
-                checked: row.getIsSelected(),
-                disabled: !row.getCanSelect(),
-                indeterminate: row.getIsSomeSelected(),
-                onChange: row.getToggleSelectedHandler(),
+                isSelected: row.getIsSelected(),
+                isDisabled: !row.getCanSelect(),
+                isIndeterminate: row.getIsSomeSelected(),
+                onChange: row.toggleSelected,
               }}
             />
           );
@@ -507,8 +520,9 @@ export function TracesTable(props: TracesTableProps) {
       {
         header: "status",
         accessorKey: "statusCode",
-        maxSize: 30,
         enableSorting: false,
+        minSize: 50,
+        maxSize: 75,
         cell: ({ getValue, row }) => {
           if (row.original.__additionalRow) {
             return null;
@@ -593,6 +607,45 @@ export function TracesTable(props: TracesTableProps) {
         },
       },
       {
+        header: "span id",
+        accessorKey: "spanId",
+        enableSorting: false,
+        cell: ({ getValue, row }) => {
+          if (row.original.__additionalRow) return null;
+          const value = getValue() as string | null;
+          if (!value) return <>{"--"}</>;
+          return (
+            <CellWithControlsWrap
+              controls={<CopyToClipboardButton text={value} />}
+            >
+              <Truncate>
+                <Text>{value}</Text>
+              </Truncate>
+            </CellWithControlsWrap>
+          );
+        },
+      },
+      {
+        header: "trace id",
+        accessorKey: "trace.traceId",
+        id: "traceId",
+        enableSorting: false,
+        cell: ({ getValue, row }) => {
+          if (row.original.__additionalRow) return null;
+          const value = getValue() as string | null;
+          if (!value) return <>{"--"}</>;
+          return (
+            <CellWithControlsWrap
+              controls={<CopyToClipboardButton text={value} />}
+            >
+              <Truncate>
+                <Text>{value}</Text>
+              </Truncate>
+            </CellWithControlsWrap>
+          );
+        },
+      },
+      {
         header: "input",
         accessorKey: "input.value",
         enableSorting: false,
@@ -649,12 +702,29 @@ export function TracesTable(props: TracesTableProps) {
             return "--";
           }
           return (
-            <TokenCount
+            <TraceTokenCount
               tokenCountTotal={value as number}
-              tokenCountPrompt={row.original.cumulativeTokenCountPrompt || 0}
-              tokenCountCompletion={
-                row.original.cumulativeTokenCountCompletion || 0
-              }
+              nodeId={row.original.trace.id}
+            />
+          );
+        },
+      },
+      {
+        header: "total cost",
+        minSize: 80,
+        accessorKey: "trace.costSummary.total.cost",
+        id: "cumulativeTokenCostTotal",
+        cell: ({ row, getValue }) => {
+          const value = getValue();
+          if (value === null || typeof value !== "number") {
+            return "--";
+          }
+          const span = row.original;
+          return (
+            <TraceTokenCosts
+              totalCost={value}
+              nodeId={span.trace.id}
+              size="S"
             />
           );
         },
@@ -745,7 +815,6 @@ export function TracesTable(props: TracesTableProps) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
-    getRowId: (row) => row.id,
   });
   const rows = table.getRowModel().rows;
   const selectedRows = table.getSelectedRowModel().flatRows;
@@ -782,7 +851,7 @@ export function TracesTable(props: TracesTableProps) {
     }
     return colSizes;
     // Disabled lint as per tanstack docs linked above
-    // eslint-disable-next-line react-compiler/react-compiler
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getFlatHeaders, columnSizingInfo, columnSizingState, colLength]);
 
@@ -793,7 +862,7 @@ export function TracesTable(props: TracesTableProps) {
         paddingBottom="size-100"
         paddingStart="size-200"
         paddingEnd="size-200"
-        borderBottomColor="grey-300"
+        borderBottomColor="default"
         borderBottomWidth="thin"
         flex="none"
       >
@@ -834,9 +903,7 @@ export function TracesTable(props: TracesTableProps) {
                         <div
                           data-sortable={header.column.getCanSort()}
                           {...{
-                            className: header.column.getCanSort()
-                              ? "cursor-pointer"
-                              : "",
+                            className: header.column.getCanSort() ? "sort" : "",
                             onClick: header.column.getToggleSortingHandler(),
                             style: {
                               left: header.getStart(),

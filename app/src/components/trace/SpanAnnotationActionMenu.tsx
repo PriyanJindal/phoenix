@@ -1,34 +1,45 @@
-import React, {
-  ReactNode,
-  startTransition,
-  useCallback,
-  useState,
-} from "react";
+import { startTransition, useCallback, useRef, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 
-import { Dialog, DialogContainer } from "@arizeai/components";
-import { NoticeConfig } from "@arizeai/components/dist/notification/types";
-
-import { Button, Flex, Text, View } from "@phoenix/components";
-
-import { SpanAnnotationActionMenuDeleteMutation } from "./__generated__/SpanAnnotationActionMenuDeleteMutation.graphql";
+import type { ButtonProps } from "@phoenix/components";
 import {
-  AnnotationActionMenu,
-  AnnotationActionMenuProps,
-} from "./AnnotationActionMenu";
+  Button,
+  Dialog,
+  DialogTrigger,
+  Flex,
+  Icon,
+  Icons,
+  ListBox,
+  ListBoxItem,
+  Modal,
+  ModalOverlay,
+  Popover,
+  Text,
+  View,
+} from "@phoenix/components";
+import {
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@phoenix/components/core/dialog";
+import { StopPropagation } from "@phoenix/components/StopPropagation";
+import type { NotificationHookParams } from "@phoenix/contexts/NotificationContext";
 
-type SpanAnnotationActionMenuProps = Pick<
-  AnnotationActionMenuProps,
-  "buttonVariant" | "buttonSize"
-> & {
+import type { SpanAnnotationActionMenuDeleteMutation } from "./__generated__/SpanAnnotationActionMenuDeleteMutation.graphql";
+
+type SpanAnnotationActionMenuProps = {
+  buttonVariant?: ButtonProps["variant"];
+  buttonSize?: ButtonProps["size"];
   annotationId: string;
   spanNodeId: string;
   annotationName: string;
-  onSpanAnnotationActionSuccess: (
-    notifyProps: Omit<NoticeConfig, "variant">
-  ) => void;
+  onSpanAnnotationActionSuccess: (notifyProps: NotificationHookParams) => void;
   onSpanAnnotationActionError: (error: Error) => void;
 };
+
+enum AnnotationAction {
+  DELETE = "deleteAnnotation",
+}
 
 export function SpanAnnotationActionMenu(props: SpanAnnotationActionMenuProps) {
   const {
@@ -37,15 +48,15 @@ export function SpanAnnotationActionMenu(props: SpanAnnotationActionMenuProps) {
     annotationName,
     onSpanAnnotationActionSuccess,
     onSpanAnnotationActionError,
-    buttonVariant = "quiet",
-    buttonSize = "compact",
+    buttonVariant,
+    buttonSize,
   } = props;
-  const [confirmDialog, setConfirmDialog] = useState<ReactNode>(null);
-  const [commitDelete, isCommittingDelete] =
-    useMutation<SpanAnnotationActionMenuDeleteMutation>(graphql`
+  const [deleting, setDeleting] = useState(false);
+  const [commitDelete] = useMutation<SpanAnnotationActionMenuDeleteMutation>(
+    graphql`
       mutation SpanAnnotationActionMenuDeleteMutation(
-        $annotationId: GlobalID!
-        $spanId: GlobalID!
+        $annotationId: ID!
+        $spanId: ID!
       ) {
         deleteSpanAnnotations(input: { annotationIds: [$annotationId] }) {
           query {
@@ -58,7 +69,8 @@ export function SpanAnnotationActionMenu(props: SpanAnnotationActionMenuProps) {
           }
         }
       }
-    `);
+    `
+  );
 
   const handleDelete = useCallback(() => {
     startTransition(() => {
@@ -72,6 +84,7 @@ export function SpanAnnotationActionMenu(props: SpanAnnotationActionMenuProps) {
             title: "Annotation Deleted",
             message: `Annotation ${annotationName} has been deleted.`,
           });
+          setDeleting(false);
         },
         onError: (error) => {
           onSpanAnnotationActionError(error);
@@ -87,51 +100,87 @@ export function SpanAnnotationActionMenu(props: SpanAnnotationActionMenuProps) {
     onSpanAnnotationActionError,
   ]);
 
-  const onDelete = useCallback(() => {
-    setConfirmDialog(
-      <Dialog size="S" title="Delete Annotation">
-        <View padding="size-200">
-          <Text color="danger">
-            {`Are you sure you want to delete annotation ${annotationName}? This cannot be undone.`}
-          </Text>
-        </View>
-        <View
-          paddingEnd="size-200"
-          paddingTop="size-100"
-          paddingBottom="size-100"
-          borderTopColor="light"
-          borderTopWidth="thin"
-        >
-          <Flex direction="row" justifyContent="end">
-            <Button
-              variant="danger"
-              onPress={() => {
-                handleDelete();
-                setConfirmDialog(null);
-              }}
-            >
-              Delete Annotation
-            </Button>
-          </Flex>
-        </View>
-      </Dialog>
-    );
-  }, [handleDelete, annotationName]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
   return (
-    <div>
-      <AnnotationActionMenu
-        onDelete={onDelete}
-        isDisabled={isCommittingDelete}
-        buttonVariant={buttonVariant}
-        buttonSize={buttonSize}
-      />
-      <DialogContainer
-        type="modal"
-        isDismissable
-        onDismiss={() => setConfirmDialog(null)}
-      >
-        {confirmDialog}
-      </DialogContainer>
-    </div>
+    <>
+      {/* Action menu */}
+      <DialogTrigger>
+        <Button
+          ref={triggerRef}
+          size={buttonSize}
+          variant={buttonVariant}
+          leadingVisual={<Icon svg={<Icons.MoreHorizontalOutline />} />}
+        />
+        <Popover>
+          <Dialog>
+            {({ close }) => (
+              <ListBox style={{ minHeight: "auto" }}>
+                <ListBoxItem
+                  id={AnnotationAction.DELETE}
+                  onAction={() => {
+                    setDeleting(true);
+                    close();
+                  }}
+                >
+                  <Flex
+                    direction="row"
+                    gap="size-75"
+                    justifyContent="start"
+                    alignItems="center"
+                  >
+                    <Icon svg={<Icons.TrashOutline />} />
+                    <Text>Delete</Text>
+                  </Flex>
+                </ListBoxItem>
+              </ListBox>
+            )}
+          </Dialog>
+        </Popover>
+      </DialogTrigger>
+
+      {/* Delete confirmation dialog */}
+      <DialogTrigger isOpen={deleting} onOpenChange={setDeleting}>
+        <ModalOverlay>
+          <Modal>
+            <Dialog>
+              {({ close }) => (
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Delete Annotation</DialogTitle>
+                  </DialogHeader>
+                  <View padding="size-200">
+                    <Text color="danger">
+                      {`Are you sure you want to delete annotation ${annotationName}? This cannot be undone.`}
+                    </Text>
+                  </View>
+                  <View
+                    paddingEnd="size-200"
+                    paddingTop="size-100"
+                    paddingBottom="size-100"
+                    borderTopColor="default"
+                    borderTopWidth="thin"
+                  >
+                    <Flex direction="row" justifyContent="end" gap="size-200">
+                      <StopPropagation>
+                        <Button onPress={close}>Cancel</Button>
+                      </StopPropagation>
+                      <Button
+                        variant="danger"
+                        onPress={() => {
+                          handleDelete();
+                        }}
+                      >
+                        Delete Annotation
+                      </Button>
+                    </Flex>
+                  </View>
+                </DialogContent>
+              )}
+            </Dialog>
+          </Modal>
+        </ModalOverlay>
+      </DialogTrigger>
+    </>
   );
 }

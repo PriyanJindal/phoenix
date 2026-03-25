@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0667268bd57d1da0c20815c03b741d39>>
+ * @generated SignedSource<<455f0f270c663909edaacac4548c59b9>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -16,6 +16,9 @@ export type SavePromptFormQuery$data = {
       readonly prompt: {
         readonly id: string;
         readonly name: string;
+        readonly versionTags: ReadonlyArray<{
+          readonly name: string;
+        }>;
       };
     }>;
   };
@@ -28,60 +31,80 @@ export type SavePromptFormQuery = {
 const node: ConcreteRequest = (function(){
 var v0 = [
   {
-    "alias": null,
-    "args": null,
-    "concreteType": "PromptConnection",
-    "kind": "LinkedField",
-    "name": "prompts",
-    "plural": false,
-    "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "PromptEdge",
-        "kind": "LinkedField",
-        "name": "edges",
-        "plural": true,
-        "selections": [
-          {
-            "alias": "prompt",
-            "args": null,
-            "concreteType": "Prompt",
-            "kind": "LinkedField",
-            "name": "node",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "id",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "name",
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      }
-    ],
-    "storageKey": null
+    "kind": "Literal",
+    "name": "first",
+    "value": 200
   }
-];
+],
+v1 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+};
 return {
   "fragment": {
     "argumentDefinitions": [],
     "kind": "Fragment",
     "metadata": null,
     "name": "SavePromptFormQuery",
-    "selections": (v0/*: any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v0/*: any*/),
+        "concreteType": "PromptConnection",
+        "kind": "LinkedField",
+        "name": "prompts",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "PromptEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              {
+                "alias": "prompt",
+                "args": null,
+                "concreteType": "Prompt",
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  (v1/*: any*/),
+                  (v2/*: any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "PromptVersionTag",
+                    "kind": "LinkedField",
+                    "name": "versionTags",
+                    "plural": true,
+                    "selections": [
+                      (v2/*: any*/)
+                    ],
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "storageKey": "prompts(first:200)"
+      }
+    ],
     "type": "Query",
     "abstractKey": null
   },
@@ -90,19 +113,68 @@ return {
     "argumentDefinitions": [],
     "kind": "Operation",
     "name": "SavePromptFormQuery",
-    "selections": (v0/*: any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v0/*: any*/),
+        "concreteType": "PromptConnection",
+        "kind": "LinkedField",
+        "name": "prompts",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "PromptEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              {
+                "alias": "prompt",
+                "args": null,
+                "concreteType": "Prompt",
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  (v1/*: any*/),
+                  (v2/*: any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "PromptVersionTag",
+                    "kind": "LinkedField",
+                    "name": "versionTags",
+                    "plural": true,
+                    "selections": [
+                      (v2/*: any*/),
+                      (v1/*: any*/)
+                    ],
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "storageKey": "prompts(first:200)"
+      }
+    ]
   },
   "params": {
-    "cacheID": "654725a48bf8fb568b8e05fd37696920",
+    "cacheID": "3716e9210c4d4c9e9de4057c24325921",
     "id": null,
     "metadata": {},
     "name": "SavePromptFormQuery",
     "operationKind": "query",
-    "text": "query SavePromptFormQuery {\n  prompts {\n    edges {\n      prompt: node {\n        id\n        name\n      }\n    }\n  }\n}\n"
+    "text": "query SavePromptFormQuery {\n  prompts(first: 200) {\n    edges {\n      prompt: node {\n        id\n        name\n        versionTags {\n          name\n          id\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a9d184ea6bad7c7ff3b15460ce72b9fd";
+(node as any).hash = "6dbb43dd95f98e5bb0faefadff8e6795";
 
 export default node;

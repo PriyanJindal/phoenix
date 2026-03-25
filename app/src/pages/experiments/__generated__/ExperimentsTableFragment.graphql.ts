@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9802d63232cb94fe44c76458925e772f>>
+ * @generated SignedSource<<538e5664123c54d17bc25bb4eeab5feb>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -21,20 +21,51 @@ export type ExperimentsTableFragment$data = {
       readonly experiment: {
         readonly annotationSummaries: ReadonlyArray<{
           readonly annotationName: string;
+          readonly count: number;
+          readonly errorCount: number;
           readonly meanScore: number | null;
         }>;
         readonly averageRunLatencyMs: number | null;
+        readonly costSummary: {
+          readonly completion: {
+            readonly cost: number | null;
+            readonly tokens: number | null;
+          };
+          readonly prompt: {
+            readonly cost: number | null;
+            readonly tokens: number | null;
+          };
+          readonly total: {
+            readonly cost: number | null;
+            readonly tokens: number | null;
+          };
+        };
         readonly createdAt: string;
+        readonly datasetSplits: {
+          readonly edges: ReadonlyArray<{
+            readonly node: {
+              readonly color: string;
+              readonly id: string;
+              readonly name: string;
+            };
+          }>;
+        };
         readonly description: string | null;
         readonly errorRate: number | null;
+        readonly expectedRunCount: number;
         readonly id: string;
         readonly metadata: any;
         readonly name: string;
         readonly project: {
           readonly id: string;
         } | null;
+        readonly repetitions: number;
         readonly runCount: number;
         readonly sequenceNumber: number;
+        readonly user: {
+          readonly profilePictureUrl: string | null;
+          readonly username: string;
+        } | null;
       };
     }>;
   };
@@ -56,16 +87,39 @@ v1 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "annotationName",
+  "name": "id",
   "storageKey": null
 },
 v2 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "id",
+  "name": "annotationName",
   "storageKey": null
-};
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v4 = [
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "tokens",
+    "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "cost",
+    "storageKey": null
+  }
+];
 return {
   "argumentDefinitions": [
     {
@@ -110,15 +164,16 @@ return {
   },
   "name": "ExperimentsTableFragment",
   "selections": [
+    (v1/*: any*/),
     {
       "alias": null,
       "args": null,
-      "concreteType": "ExperimentAnnotationSummary",
+      "concreteType": "DatasetExperimentAnnotationSummary",
       "kind": "LinkedField",
       "name": "experimentAnnotationSummaries",
       "plural": true,
       "selections": [
-        (v1/*: any*/),
+        (v2/*: any*/),
         {
           "alias": null,
           "args": null,
@@ -160,14 +215,8 @@ return {
               "name": "node",
               "plural": false,
               "selections": [
-                (v2/*: any*/),
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "name",
-                  "storageKey": null
-                },
+                (v1/*: any*/),
+                (v3/*: any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -214,6 +263,20 @@ return {
                   "alias": null,
                   "args": null,
                   "kind": "ScalarField",
+                  "name": "expectedRunCount",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "kind": "ScalarField",
+                  "name": "repetitions",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "kind": "ScalarField",
                   "name": "averageRunLatencyMs",
                   "storageKey": null
                 },
@@ -225,7 +288,90 @@ return {
                   "name": "project",
                   "plural": false,
                   "selections": [
-                    (v2/*: any*/)
+                    (v1/*: any*/)
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "DatasetSplitConnection",
+                  "kind": "LinkedField",
+                  "name": "datasetSplits",
+                  "plural": false,
+                  "selections": [
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "DatasetSplitEdge",
+                      "kind": "LinkedField",
+                      "name": "edges",
+                      "plural": true,
+                      "selections": [
+                        {
+                          "alias": null,
+                          "args": null,
+                          "concreteType": "DatasetSplit",
+                          "kind": "LinkedField",
+                          "name": "node",
+                          "plural": false,
+                          "selections": [
+                            (v1/*: any*/),
+                            (v3/*: any*/),
+                            {
+                              "alias": null,
+                              "args": null,
+                              "kind": "ScalarField",
+                              "name": "color",
+                              "storageKey": null
+                            }
+                          ],
+                          "storageKey": null
+                        }
+                      ],
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "SpanCostSummary",
+                  "kind": "LinkedField",
+                  "name": "costSummary",
+                  "plural": false,
+                  "selections": [
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "CostBreakdown",
+                      "kind": "LinkedField",
+                      "name": "total",
+                      "plural": false,
+                      "selections": (v4/*: any*/),
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "CostBreakdown",
+                      "kind": "LinkedField",
+                      "name": "prompt",
+                      "plural": false,
+                      "selections": (v4/*: any*/),
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "CostBreakdown",
+                      "kind": "LinkedField",
+                      "name": "completion",
+                      "plural": false,
+                      "selections": (v4/*: any*/),
+                      "storageKey": null
+                    }
                   ],
                   "storageKey": null
                 },
@@ -237,12 +383,51 @@ return {
                   "name": "annotationSummaries",
                   "plural": true,
                   "selections": [
-                    (v1/*: any*/),
+                    (v2/*: any*/),
                     {
                       "alias": null,
                       "args": null,
                       "kind": "ScalarField",
                       "name": "meanScore",
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "count",
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "errorCount",
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "User",
+                  "kind": "LinkedField",
+                  "name": "user",
+                  "plural": false,
+                  "selections": [
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "username",
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "profilePictureUrl",
                       "storageKey": null
                     }
                   ],
@@ -306,14 +491,13 @@ return {
         }
       ],
       "storageKey": null
-    },
-    (v2/*: any*/)
+    }
   ],
   "type": "Dataset",
   "abstractKey": null
 };
 })();
 
-(node as any).hash = "c7c7580fe40888ceb86a1701fe4eedf4";
+(node as any).hash = "abc1e770a13dc312089a3c1276f1c99c";
 
 export default node;

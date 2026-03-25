@@ -3,12 +3,13 @@ from _pytest.config.argparsing import Parser
 
 def pytest_addoption(parser: Parser) -> None:
     parser.addoption(
-        "--run-postgres",
+        "--sqlite-on-disk",
         action="store_true",
-        help="Run tests that require Postgres",
+        help="Run tests using file-based SQLite",
     )
     parser.addoption(
-        "--allow-flaky",
-        action="store_true",
-        help="Allows a number of flaky database tests to fail",
+        "--db",
+        default="sqlite",
+        choices=["sqlite", "postgresql", "all"],
+        help="Which database dialect(s) to test: sqlite (default), postgresql, or all",
     )

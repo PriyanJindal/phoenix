@@ -1,12 +1,9 @@
-import React, { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { graphql, useFragment, useMutation } from "react-relay";
 
-import { Card } from "@arizeai/components";
-
-import { Flex, Link, Text, View } from "@phoenix/components";
+import { Alert, Card, Flex, Link, Text, View } from "@phoenix/components";
 import { ProjectTraceRetentionPolicySelect } from "@phoenix/components/retention/ProjectTraceRetentionPolicySelect";
 import {
-  useNotifyError,
   useNotifySuccess,
   useViewerCanManageRetentionPolicy,
 } from "@phoenix/contexts";
@@ -15,9 +12,9 @@ import {
   createPolicyScheduleSummaryText,
 } from "@phoenix/utils/retentionPolicyUtils";
 
-import { ProjectRetentionPolicyCard_policy$key } from "./__generated__/ProjectRetentionPolicyCard_policy.graphql";
-import { ProjectRetentionPolicyCard_query$key } from "./__generated__/ProjectRetentionPolicyCard_query.graphql";
-import { ProjectRetentionPolicyCardSetProjectRetentionPolicyMutation } from "./__generated__/ProjectRetentionPolicyCardSetProjectRetentionPolicyMutation.graphql";
+import type { ProjectRetentionPolicyCard_policy$key } from "./__generated__/ProjectRetentionPolicyCard_policy.graphql";
+import type { ProjectRetentionPolicyCard_query$key } from "./__generated__/ProjectRetentionPolicyCard_query.graphql";
+import type { ProjectRetentionPolicyCardSetProjectRetentionPolicyMutation } from "./__generated__/ProjectRetentionPolicyCardSetProjectRetentionPolicyMutation.graphql";
 
 export const ProjectRetentionPolicyCard = ({
   project,
@@ -27,8 +24,8 @@ export const ProjectRetentionPolicyCard = ({
   query: ProjectRetentionPolicyCard_query$key;
 }) => {
   const canManageRetentionPolicy = useViewerCanManageRetentionPolicy();
+  const [error, setError] = useState<string | null>(null);
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
 
   const queryKey = useFragment(
     graphql`
@@ -69,8 +66,8 @@ export const ProjectRetentionPolicyCard = ({
     useMutation<ProjectRetentionPolicyCardSetProjectRetentionPolicyMutation>(
       graphql`
         mutation ProjectRetentionPolicyCardSetProjectRetentionPolicyMutation(
-          $projectId: GlobalID!
-          $policyId: GlobalID!
+          $projectId: ID!
+          $policyId: ID!
         ) {
           patchProjectTraceRetentionPolicy(
             input: { id: $policyId, addProjects: [$projectId] }
@@ -107,22 +104,14 @@ export const ProjectRetentionPolicyCard = ({
         });
       },
       onError: () => {
-        notifyError({
-          title: "Failed to update retention policy",
-          message: "Please try again.",
-        });
+        setError("Please try again.");
       },
     });
   };
 
   return (
-    <Card
-      title="Data Retention"
-      variant="compact"
-      bodyStyle={{
-        padding: 0,
-      }}
-    >
+    <Card title="Data Retention">
+      {error && <Alert variant="danger">{error}</Alert>}
       <View paddingX="size-200" paddingY="size-100">
         <Flex direction="row" gap="size-400" alignItems="center">
           <section>
@@ -152,7 +141,7 @@ export const ProjectRetentionPolicyCard = ({
         paddingX="size-200"
         paddingY="size-100"
         borderTopWidth="thin"
-        borderColor="dark"
+        borderColor="default"
       >
         <Flex direction="row" justifyContent="end">
           <Link to="/settings/data">Configure Retention Policies</Link>

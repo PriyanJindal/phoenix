@@ -1,7 +1,5 @@
-import React from "react";
-
-import { ColorSwatch } from "@phoenix/components/ColorSwatch";
-import { SizingProps } from "@phoenix/components/types";
+import { ColorSwatch } from "@phoenix/components/color/ColorSwatch";
+import type { SizingProps } from "@phoenix/components/core/types";
 import { useWordColor } from "@phoenix/hooks/useWordColor";
 
 export function AnnotationColorSwatch({

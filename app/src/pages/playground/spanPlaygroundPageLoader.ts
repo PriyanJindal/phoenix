@@ -1,9 +1,9 @@
 import { fetchQuery, graphql } from "react-relay";
-import { LoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 
 import RelayEnvironment from "@phoenix/RelayEnvironment";
 
-import {
+import type {
   spanPlaygroundPageLoaderQuery,
   spanPlaygroundPageLoaderQuery$data,
 } from "./__generated__/spanPlaygroundPageLoaderQuery.graphql";
@@ -25,7 +25,7 @@ export async function spanPlaygroundPageLoader(args: LoaderFunctionArgs) {
   const loaderData = await fetchQuery<spanPlaygroundPageLoaderQuery>(
     RelayEnvironment,
     graphql`
-      query spanPlaygroundPageLoaderQuery($spanId: GlobalID!) {
+      query spanPlaygroundPageLoaderQuery($spanId: ID!) {
         span: node(id: $spanId) {
           __typename
           ... on Span {
@@ -78,3 +78,7 @@ export async function spanPlaygroundPageLoader(args: LoaderFunctionArgs) {
   ).toPromise();
   return loaderData;
 }
+
+export type SpanPlaygroundPageLoaderData = Awaited<
+  ReturnType<typeof spanPlaygroundPageLoader>
+>;

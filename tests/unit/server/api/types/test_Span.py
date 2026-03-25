@@ -33,7 +33,7 @@ async def test_project_resolver_returns_correct_project(
     project_with_a_single_trace_and_span: None,
 ) -> None:
     query = """
-      query ($spanId: GlobalID!) {
+      query ($spanId: ID!) {
         span: node(id: $spanId) {
           ... on Span {
             project {
@@ -66,7 +66,7 @@ async def test_querying_spans_contained_in_datasets(
     simple_dataset: None,
 ) -> None:
     query = """
-      query ($spanId: GlobalID!) {
+      query ($spanId: ID!) {
         span: node(id: $spanId) {
           ... on Span {
             containedInDataset
@@ -91,7 +91,7 @@ async def test_querying_spans_not_contained_in_datasets(
     gql_client: AsyncGraphQLClient, project_with_a_single_trace_and_span: None
 ) -> None:
     query = """
-      query ($spanId: GlobalID!) {
+      query ($spanId: ID!) {
         span: node(id: $spanId) {
           ... on Span {
             containedInDataset
@@ -117,14 +117,14 @@ async def test_span_fields(
     _span_data: tuple[models.Project, Mapping[int, models.Trace], Mapping[int, models.Span]],
 ) -> None:
     query = """
-      query SpanBySpanNodeId($id: GlobalID!) {
+      query SpanBySpanNodeId($id: ID!) {
         node(id: $id) {
           ... on Span {
             ...SpanFragment
           }
         }
       }
-      query SpansByTraceNodeId($traceId: GlobalID!) {
+      query SpansByTraceNodeId($traceId: ID!) {
         node(id: $traceId) {
           ... on Trace {
             spans(first: 1000) {
@@ -137,7 +137,7 @@ async def test_span_fields(
           }
         }
       }
-      query SpansByProjectNodeId($projectId: GlobalID!) {
+      query SpansByProjectNodeId($projectId: ID!) {
         node(id: $projectId) {
           ... on Project {
             spans(first: 1000) {
@@ -643,16 +643,16 @@ async def test_span_annotation_summaries(
         if "include" in filter_config:
             include = filter_config["include"]
             if "names" in include:
-                filter_parts.append(f'include: {{ names: {json.dumps(include["names"])} }}')
+                filter_parts.append(f"include: {{ names: {json.dumps(include['names'])} }}")
         if "exclude" in filter_config:
             exclude = filter_config["exclude"]
             if "names" in exclude:
-                filter_parts.append(f'exclude: {{ names: {json.dumps(exclude["names"])} }}')
+                filter_parts.append(f"exclude: {{ names: {json.dumps(exclude['names'])} }}")
         if filter_parts:
-            filter_arg = f'(filter: {{ {", ".join(filter_parts)} }})'
+            filter_arg = f"(filter: {{ {', '.join(filter_parts)} }})"
 
     query = f"""
-      query ($spanId: GlobalID!) {{
+      query ($spanId: ID!) {{
         span: node(id: $spanId) {{
           ... on Span {{
             spanAnnotationSummaries{filter_arg} {{
@@ -666,35 +666,35 @@ async def test_span_annotation_summaries(
           }}
         }}
       }}
-    """  # noqa: E501
+    """
     span_id = str(GlobalID(Span.__name__, str(1)))
     response = await gql_client.execute(
         query,
         variables={"spanId": span_id},
     )
-    assert not response.errors, f"GraphQL query returned errors: {response.errors}"  # noqa: E501
+    assert not response.errors, f"GraphQL query returned errors: {response.errors}"
     data = response.data
-    assert data is not None, "GraphQL response data is None"  # noqa: E501
+    assert data is not None, "GraphQL response data is None"
     span = data["span"]
-    assert span is not None, "GraphQL response span is None"  # noqa: E501
+    assert span is not None, "GraphQL response span is None"
     summaries = span["spanAnnotationSummaries"]
-    assert (
-        len(summaries) == expected_summary_count
-    ), f"Expected {expected_summary_count} summaries, got {len(summaries)}"  # noqa: E501
+    assert len(summaries) == expected_summary_count, (
+        f"Expected {expected_summary_count} summaries, got {len(summaries)}"
+    )
 
     # Find the summary with the expected name
     summary = next((s for s in summaries if s["name"] == expected_summary_name), None)
     assert summary is not None, f"Summary with name {expected_summary_name} not found"
 
     # Use a small tolerance for floating-point comparison
-    assert (
-        abs(summary["meanScore"] - expected_mean_score) < 1e-10
-    ), f"Expected mean score {expected_mean_score}, got {summary['meanScore']}"  # noqa: E501
+    assert abs(summary["meanScore"] - expected_mean_score) < 1e-10, (
+        f"Expected mean score {expected_mean_score}, got {summary['meanScore']}"
+    )
 
     # Check label fractions
     label_fractions = summary["labelFractions"]
     assert len(label_fractions) == len(expected_label_fractions), (
-        f"Expected {len(expected_label_fractions)} label fractions, " f"got {len(label_fractions)}"  # noqa: E501
+        f"Expected {len(expected_label_fractions)} label fractions, got {len(label_fractions)}"
     )
 
     # Sort both lists by label to ensure consistent comparison
@@ -702,9 +702,9 @@ async def test_span_annotation_summaries(
     expected_label_fractions.sort(key=lambda x: x["label"])
 
     for actual, expected in zip(label_fractions, expected_label_fractions):
-        assert (
-            actual["label"] == expected["label"]
-        ), f"Expected label {expected['label']}, got {actual['label']}"
+        assert actual["label"] == expected["label"], (
+            f"Expected label {expected['label']}, got {actual['label']}"
+        )
         assert abs(actual["fraction"] - expected["fraction"]) < 1e-10, (
             f"Expected fraction {expected['fraction']} for label {actual['label']}, "
             f"got {actual['fraction']}"
@@ -890,3 +890,72 @@ async def spans_with_annotations(
 
         # Add all annotations to the session
         session.add_all(hallucination_annotations + relevance_annotations)
+
+
+async def test_as_example_revision_with_annotations(
+    gql_client: AsyncGraphQLClient,
+    spans_with_annotations: None,
+) -> None:
+    """
+    Test the asExampleRevision field returns span data with annotations.
+
+    This test verifies that:
+    1. The asExampleRevision field returns the expected input, output, and metadata
+    2. Annotations are correctly grouped by name as lists (to handle duplicates)
+    3. ORM attributes are accessed correctly (not strawberry field methods)
+    """
+    query = """
+      query ($spanId: ID!) {
+        span: node(id: $spanId) {
+          ... on Span {
+            revision: asExampleRevision {
+              input
+              output
+              metadata
+            }
+          }
+        }
+      }
+    """
+    span_id = str(GlobalID(Span.__name__, str(1)))
+    response = await gql_client.execute(
+        query=query,
+        variables={"spanId": span_id},
+    )
+    assert not response.errors, f"GraphQL query returned errors: {response.errors}"
+    assert response.data is not None
+
+    revision = response.data["span"]["revision"]
+    assert revision is not None
+
+    # Check that metadata contains annotations
+    metadata = revision["metadata"]
+    assert metadata is not None
+    assert "span_kind" in metadata
+    assert metadata["span_kind"] == "LLM"
+
+    # Check annotations are present and structured as lists
+    annotations = metadata.get("annotations")
+    assert annotations is not None, "Expected annotations in metadata"
+
+    # Verify Hallucination annotations (5 total in fixture)
+    assert "Hallucination" in annotations
+    hallucination_list = annotations["Hallucination"]
+    assert isinstance(hallucination_list, list)
+    assert len(hallucination_list) == 5
+
+    # Verify Relevance annotations (4 total in fixture)
+    assert "Relevance" in annotations
+    relevance_list = annotations["Relevance"]
+    assert isinstance(relevance_list, list)
+    assert len(relevance_list) == 4
+
+    # Verify annotation structure (each should have these fields)
+    for annotation in hallucination_list + relevance_list:
+        assert "label" in annotation
+        assert "score" in annotation
+        assert "explanation" in annotation
+        assert "metadata" in annotation
+        assert "annotator_kind" in annotation
+        # annotator_kind should be a string, not a function or enum
+        assert annotation["annotator_kind"] in ("HUMAN", "LLM", "CODE")

@@ -1,12 +1,9 @@
 import { z } from "zod";
-import zodToJsonSchema from "zod-to-json-schema";
 
-import { assertUnreachable, isObject } from "@phoenix/typeUtils";
-
-import { JSONLiteral, jsonLiteralSchema } from "./jsonLiteralSchema";
+import { jsonLiteralSchema } from "./jsonLiteralSchema";
 
 const jsonSchemaPropertiesSchema = z
-  .object({
+  .looseObject({
     type: z
       .enum([
         "string",
@@ -24,36 +21,75 @@ const jsonSchemaPropertiesSchema = z
       .describe("A description of the parameter"),
     enum: z.array(z.string()).optional().describe("The allowed values"),
   })
-  .passthrough()
   .describe("A map of parameter names to their definitions");
 
-export const jsonSchemaZodSchema = z
-  .object({
-    type: z.literal("object"),
-    properties: z
-      .record(
-        z.union([
-          jsonSchemaPropertiesSchema,
-          z
-            .object({ anyOf: z.array(jsonSchemaPropertiesSchema) })
-            .describe(
-              "A list of possible parameter names to their definitions"
-            ),
-        ])
-      )
-      .optional(),
-    required: z
-      .array(z.string())
-      .optional()
-      .describe("The required parameters"),
-    additionalProperties: z
-      .boolean()
-      .optional()
-      .describe(
-        "Whether or not additional properties are allowed in the schema"
-      ),
-  })
-  .passthrough();
+export const jsonSchemaZodSchema = z.looseObject({
+  type: z.enum(["object", "string", "number", "boolean"]),
+  properties: z
+    .record(
+      z.string(),
+      z.union([
+        jsonSchemaPropertiesSchema,
+        z
+          .object({ anyOf: z.array(jsonSchemaPropertiesSchema) })
+          .describe("A list of possible parameter names to their definitions"),
+      ])
+    )
+    .optional(),
+  required: z.array(z.string()).optional().describe("The required parameters"),
+  additionalProperties: z
+    .boolean()
+    .optional()
+    .describe("Whether or not additional properties are allowed in the schema"),
+});
+
+/**
+ * Like jsonSchemaZodSchema but with type optional (no default).
+ * Accepts empty {} from SDKs/spans and leaves it as {} instead of injecting type.
+ */
+const toolParametersJsonSchema = z.looseObject({
+  type: z.enum(["object"]).optional(),
+  properties: z
+    .record(
+      z.string(),
+      z.union([
+        jsonSchemaPropertiesSchema,
+        z
+          .object({ anyOf: z.array(jsonSchemaPropertiesSchema) })
+          .describe("A list of possible parameter names to their definitions"),
+      ])
+    )
+    .optional(),
+  required: z.array(z.string()).optional().describe("The required parameters"),
+  additionalProperties: z
+    .boolean()
+    .optional()
+    .describe("Whether or not additional properties are allowed in the schema"),
+});
+
+/**
+ * Parameters schema with type defaulting to "object" when missing.
+ * Used for Anthropic (input_schema) and AWS (inputSchema.json) which require it.
+ */
+const parametersSchemaWithDefaultObjectType = z.looseObject({
+  type: z.enum(["object"]).optional().default("object"),
+  properties: z
+    .record(
+      z.string(),
+      z.union([
+        jsonSchemaPropertiesSchema,
+        z
+          .object({ anyOf: z.array(jsonSchemaPropertiesSchema) })
+          .describe("A list of possible parameter names to their definitions"),
+      ])
+    )
+    .optional(),
+  required: z.array(z.string()).optional().describe("The required parameters"),
+  additionalProperties: z
+    .boolean()
+    .optional()
+    .describe("Whether or not additional properties are allowed in the schema"),
+});
 
 /**
  * The schema for an OpenAI tool definition
@@ -63,31 +99,28 @@ export const jsonSchemaZodSchema = z
  * allow for extra keys when the zod schema is used for parsing. This is to allow more flexibility for users
  * to define their own tools according
  */
-export const openAIToolDefinitionSchema = z
-  .object({
-    type: z.literal("function").describe("The type of the tool"),
-    function: z
-      .object({
-        name: z.string().describe("The name of the function"),
-        description: z
-          .string()
-          .optional()
-          .describe("A description of the function"),
-        parameters: jsonSchemaZodSchema
-          .extend({
-            strict: z
-              .boolean()
-              .optional()
-              .describe(
-                "Whether or not the arguments should exactly match the function definition, only supported for OpenAI models"
-              ),
-          })
-          .describe("The parameters that the function accepts"),
-      })
-      .passthrough()
-      .describe("The function definition"),
-  })
-  .passthrough();
+export const openAIToolDefinitionSchema = z.looseObject({
+  type: z.literal("function").describe("The type of the tool"),
+  function: z
+    .looseObject({
+      name: z.string().describe("The name of the function"),
+      description: z
+        .string()
+        .optional()
+        .describe("A description of the function"),
+      parameters: toolParametersJsonSchema
+        .extend({
+          strict: z
+            .boolean()
+            .optional()
+            .describe(
+              "Whether or not the arguments should exactly match the function definition, only supported for OpenAI models"
+            ),
+        })
+        .describe("The parameters that the function accepts"),
+    })
+    .describe("The function definition"),
+});
 
 /**
  * The type of an OpenAI tool definition
@@ -98,20 +131,57 @@ export type OpenAIToolDefinition = z.infer<typeof openAIToolDefinitionSchema>;
 /**
  * The JSON schema for an OpenAI tool definition
  */
-export const openAIToolDefinitionJSONSchema = zodToJsonSchema(
-  openAIToolDefinitionSchema,
-  {
-    removeAdditionalStrategy: "passthrough",
-  }
+export const openAIToolDefinitionJSONSchema = z.toJSONSchema(
+  openAIToolDefinitionSchema
 );
+
+/**
+ * The zod schema for an OpenAI Responses API tool definition.
+ * @see https://platform.openai.com/docs/api-reference/responses/create
+ *
+ * Unlike the Chat Completions API which nests under a `function` key,
+ * the Responses API flattens name, description, and parameters to the top level
+ * alongside `type` and `strict`.
+ */
+export const openAIResponsesToolDefinitionSchema = z.looseObject({
+  type: z
+    .literal("function")
+    .describe("The type of the tool. Always `function`."),
+  name: z.string().describe("The name of the function to call."),
+  parameters: toolParametersJsonSchema
+    .nullable()
+    .describe(
+      "A JSON schema object describing the parameters of the function."
+    ),
+  strict: z
+    .boolean()
+    .nullable()
+    .describe(
+      "Whether to enforce strict parameter validation. Default `true`."
+    ),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      "A description of the function. Used by the model to determine whether or not to call the function."
+    ),
+});
+
+/**
+ * The type of an OpenAI Responses API tool definition
+ * @see https://platform.openai.com/docs/api-reference/responses/create
+ */
+export type OpenAIResponsesToolDefinition = z.infer<
+  typeof openAIResponsesToolDefinitionSchema
+>;
 
 /**
  * The zod schema for an anthropic tool definition
  */
 export const anthropicToolDefinitionSchema = z.object({
   name: z.string(),
-  description: z.string(),
-  input_schema: jsonSchemaZodSchema,
+  description: z.string().optional(),
+  input_schema: parametersSchemaWithDefaultObjectType,
 });
 
 /**
@@ -124,49 +194,46 @@ export type AnthropicToolDefinition = z.infer<
 /**
  * The JSON schema for an anthropic tool definition
  */
-export const anthropicToolDefinitionJSONSchema = zodToJsonSchema(
-  anthropicToolDefinitionSchema,
-  {
-    removeAdditionalStrategy: "passthrough",
-  }
+export const anthropicToolDefinitionJSONSchema = z.toJSONSchema(
+  anthropicToolDefinitionSchema
+);
+
+export const awsToolDefinitionSchema = z.object({
+  toolSpec: z.object({
+    name: z.string(),
+    description: z.string().min(1).optional(),
+    inputSchema: z.object({
+      json: parametersSchemaWithDefaultObjectType,
+    }),
+  }),
+});
+
+export type AwsToolDefinition = z.infer<typeof awsToolDefinitionSchema>;
+
+export const awsToolDefinitionJSONSchema = z.toJSONSchema(
+  awsToolDefinitionSchema
 );
 
 /**
- * --------------------------------
- * Conversion Schemas
- * --------------------------------
+ * The zod schema for a Gemini tool definition.
+ * Google GenAI SDK uses `parameters_json_schema`; we accept both for spans
+ * that store the raw FunctionDeclaration dump.
  */
+export const geminiToolDefinitionSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  parameters: toolParametersJsonSchema.optional(),
+  parameters_json_schema: toolParametersJsonSchema.optional(),
+});
+
+export type GeminiToolDefinition = z.infer<typeof geminiToolDefinitionSchema>;
 
 /**
- * Parse incoming object as an Anthropic tool call and immediately convert to OpenAI format
+ * The JSON schema for a Gemini tool definition
  */
-export const anthropicToolToOpenAI = anthropicToolDefinitionSchema.transform(
-  (anthropic): OpenAIToolDefinition => ({
-    type: "function",
-    function: {
-      name: anthropic.name,
-      description: anthropic.description,
-      parameters: anthropic.input_schema,
-    },
-  })
+export const geminiToolDefinitionJSONSchema = z.toJSONSchema(
+  geminiToolDefinitionSchema
 );
-
-/**
- * Parse incoming object as an OpenAI tool call and immediately convert to Anthropic format
- */
-export const openAIToolToAnthropic = openAIToolDefinitionSchema.transform(
-  (openai): AnthropicToolDefinition => ({
-    name: openai.function.name,
-    description: openai.function.description ?? openai.function.name,
-    input_schema: openai.function.parameters,
-  })
-);
-
-/**
- * --------------------------------
- * Conversion Helpers
- * --------------------------------
- */
 
 /**
  * Union of all tool call formats
@@ -175,201 +242,15 @@ export const openAIToolToAnthropic = openAIToolDefinitionSchema.transform(
  */
 export const llmProviderToolDefinitionSchema = z.union([
   openAIToolDefinitionSchema,
+  // Responses API must come before Gemini: both have top-level name + parameters,
+  // but only Responses API requires type: "function", which Gemini tools lack.
+  openAIResponsesToolDefinitionSchema,
   anthropicToolDefinitionSchema,
+  awsToolDefinitionSchema,
+  geminiToolDefinitionSchema,
   jsonLiteralSchema,
 ]);
 
 export type LlmProviderToolDefinition = z.infer<
   typeof llmProviderToolDefinitionSchema
 >;
-
-type ToolDefinitionWithProvider =
-  | {
-      provider: Extract<ModelProvider, "OPENAI" | "AZURE_OPENAI">;
-      validatedToolDefinition: OpenAIToolDefinition;
-    }
-  | {
-      provider: Extract<ModelProvider, "ANTHROPIC">;
-      validatedToolDefinition: AnthropicToolDefinition;
-    }
-  | {
-      provider: "UNKNOWN";
-      validatedToolDefinition: null;
-    };
-
-/**
- * Detect the provider of a tool call object
- */
-export const detectToolDefinitionProvider = (
-  toolDefinition: unknown
-): ToolDefinitionWithProvider => {
-  const { success: openaiSuccess, data: openaiData } =
-    openAIToolDefinitionSchema.safeParse(toolDefinition);
-  if (openaiSuccess) {
-    return {
-      // we cannot disambiguate between azure openai and openai here
-      provider: "OPENAI",
-      validatedToolDefinition: openaiData,
-    };
-  }
-  const { success: anthropicSuccess, data: anthropicData } =
-    anthropicToolDefinitionSchema.safeParse(toolDefinition);
-  if (anthropicSuccess) {
-    return {
-      provider: "ANTHROPIC",
-      validatedToolDefinition: anthropicData,
-    };
-  }
-  return { provider: "UNKNOWN", validatedToolDefinition: null };
-};
-
-type ProviderToToolDefinitionMap = {
-  OPENAI: OpenAIToolDefinition;
-  AZURE_OPENAI: OpenAIToolDefinition;
-  ANTHROPIC: AnthropicToolDefinition;
-  // Use generic JSON type for unknown tool formats / new providers
-  GOOGLE: JSONLiteral;
-};
-
-/**
- * Convert from any tool call format to OpenAI format if possible
- */
-export const toOpenAIToolDefinition = (
-  toolDefinition: LlmProviderToolDefinition
-): OpenAIToolDefinition | null => {
-  const { provider, validatedToolDefinition } =
-    detectToolDefinitionProvider(toolDefinition);
-  switch (provider) {
-    case "AZURE_OPENAI":
-    case "OPENAI":
-      return validatedToolDefinition;
-    case "ANTHROPIC":
-      return anthropicToolToOpenAI.parse(validatedToolDefinition);
-    case "UNKNOWN":
-      return null;
-    default:
-      assertUnreachable(provider);
-  }
-};
-
-/**
- * Convert from OpenAI tool call format to any other format
- */
-export const fromOpenAIToolDefinition = <T extends ModelProvider>({
-  toolDefinition,
-  targetProvider,
-}: {
-  toolDefinition: OpenAIToolDefinition;
-  targetProvider: T;
-}): ProviderToToolDefinitionMap[T] => {
-  switch (targetProvider) {
-    case "AZURE_OPENAI":
-    case "OPENAI":
-      return toolDefinition as ProviderToToolDefinitionMap[T];
-    case "ANTHROPIC":
-      return openAIToolToAnthropic.parse(
-        toolDefinition
-      ) as ProviderToToolDefinitionMap[T];
-    // TODO(apowell): #5348 Add Google tool calls schema - https://github.com/Arize-ai/phoenix/issues/5348
-    case "GOOGLE":
-      return toolDefinition as ProviderToToolDefinitionMap[T];
-    default:
-      assertUnreachable(targetProvider);
-  }
-};
-
-/**
- * Creates an OpenAI tool definition
- * @param toolNumber the number of the tool in that instance for example instance.tools.length + 1 to be used to fill in the name
- * @returns an OpenAI tool definition
- */
-export function createOpenAIToolDefinition(
-  toolNumber: number
-): OpenAIToolDefinition {
-  return {
-    type: "function",
-    function: {
-      name: `new_function_${toolNumber}`,
-      description: "",
-      parameters: {
-        type: "object",
-        properties: {
-          new_arg: {
-            type: "string",
-          },
-        },
-        required: [],
-      },
-    },
-  };
-}
-
-/**
- * Creates an Anthropic tool definition
- * @param toolNumber the number of the tool in that instance for example instance.tools.length + 1 to be used to fill in the name
- * @returns an Anthropic tool definition
- */
-export function createAnthropicToolDefinition(
-  toolNumber: number
-): AnthropicToolDefinition {
-  return {
-    name: `new_function_${toolNumber}`,
-    description: "",
-    input_schema: {
-      type: "object",
-      properties: {
-        new_arg: {
-          type: "string",
-        },
-      },
-      required: [],
-    },
-  };
-}
-
-export const findToolDefinitionName = (toolDefinition: unknown) => {
-  const parsed = llmProviderToolDefinitionSchema.safeParse(toolDefinition);
-  if (!parsed.success || parsed.data === null || !isObject(parsed.data)) {
-    return null;
-  }
-
-  if (
-    "function" in parsed.data &&
-    isObject(parsed.data.function) &&
-    "name" in parsed.data.function &&
-    typeof parsed.data.function.name === "string"
-  ) {
-    return parsed.data.function.name;
-  }
-
-  if ("name" in parsed.data && typeof parsed.data.name === "string") {
-    return parsed.data.name;
-  }
-
-  return null;
-};
-
-export const findToolDefinitionDescription = (toolDefinition: unknown) => {
-  const parsed = llmProviderToolDefinitionSchema.safeParse(toolDefinition);
-  if (!parsed.success || parsed.data === null || !isObject(parsed.data)) {
-    return null;
-  }
-
-  if (
-    "function" in parsed.data &&
-    isObject(parsed.data.function) &&
-    "description" in parsed.data.function &&
-    typeof parsed.data.function.description === "string"
-  ) {
-    return parsed.data.function.description;
-  }
-
-  if (
-    "description" in parsed.data &&
-    typeof parsed.data.description === "string"
-  ) {
-    return parsed.data.description;
-  }
-
-  return null;
-};

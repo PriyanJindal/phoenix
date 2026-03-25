@@ -1,26 +1,37 @@
-import React, { useMemo } from "react";
-import { isNumber, isString } from "lodash";
-
 import {
   SemanticAttributePrefixes,
   UserAttributePostfixes,
 } from "@arizeai/openinference-semantic-conventions";
-
-import { Flex, Icon, Icons, Link, Text, View } from "@phoenix/components";
-import { AnnotationSummaryGroupTokens } from "@phoenix/components/annotation/AnnotationSummaryGroup";
-import { JSONBlock } from "@phoenix/components/code";
-import { LatencyText } from "@phoenix/components/trace/LatencyText";
-import { TokenCount } from "@phoenix/components/trace/TokenCount";
-import { SELECTED_SPAN_NODE_ID_PARAM } from "@phoenix/constants/searchParams";
-import { useChatMessageStyles } from "@phoenix/hooks/useChatMessageStyles";
-import { isStringKeyedObject } from "@phoenix/typeUtils";
-import { safelyParseJSON } from "@phoenix/utils/jsonUtils";
-import { fullTimeFormatter } from "@phoenix/utils/timeFormatUtils";
+import { css } from "@emotion/react";
+import { isNumber, isString, throttle } from "lodash";
+import { useCallback, useMemo } from "react";
+import { graphql, usePaginationFragment } from "react-relay";
 
 import {
-  MimeType,
-  SessionDetailsQuery$data,
-} from "./__generated__/SessionDetailsQuery.graphql";
+  Flex,
+  Icon,
+  Icons,
+  Link,
+  Loading,
+  Text,
+  View,
+} from "@phoenix/components";
+import { AnnotationSummaryGroupTokens } from "@phoenix/components/annotation/AnnotationSummaryGroup";
+import { DynamicContent } from "@phoenix/components/DynamicContent";
+import { LatencyText } from "@phoenix/components/trace/LatencyText";
+import { SpanCumulativeTokenCount } from "@phoenix/components/trace/SpanCumulativeTokenCount";
+import { TraceTokenCosts } from "@phoenix/components/trace/TraceTokenCosts";
+import { SELECTED_SPAN_NODE_ID_PARAM } from "@phoenix/constants/searchParams";
+import { useTimeFormatters } from "@phoenix/hooks";
+import { useChatMessageStyles } from "@phoenix/hooks/useChatMessageStyles";
+import type {
+  SessionDetailsTraceList_traces$data,
+  SessionDetailsTraceList_traces$key,
+} from "@phoenix/pages/trace/__generated__/SessionDetailsTraceList_traces.graphql";
+import { SESSION_DETAILS_PAGE_SIZE } from "@phoenix/pages/trace/constants";
+import { isStringKeyedObject } from "@phoenix/typeUtils";
+import { safelyParseJSON } from "@phoenix/utils/jsonUtils";
+
 import { EditSpanAnnotationsButton } from "./EditSpanAnnotationsButton";
 
 const getUserFromRootSpanAttributes = (attributes: string) => {
@@ -39,28 +50,16 @@ const getUserFromRootSpanAttributes = (attributes: string) => {
 function RootSpanMessage({
   role,
   value,
-  mimeType,
 }: {
   role: "HUMAN" | "AI";
   value: unknown;
-  mimeType?: MimeType | null;
 }) {
-  const valueString = useMemo(() => {
-    if (mimeType !== "json") {
-      return String(value);
-    }
-    const parsed = safelyParseJSON(value as string);
-    if (parsed.json == null) {
-      return "--";
-    }
-    return JSON.stringify(parsed.json, null, 2);
-  }, [value, mimeType]);
   const styles = useChatMessageStyles(role === "HUMAN" ? "user" : "assistant");
   return (
     <View
       alignSelf={role === "HUMAN" ? "start" : "end"}
       borderRadius={"medium"}
-      borderColor={"dark"}
+      borderColor="default"
       borderWidth={"thin"}
       padding="size-200"
       maxWidth={"70%"}
@@ -68,11 +67,7 @@ function RootSpanMessage({
     >
       <Flex direction={"column"} gap={"size-50"}>
         <Text color="text-700">{role}</Text>
-        {mimeType === "json" ? (
-          <JSONBlock value={valueString} />
-        ) : (
-          <Text>{valueString}</Text>
-        )}
+        <DynamicContent value={value} />
       </Flex>
     </View>
   );
@@ -80,8 +75,8 @@ function RootSpanMessage({
 
 type SessionTraceRootSpan = NonNullable<
   NonNullable<
-    SessionDetailsQuery$data["session"]["traces"]
-  >["edges"][number]["trace"]["rootSpan"]
+    SessionDetailsTraceList_traces$data["traces"]["edges"][number]["trace"]
+  >["rootSpan"]
 >;
 
 type RootSpanProps = {
@@ -93,6 +88,7 @@ function RootSpanDetails({
   rootSpan,
   index,
 }: RootSpanProps & { traceId: string; index: number }) {
+  const { fullTimeFormatter } = useTimeFormatters();
   const startDate = useMemo(() => {
     return new Date(rootSpan.startTime);
   }, [rootSpan.startTime]);
@@ -127,13 +123,16 @@ function RootSpanDetails({
             </Text>
           </Flex>
           <Flex direction={"row"} gap={"size-100"}>
-            <TokenCount
-              tokenCountTotal={rootSpan.cumulativeTokenCountTotal ?? 0}
-              tokenCountCompletion={
-                rootSpan.cumulativeTokenCountCompletion ?? 0
-              }
-              tokenCountPrompt={rootSpan.cumulativeTokenCountPrompt ?? 0}
+            <SpanCumulativeTokenCount
+              tokenCountTotal={rootSpan.cumulativeTokenCountTotal || 0}
+              nodeId={rootSpan.id}
             />
+            {rootSpan.trace.costSummary?.total?.cost != null && (
+              <TraceTokenCosts
+                totalCost={rootSpan.trace.costSummary.total.cost}
+                nodeId={rootSpan.trace.id}
+              />
+            )}
             {rootSpan.latencyMs != null ? (
               <LatencyText latencyMs={rootSpan.latencyMs} />
             ) : (
@@ -172,50 +171,118 @@ function RootSpanDetails({
 function RootSpanInputOutput({ rootSpan }: RootSpanProps) {
   return (
     <Flex direction={"column"} gap={"size-100"}>
-      <RootSpanMessage
-        role={"HUMAN"}
-        value={rootSpan.input?.value}
-        mimeType={rootSpan.input?.mimeType}
-      />
-      <RootSpanMessage
-        role={"AI"}
-        value={rootSpan.output?.value}
-        mimeType={rootSpan.output?.mimeType}
-      />
+      <RootSpanMessage role={"HUMAN"} value={rootSpan.input?.value} />
+      <RootSpanMessage role={"AI"} value={rootSpan.output?.value} />
     </Flex>
   );
 }
 
 export function SessionDetailsTraceList({
-  traces,
+  tracesRef,
 }: {
-  traces: SessionDetailsQuery$data["session"]["traces"];
+  tracesRef: SessionDetailsTraceList_traces$key;
 }) {
+  const { data, loadNext, isLoadingNext, hasNext } = usePaginationFragment(
+    graphql`
+      fragment SessionDetailsTraceList_traces on ProjectSession
+      @refetchable(queryName: "SessionDetailsTraceListRefetchQuery")
+      @argumentDefinitions(
+        first: { type: "Int", defaultValue: 50 }
+        after: { type: "String", defaultValue: null }
+      ) {
+        traces(first: $first, after: $after)
+          @connection(key: "SessionDetailsTraceList_traces") {
+          edges {
+            trace: node {
+              id
+              traceId
+              rootSpan {
+                trace {
+                  id
+                  costSummary {
+                    total {
+                      cost
+                    }
+                  }
+                }
+                id
+                attributes
+                project {
+                  id
+                }
+                input {
+                  value
+                  mimeType
+                }
+                output {
+                  value
+                  mimeType
+                }
+                cumulativeTokenCountTotal
+                latencyMs
+                startTime
+                spanId
+                ...AnnotationSummaryGroup
+              }
+            }
+          }
+        }
+      }
+    `,
+    tracesRef
+  );
+
   const sessionRootSpans = useMemo(() => {
-    const edges = traces?.edges || [];
-    return edges
-      .map(({ trace }) => trace)
+    return data.traces?.edges
       .filter(
         (
           trace
         ): trace is typeof trace & {
-          rootSpan: NonNullable<typeof trace.rootSpan>;
-        } => trace.rootSpan !== null
-      );
-  }, [traces]);
+          trace: { rootSpan: NonNullable<typeof trace.trace.rootSpan> };
+        } => trace.trace.rootSpan !== null
+      )
+      .map(({ trace }) => trace);
+  }, [data]);
+
+  const fetchMoreOnBottomReached = useCallback(
+    (containerRefElement?: HTMLDivElement | null) => {
+      if (containerRefElement) {
+        const { scrollHeight, scrollTop, clientHeight } = containerRefElement;
+        const withinRange = scrollHeight - scrollTop - clientHeight < 1024;
+        if (withinRange && !isLoadingNext && hasNext) {
+          loadNext(SESSION_DETAILS_PAGE_SIZE);
+        }
+      }
+    },
+    [hasNext, isLoadingNext, loadNext]
+  );
+
+  const debouncedFetchMoreOnBottomReached = useMemo(
+    () => throttle(fetchMoreOnBottomReached, 100),
+    [fetchMoreOnBottomReached]
+  );
 
   return (
-    <View height={"100%"} flex={"1 1 auto"} overflow={"auto"}>
+    <div
+      css={css`
+        height: 100%;
+        flex: 1 1 auto;
+        overflow: auto;
+      `}
+      onScroll={(e) =>
+        debouncedFetchMoreOnBottomReached(e.target as HTMLDivElement)
+      }
+    >
       {sessionRootSpans.map(({ traceId, rootSpan }, index) => (
         <View
-          borderBottomColor={"dark"}
+          borderBottomColor="default"
           borderBottomWidth={"thin"}
           key={rootSpan.spanId}
         >
           <Flex direction={"row"}>
             <View
               borderRightWidth={"thin"}
-              borderEndColor={"dark"}
+              borderEndColor="default"
               padding="size-200"
               flex={"1 1 auto"}
             >
@@ -231,6 +298,15 @@ export function SessionDetailsTraceList({
           </Flex>
         </View>
       ))}
-    </View>
+      {isLoadingNext && (
+        <View
+          borderBottomColor="default"
+          borderBottomWidth={"thin"}
+          padding="size-200"
+        >
+          <Loading />
+        </View>
+      )}
+    </div>
   );
 }

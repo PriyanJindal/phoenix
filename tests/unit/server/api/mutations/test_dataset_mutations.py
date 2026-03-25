@@ -1,9 +1,8 @@
 import textwrap
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-import pytz
 from sqlalchemy import insert, select
 from strawberry.relay import GlobalID
 
@@ -54,7 +53,7 @@ async def test_create_dataset(
 
 class TestPatchDatasetMutation:
     MUTATION = """
-      mutation ($datasetId: GlobalID!, $name: String, $description: String, $metadata: JSON) {
+      mutation ($datasetId: ID!, $name: String, $description: String, $metadata: JSON) {
         patchDataset(
           input: {datasetId: $datasetId, name: $name, description: $description, metadata: $metadata}
         ) {
@@ -66,7 +65,7 @@ class TestPatchDatasetMutation:
           }
         }
       }
-    """  # noqa: E501
+    """
 
     async def test_patch_all_dataset_fields(
         self,
@@ -153,7 +152,7 @@ async def test_add_span_to_dataset(
 ) -> None:
     dataset_id = GlobalID(type_name="Dataset", node_id=str(1))
     mutation = """
-      mutation ($datasetId: GlobalID!, $spanIds: [GlobalID!]!) {
+      mutation ($datasetId: ID!, $spanIds: [ID!]!) {
         addSpansToDataset(input: {datasetId: $datasetId, spanIds: $spanIds}) {
           dataset {
             id
@@ -459,7 +458,7 @@ async def test_delete_a_dataset(
     dataset_id = GlobalID(type_name="Dataset", node_id=str(1))
     mutation = textwrap.dedent(
         """
-        mutation ($datasetId: GlobalID!) {
+        mutation ($datasetId: ID!) {
           deleteDataset(input: { datasetId: $datasetId }) {
             dataset {
               id
@@ -477,9 +476,9 @@ async def test_delete_a_dataset(
     )
     assert not response.errors
     assert (data := response.data) is not None
-    assert data["deleteDataset"]["dataset"] == {
-        "id": str(dataset_id)
-    }, "deleted dataset is returned"
+    assert data["deleteDataset"]["dataset"] == {"id": str(dataset_id)}, (
+        "deleted dataset is returned"
+    )
     async with db() as session:
         dataset = (
             await session.execute(select(models.Dataset).where(models.Dataset.id == 1))
@@ -491,7 +490,7 @@ async def test_deleting_a_nonexistent_dataset_fails(gql_client: AsyncGraphQLClie
     dataset_id = GlobalID(type_name="Dataset", node_id=str(1))
     mutation = textwrap.dedent(
         """
-        mutation ($datasetId: GlobalID!) {
+        mutation ($datasetId: ID!) {
           deleteDataset(input: { datasetId: $datasetId }) {
             dataset {
               id
@@ -687,7 +686,9 @@ async def dataset_with_a_single_version(
             insert(models.DatasetExample)
             .values(
                 dataset_id=dataset_id,
-                created_at=datetime(year=2020, month=1, day=1, hour=0, minute=0, tzinfo=pytz.utc),
+                created_at=datetime(
+                    year=2020, month=1, day=1, hour=0, minute=0, tzinfo=timezone.utc
+                ),
             )
             .returning(models.DatasetExample.id)
         )

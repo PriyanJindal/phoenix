@@ -1,29 +1,35 @@
+import re
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Iterable, Literal, Optional, Sequence, TypedDict, cast
 
+import orjson
+import sqlalchemy as sa
 import sqlalchemy.sql as sql
 from openinference.semconv.trace import RerankerAttributes, SpanAttributes
 from sqlalchemy import (
     JSON,
     NUMERIC,
     TIMESTAMP,
+    Boolean,
     CheckConstraint,
     ColumnElement,
     Dialect,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     Null,
+    PrimaryKeyConstraint,
     String,
     TypeDecorator,
     UniqueConstraint,
     case,
+    event,
     func,
     insert,
-    not_,
     select,
     text,
 )
@@ -41,7 +47,9 @@ from sqlalchemy.orm import (
 )
 from sqlalchemy.sql import Values, column, compiler, expression, literal, roles, union_all
 from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.elements import Case
 from sqlalchemy.sql.functions import coalesce
+from typing_extensions import Self, TypeAlias
 
 from phoenix.config import get_env_database_schema
 from phoenix.datetime_utils import normalize_datetime
@@ -50,11 +58,16 @@ from phoenix.db.types.annotation_configs import (
 )
 from phoenix.db.types.annotation_configs import (
     AnnotationConfigType,
+    CategoricalOutputConfig,
+    OutputConfigType,
 )
+from phoenix.db.types.annotation_configs import (
+    OutputConfig as OutputConfigModel,
+)
+from phoenix.db.types.evaluators import InputMapping
 from phoenix.db.types.identifier import Identifier
 from phoenix.db.types.model_provider import ModelProvider
-from phoenix.db.types.trace_retention import TraceRetentionCronExpression, TraceRetentionRule
-from phoenix.server.api.helpers.prompts.models import (
+from phoenix.db.types.prompts import (
     PromptInvocationParameters,
     PromptInvocationParametersRootModel,
     PromptResponseFormat,
@@ -67,6 +80,12 @@ from phoenix.server.api.helpers.prompts.models import (
     is_prompt_invocation_parameters,
     is_prompt_template,
 )
+from phoenix.db.types.token_price_customization import (
+    TokenPriceCustomization,
+    TokenPriceCustomizationParser,
+)
+from phoenix.db.types.trace_retention import TraceRetentionCronExpression, TraceRetentionRule
+from phoenix.server.encryption import is_encrypted
 from phoenix.trace.attributes import get_attribute_value
 
 INPUT_MIME_TYPE = SpanAttributes.INPUT_MIME_TYPE.split(".")
@@ -147,9 +166,16 @@ def render_values_w_union(
     return compiler.process(subquery, from_linter=from_linter, **kw)
 
 
-class AuthMethod(Enum):
-    LOCAL = "LOCAL"
-    OAUTH2 = "OAUTH2"
+UserRoleName: TypeAlias = Literal["SYSTEM", "ADMIN", "MEMBER", "VIEWER"]
+AuthMethod: TypeAlias = Literal["LOCAL", "OAUTH2", "LDAP"]
+EvaluatorKind: TypeAlias = Literal["LLM", "CODE", "BUILTIN"]
+GenerativeModelSDK: TypeAlias = Literal[
+    "openai",
+    "azure_openai",
+    "anthropic",
+    "google_genai",
+    "aws_bedrock",
+]
 
 
 class JSONB(JSON):
@@ -175,6 +201,11 @@ JSON_ = (
     )
 )
 
+_Integer = Integer().with_variant(
+    sa.BigInteger(),
+    "postgresql",
+)
+
 
 class JsonDict(TypeDecorator[dict[str, Any]]):
     # See # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
@@ -184,6 +215,9 @@ class JsonDict(TypeDecorator[dict[str, Any]]):
     def process_bind_param(self, value: Optional[dict[str, Any]], _: Dialect) -> dict[str, Any]:
         return value if isinstance(value, dict) else {}
 
+    def process_result_value(self, value: Optional[Any], _: Dialect) -> Optional[dict[str, Any]]:
+        return orjson.loads(orjson.dumps(value)) if isinstance(value, dict) and value else value
+
 
 class JsonList(TypeDecorator[list[Any]]):
     # See # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
@@ -192,6 +226,9 @@ class JsonList(TypeDecorator[list[Any]]):
 
     def process_bind_param(self, value: Optional[list[Any]], _: Dialect) -> list[Any]:
         return value if isinstance(value, list) else []
+
+    def process_result_value(self, value: Optional[Any], _: Dialect) -> Optional[list[Any]]:
+        return orjson.loads(orjson.dumps(value)) if isinstance(value, list) and value else value
 
 
 class UtcTimeStamp(TypeDecorator[datetime]):
@@ -393,12 +430,139 @@ class _AnnotationConfig(TypeDecorator[AnnotationConfigType]):
         return AnnotationConfigModel.model_validate(value).root if value is not None else None
 
 
+class _OutputConfigList(TypeDecorator[list[OutputConfigType]]):
+    # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
+    cache_ok = True
+    impl = JSON_
+
+    def process_bind_param(
+        self, value: Optional[list[OutputConfigType]], _: Dialect
+    ) -> Optional[list[dict[str, Any]]]:
+        if value is None:
+            return None
+        seen = set()
+        for config in value:
+            if config.name in seen:
+                raise ValueError(f"Duplicate name: {config.name}")
+            seen.add(config.name)
+        return [OutputConfigModel(root=config).model_dump() for config in value]
+
+    def process_result_value(
+        self, value: Optional[list[dict[str, Any]]], _: Dialect
+    ) -> Optional[list[OutputConfigType]]:
+        if value is None:
+            return None
+        return [OutputConfigModel.model_validate(config).root for config in value]
+
+
+class _CategoricalOutputConfigList(TypeDecorator[list[CategoricalOutputConfig]]):
+    # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
+    cache_ok = True
+    impl = JSON_
+
+    def process_bind_param(
+        self, value: Optional[list[CategoricalOutputConfig]], _: Dialect
+    ) -> Optional[list[dict[str, Any]]]:
+        if value is None:
+            return None
+        seen = set()
+        for config in value:
+            if config.name in seen:
+                raise ValueError(f"Duplicate name: {config.name}")
+            seen.add(config.name)
+        return [config.model_dump() for config in value]
+
+    def process_result_value(
+        self, value: Optional[list[dict[str, Any]]], _: Dialect
+    ) -> Optional[list[CategoricalOutputConfig]]:
+        if value is None:
+            return None
+        return [CategoricalOutputConfig.model_validate(config) for config in value]
+
+
+class _TokenCustomization(TypeDecorator[TokenPriceCustomization]):
+    # See # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
+    cache_ok = True
+    impl = JSON
+
+    def process_bind_param(
+        self, value: Optional[TokenPriceCustomization], _: Dialect
+    ) -> Optional[dict[str, Any]]:
+        return value.model_dump() if value is not None else None
+
+    def process_result_value(
+        self, value: Optional[dict[str, Any]], _: Dialect
+    ) -> Optional[TokenPriceCustomization]:
+        return TokenPriceCustomizationParser.parse(value)
+
+
+class _RegexStr(TypeDecorator[re.Pattern[str]]):
+    # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
+    cache_ok = True
+    impl = String
+
+    def process_bind_param(self, value: Optional[re.Pattern[str]], _: Dialect) -> Optional[str]:
+        if value is None:
+            return None
+        if not isinstance(value, re.Pattern):
+            raise TypeError(f"Expected a regex pattern, got {type(value)}")
+        pattern = value.pattern
+        if not isinstance(pattern, str):
+            raise ValueError(f"Expected a string, got {type(pattern)}")
+        return pattern
+
+    def process_result_value(self, value: Optional[str], _: Dialect) -> Optional[re.Pattern[str]]:
+        if value is None:
+            return None
+        return re.compile(value)
+
+
+_HEX_COLOR_PATTERN = re.compile(r"^#([0-9a-f]{6})$")
+
+
+class _HexColor(TypeDecorator[str]):
+    # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
+    cache_ok = True
+    impl = String
+
+    def process_bind_param(self, value: Optional[str], _: Dialect) -> Optional[str]:
+        if value is None:
+            return None
+        if not _HEX_COLOR_PATTERN.match(value):
+            raise ValueError(f"Expected a hex color, got {value}")
+        return value
+
+    def process_result_value(self, value: Optional[str], _: Dialect) -> Optional[str]:
+        if value is None:
+            return None
+        return value
+
+
+class _InputMapping(TypeDecorator[InputMapping]):
+    # See https://docs.sqlalchemy.org/en/20/core/custom_types.html
+    cache_ok = True
+    impl = JSON_
+
+    def process_bind_param(
+        self, value: Optional[InputMapping], _: Dialect
+    ) -> Optional[dict[str, Any]]:
+        if value is None:
+            raise ValueError("Input mapping cannot be None")
+        return value.model_dump()
+
+    def process_result_value(
+        self, value: Optional[dict[str, Any]], _: Dialect
+    ) -> Optional[InputMapping]:
+        if value is None:
+            raise ValueError("Input mapping cannot be None")
+        return InputMapping.model_validate(value)
+
+
 class ExperimentRunOutput(TypedDict, total=False):
     task_output: Any
 
 
 class Base(DeclarativeBase):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Enforce best practices for naming constraints
     # https://alembic.sqlalchemy.org/en/latest/naming.html#integration-of-naming-conventions-into-operations-autogenerate
     metadata = MetaData(
@@ -418,9 +582,13 @@ class Base(DeclarativeBase):
     }
 
 
-class ProjectTraceRetentionPolicy(Base):
+class HasId(Base):
+    __abstract__ = True
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+
+class ProjectTraceRetentionPolicy(HasId):
     __tablename__ = "project_trace_retention_policies"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     cron_expression: Mapped[TraceRetentionCronExpression] = mapped_column(
         _TraceRetentionCronExpression, nullable=False
@@ -431,7 +599,7 @@ class ProjectTraceRetentionPolicy(Base):
     )
 
 
-class Project(Base):
+class Project(HasId):
     __tablename__ = "projects"
     name: Mapped[str]
     description: Mapped[Optional[str]]
@@ -471,7 +639,7 @@ class Project(Base):
     )
 
 
-class ProjectSession(Base):
+class ProjectSession(HasId):
     __tablename__ = "project_sessions"
     session_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     project_id: Mapped[int] = mapped_column(
@@ -488,7 +656,7 @@ class ProjectSession(Base):
     )
 
 
-class Trace(Base):
+class Trace(HasId):
     __tablename__ = "traces"
     project_rowid: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
@@ -530,6 +698,12 @@ class Trace(Base):
         primaryjoin="foreign(ExperimentRun.trace_id) == Trace.trace_id",
         back_populates="trace",
     )
+    span_costs: Mapped[list["SpanCost"]] = relationship(
+        "SpanCost",
+        back_populates="trace",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
     __table_args__ = (
         UniqueConstraint(
             "trace_id",
@@ -537,13 +711,13 @@ class Trace(Base):
     )
 
 
-class Span(Base):
+class Span(HasId):
     __tablename__ = "spans"
     trace_rowid: Mapped[int] = mapped_column(
         ForeignKey("traces.id", ondelete="CASCADE"),
         index=True,
     )
-    span_id: Mapped[str] = mapped_column(index=True)
+    span_id: Mapped[str]
     parent_id: Mapped[Optional[str]] = mapped_column(index=True)
     name: Mapped[str]
     span_kind: Mapped[str]
@@ -687,6 +861,7 @@ class Span(Base):
     span_annotations: Mapped[list["SpanAnnotation"]] = relationship(back_populates="span")
     document_annotations: Mapped[list["DocumentAnnotation"]] = relationship(back_populates="span")
     dataset_examples: Mapped[list["DatasetExample"]] = relationship(back_populates="span")
+    span_cost: Mapped[Optional["SpanCost"]] = relationship(back_populates="span")
 
     __table_args__ = (
         UniqueConstraint(
@@ -697,6 +872,14 @@ class Span(Base):
         Index(
             "ix_cumulative_llm_token_count_total",
             text("(cumulative_llm_token_count_prompt + cumulative_llm_token_count_completion)"),
+        ),
+        Index(
+            "ix_spans_session_id",
+            column("attributes", JSON_)[["session", "id"]].as_string(),
+            postgresql_where=column("attributes", JSON_)[["session", "id"]]
+            .as_string()
+            .is_not(None),
+            sqlite_where=column("attributes", JSON_)[["session", "id"]].as_string().is_not(None),
         ),
     )
 
@@ -748,14 +931,27 @@ class NumDocuments(expression.FunctionElement[int]):
 @compiles(NumDocuments)
 def _(element: Any, compiler: SQLCompiler, **kw: Any) -> Any:
     # See https://docs.sqlalchemy.org/en/20/core/compiler.html
-    array_length = (
-        func.json_array_length if isinstance(compiler, SQLiteCompiler) else func.jsonb_array_length
-    )
     attributes, span_kind = list(element.clauses)
     retrieval_docs = attributes[RETRIEVAL_DOCUMENTS]
-    num_retrieval_docs = coalesce(array_length(retrieval_docs), 0)
+    num_retrieval_docs: Case[Any] | coalesce[Any]
     reranker_docs = attributes[RERANKER_OUTPUT_DOCUMENTS]
-    num_reranker_docs = coalesce(array_length(reranker_docs), 0)
+    num_reranker_docs: Case[Any] | coalesce[Any]
+    if isinstance(compiler, SQLiteCompiler):
+        # SQLite's json_array_length returns 0 for non-array values
+        num_retrieval_docs = coalesce(func.json_array_length(retrieval_docs), 0)
+        num_reranker_docs = coalesce(func.json_array_length(reranker_docs), 0)
+    else:
+        # PostgreSQL's jsonb_array_length throws "cannot get array length of a scalar"
+        # for non-array values, so check the type first
+        num_retrieval_docs = sql.case(
+            (func.jsonb_typeof(retrieval_docs) == "array", func.jsonb_array_length(retrieval_docs)),
+            else_=0,
+        )
+        num_reranker_docs = sql.case(
+            (func.jsonb_typeof(reranker_docs) == "array", func.jsonb_array_length(reranker_docs)),
+            else_=0,
+        )
+
     return compiler.process(
         sql.case(
             (func.upper(span_kind) == "RERANKER", num_reranker_docs),
@@ -793,6 +989,41 @@ def _(element: Any, compiler: Any, **kw: Any) -> Any:
     return compiler.process(func.text_contains(string, substring) > 0, **kw)
 
 
+class CaseInsensitiveContains(expression.FunctionElement[bool]):
+    # See https://docs.sqlalchemy.org/en/20/core/compiler.html
+    inherit_cache = True
+    type = Boolean()
+    name = "case_insensitive_contains"
+
+
+@compiles(CaseInsensitiveContains)
+def _(element: Any, compiler: Any, **kw: Any) -> Any:
+    string, substring = list(element.clauses)
+    result = compiler.process(func.lower(string).contains(func.lower(substring)), **kw)
+    return result
+
+
+@compiles(CaseInsensitiveContains, "postgresql")
+def _(element: Any, compiler: Any, **kw: Any) -> Any:
+    string, substring = list(element.clauses)
+    escaped = func.replace(
+        func.replace(func.replace(substring, "\\", "\\\\"), "%", "\\%"), "_", "\\_"
+    )
+    pattern = func.concat("%", escaped, "%")
+    result = compiler.process(string.ilike(pattern), **kw)
+    return result
+
+
+@compiles(CaseInsensitiveContains, "sqlite")
+def _(element: Any, compiler: Any, **kw: Any) -> Any:
+    # Use sqlean's `text_lower` to handle non-ASCII characters
+    string, substring = list(element.clauses)
+    result = compiler.process(
+        func.text_contains(func.text_lower(string), func.text_lower(substring)), **kw
+    )
+    return result
+
+
 async def init_models(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -804,15 +1035,15 @@ async def init_models(engine: AsyncEngine) -> None:
         )
 
 
-class SpanAnnotation(Base):
+class SpanAnnotation(HasId):
     __tablename__ = "span_annotations"
     span_rowid: Mapped[int] = mapped_column(
         ForeignKey("spans.id", ondelete="CASCADE"),
         index=True,
     )
     name: Mapped[str]
-    label: Mapped[Optional[str]] = mapped_column(String, index=True)
-    score: Mapped[Optional[float]] = mapped_column(Float, index=True)
+    label: Mapped[Optional[str]]
+    score: Mapped[Optional[float]]
     explanation: Mapped[Optional[str]]
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
     annotator_kind: Mapped[Literal["LLM", "CODE", "HUMAN"]] = mapped_column(
@@ -844,15 +1075,15 @@ class SpanAnnotation(Base):
     )
 
 
-class TraceAnnotation(Base):
+class TraceAnnotation(HasId):
     __tablename__ = "trace_annotations"
     trace_rowid: Mapped[int] = mapped_column(
         ForeignKey("traces.id", ondelete="CASCADE"),
         index=True,
     )
     name: Mapped[str]
-    label: Mapped[Optional[str]] = mapped_column(String, index=True)
-    score: Mapped[Optional[float]] = mapped_column(Float, index=True)
+    label: Mapped[Optional[str]]
+    score: Mapped[Optional[float]]
     explanation: Mapped[Optional[str]]
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
     annotator_kind: Mapped[Literal["LLM", "CODE", "HUMAN"]] = mapped_column(
@@ -881,7 +1112,7 @@ class TraceAnnotation(Base):
     )
 
 
-class DocumentAnnotation(Base):
+class DocumentAnnotation(HasId):
     __tablename__ = "document_annotations"
     span_rowid: Mapped[int] = mapped_column(
         ForeignKey("spans.id", ondelete="CASCADE"),
@@ -889,8 +1120,8 @@ class DocumentAnnotation(Base):
     )
     document_position: Mapped[int]
     name: Mapped[str]
-    label: Mapped[Optional[str]] = mapped_column(String, index=True)
-    score: Mapped[Optional[float]] = mapped_column(Float, index=True)
+    label: Mapped[Optional[str]]
+    score: Mapped[Optional[float]]
     explanation: Mapped[Optional[str]]
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
     annotator_kind: Mapped[Literal["LLM", "CODE", "HUMAN"]] = mapped_column(
@@ -918,11 +1149,49 @@ class DocumentAnnotation(Base):
             "span_rowid",
             "document_position",
             "identifier",
+            name="uq_document_annotations_name_span_rowid_document_pos_identifier",
         ),
     )
 
 
-class Dataset(Base):
+class ProjectSessionAnnotation(HasId):
+    __tablename__ = "project_session_annotations"
+    project_session_id: Mapped[int] = mapped_column(
+        ForeignKey("project_sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str]
+    label: Mapped[Optional[str]]
+    score: Mapped[Optional[float]]
+    explanation: Mapped[Optional[str]]
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
+    annotator_kind: Mapped[Literal["LLM", "CODE", "HUMAN"]] = mapped_column(
+        CheckConstraint("annotator_kind IN ('LLM', 'CODE', 'HUMAN')", name="valid_annotator_kind"),
+    )
+    created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+    identifier: Mapped[str] = mapped_column(
+        String,
+        server_default="",
+        nullable=False,
+    )
+    source: Mapped[Literal["API", "APP"]] = mapped_column(
+        CheckConstraint("source IN ('API', 'APP')", name="valid_source"),
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "name",
+            "project_session_id",
+            "identifier",
+        ),
+    )
+
+
+class Dataset(HasId):
     __tablename__ = "datasets"
     name: Mapped[str] = mapped_column(unique=True)
     description: Mapped[Optional[str]]
@@ -930,6 +1199,17 @@ class Dataset(Base):
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user: Mapped[Optional["User"]] = relationship("User")
+    experiment_tags: Mapped[list["ExperimentTag"]] = relationship(
+        "ExperimentTag", back_populates="dataset"
+    )
+    datasets_dataset_labels: Mapped[list["DatasetsDatasetLabel"]] = relationship(
+        "DatasetsDatasetLabel", back_populates="dataset"
+    )
+    dataset_evaluators: Mapped[list["DatasetEvaluators"]] = relationship(
+        "DatasetEvaluators", back_populates="dataset", cascade="all, delete-orphan", uselist=True
     )
 
     @hybrid_property
@@ -981,7 +1261,45 @@ class Dataset(Base):
             )
 
 
-class DatasetVersion(Base):
+class DatasetLabel(HasId):
+    __tablename__ = "dataset_labels"
+    name: Mapped[str] = mapped_column(unique=True)
+    description: Mapped[Optional[str]]
+    color: Mapped[str] = mapped_column(_HexColor, nullable=False)
+    datasets_dataset_labels: Mapped[list["DatasetsDatasetLabel"]] = relationship(
+        "DatasetsDatasetLabel", back_populates="dataset_label"
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user: Mapped[Optional["User"]] = relationship("User")
+
+
+class DatasetsDatasetLabel(Base):
+    __tablename__ = "datasets_dataset_labels"
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+    )
+    dataset_label_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset_labels.id", ondelete="CASCADE"),
+        # index on the second element of the composite primary key
+        index=True,
+    )
+    dataset: Mapped["Dataset"] = relationship("Dataset", back_populates="datasets_dataset_labels")
+    dataset_label: Mapped["DatasetLabel"] = relationship(
+        "DatasetLabel", back_populates="datasets_dataset_labels"
+    )
+
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "dataset_id",
+            "dataset_label_id",
+        ),
+    )
+
+
+class DatasetVersion(HasId):
     __tablename__ = "dataset_versions"
     dataset_id: Mapped[int] = mapped_column(
         ForeignKey("datasets.id", ondelete="CASCADE"),
@@ -990,9 +1308,11 @@ class DatasetVersion(Base):
     description: Mapped[Optional[str]]
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user: Mapped[Optional["User"]] = relationship("User")
 
 
-class DatasetExample(Base):
+class DatasetExample(HasId):
     __tablename__ = "dataset_examples"
     dataset_id: Mapped[int] = mapped_column(
         ForeignKey("datasets.id", ondelete="CASCADE"),
@@ -1006,13 +1326,20 @@ class DatasetExample(Base):
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
 
     span: Mapped[Optional[Span]] = relationship(back_populates="dataset_examples")
+    dataset_splits_dataset_examples: Mapped[list["DatasetSplitDatasetExample"]] = relationship(
+        "DatasetSplitDatasetExample",
+        back_populates="dataset_example",
+    )
+    experiment_dataset_examples: Mapped[list["ExperimentDatasetExample"]] = relationship(
+        "ExperimentDatasetExample",
+        back_populates="dataset_example",
+    )
 
 
-class DatasetExampleRevision(Base):
+class DatasetExampleRevision(HasId):
     __tablename__ = "dataset_example_revisions"
     dataset_example_id: Mapped[int] = mapped_column(
         ForeignKey("dataset_examples.id", ondelete="CASCADE"),
-        index=True,
     )
     dataset_version_id: Mapped[int] = mapped_column(
         ForeignKey("dataset_versions.id", ondelete="CASCADE"),
@@ -1028,6 +1355,11 @@ class DatasetExampleRevision(Base):
     )
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
 
+    experiment_dataset_examples: Mapped[list["ExperimentDatasetExample"]] = relationship(
+        "ExperimentDatasetExample",
+        back_populates="dataset_example_revision",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "dataset_example_id",
@@ -1036,7 +1368,56 @@ class DatasetExampleRevision(Base):
     )
 
 
-class Experiment(Base):
+class DatasetSplit(HasId):
+    __tablename__ = "dataset_splits"
+
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    description: Mapped[Optional[str]]
+    color: Mapped[str] = mapped_column(String, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
+    created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+    dataset_splits_dataset_examples: Mapped[list["DatasetSplitDatasetExample"]] = relationship(
+        "DatasetSplitDatasetExample",
+        back_populates="dataset_split",
+    )
+    experiment_dataset_splits: Mapped[list["ExperimentDatasetSplit"]] = relationship(
+        "ExperimentDatasetSplit",
+        back_populates="dataset_split",
+    )
+
+
+class DatasetSplitDatasetExample(Base):
+    __tablename__ = "dataset_splits_dataset_examples"
+    dataset_split_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset_splits.id", ondelete="CASCADE"),
+    )
+    dataset_example_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset_examples.id", ondelete="CASCADE"),
+        index=True,
+    )
+    dataset_split: Mapped["DatasetSplit"] = relationship(
+        "DatasetSplit", back_populates="dataset_splits_dataset_examples"
+    )
+    dataset_example: Mapped["DatasetExample"] = relationship(
+        "DatasetExample", back_populates="dataset_splits_dataset_examples"
+    )
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "dataset_split_id",
+            "dataset_example_id",
+        ),
+    )
+
+
+class Experiment(HasId):
     __tablename__ = "experiments"
     dataset_id: Mapped[int] = mapped_column(
         ForeignKey("datasets.id", ondelete="CASCADE"),
@@ -1051,17 +1432,82 @@ class Experiment(Base):
     repetitions: Mapped[int]
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
     project_name: Mapped[Optional[str]] = mapped_column(index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         UtcTimeStamp, server_default=func.now(), onupdate=func.now()
     )
+    user: Mapped[Optional["User"]] = relationship("User")
+    experiment_dataset_splits: Mapped[list["ExperimentDatasetSplit"]] = relationship(
+        "ExperimentDatasetSplit",
+        back_populates="experiment",
+    )
+    experiment_dataset_examples: Mapped[list["ExperimentDatasetExample"]] = relationship(
+        "ExperimentDatasetExample",
+        back_populates="experiment",
+    )
+    experiment_tags: Mapped[list["ExperimentTag"]] = relationship(
+        "ExperimentTag", back_populates="experiment"
+    )
 
 
-class ExperimentRun(Base):
+class ExperimentDatasetSplit(Base):
+    __tablename__ = "experiments_dataset_splits"
+    experiment_id: Mapped[int] = mapped_column(
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+    )
+    dataset_split_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset_splits.id", ondelete="CASCADE"),
+        index=True,
+    )
+    experiment: Mapped["Experiment"] = relationship(
+        "Experiment", back_populates="experiment_dataset_splits"
+    )
+    dataset_split: Mapped["DatasetSplit"] = relationship(
+        "DatasetSplit", back_populates="experiment_dataset_splits"
+    )
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "experiment_id",
+            "dataset_split_id",
+        ),
+    )
+
+
+class ExperimentDatasetExample(Base):
+    __tablename__ = "experiments_dataset_examples"
+    experiment_id: Mapped[int] = mapped_column(
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+    )
+    dataset_example_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset_examples.id", ondelete="CASCADE"),
+        index=True,
+    )
+    dataset_example_revision_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset_example_revisions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    experiment: Mapped["Experiment"] = relationship(
+        "Experiment", back_populates="experiment_dataset_examples"
+    )
+    dataset_example: Mapped["DatasetExample"] = relationship(
+        "DatasetExample", back_populates="experiment_dataset_examples"
+    )
+    dataset_example_revision: Mapped["DatasetExampleRevision"] = relationship(
+        "DatasetExampleRevision", back_populates="experiment_dataset_examples"
+    )
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "experiment_id",
+            "dataset_example_id",
+        ),
+    )
+
+
+class ExperimentRun(HasId):
     __tablename__ = "experiment_runs"
     experiment_id: Mapped[int] = mapped_column(
         ForeignKey("experiments.id", ondelete="CASCADE"),
-        index=True,
     )
     dataset_example_id: Mapped[int] = mapped_column(
         ForeignKey("dataset_examples.id", ondelete="CASCADE"),
@@ -1102,11 +1548,10 @@ class ExperimentRun(Base):
     )
 
 
-class ExperimentRunAnnotation(Base):
+class ExperimentRunAnnotation(HasId):
     __tablename__ = "experiment_run_annotations"
     experiment_run_id: Mapped[int] = mapped_column(
         ForeignKey("experiment_runs.id", ondelete="CASCADE"),
-        index=True,
     )
     name: Mapped[str]
     annotator_kind: Mapped[str] = mapped_column(
@@ -1133,13 +1578,36 @@ class ExperimentRunAnnotation(Base):
     )
 
 
-class UserRole(Base):
+class ExperimentTag(HasId):
+    __tablename__ = "experiment_tags"
+    experiment_id: Mapped[int] = mapped_column(
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        index=True,
+    )
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    name: Mapped[str]
+    description: Mapped[Optional[str]]
+    experiment: Mapped["Experiment"] = relationship("Experiment", back_populates="experiment_tags")
+    dataset: Mapped["Dataset"] = relationship("Dataset", back_populates="experiment_tags")
+    user: Mapped[Optional["User"]] = relationship("User")
+
+    __table_args__ = (UniqueConstraint("dataset_id", "name"),)
+
+
+class UserRole(HasId):
     __tablename__ = "user_roles"
-    name: Mapped[str] = mapped_column(unique=True, index=True)
+    name: Mapped[UserRoleName] = mapped_column(unique=True, index=True)
     users: Mapped[list["User"]] = relationship("User", back_populates="role")
 
 
-class User(Base):
+class User(HasId):
     __tablename__ = "users"
     user_role_id: Mapped[int] = mapped_column(
         ForeignKey("user_roles.id", ondelete="CASCADE"),
@@ -1147,13 +1615,19 @@ class User(Base):
     )
     role: Mapped["UserRole"] = relationship("UserRole", back_populates="users")
     username: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
-    email: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
+    email: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True, index=True)
     profile_picture_url: Mapped[Optional[str]]
     password_hash: Mapped[Optional[bytes]]
     password_salt: Mapped[Optional[bytes]]
     reset_password: Mapped[bool]
-    oauth2_client_id: Mapped[Optional[str]] = mapped_column(index=True, nullable=True)
-    oauth2_user_id: Mapped[Optional[str]] = mapped_column(index=True, nullable=True)
+    # OAuth2-specific fields (only used by OAuth2 users)
+    oauth2_client_id: Mapped[Optional[str]]
+    oauth2_user_id: Mapped[Optional[str]]
+    # LDAP-specific field (only used by LDAP users)
+    ldap_unique_id: Mapped[Optional[str]]
+    auth_method: Mapped[AuthMethod] = mapped_column(
+        CheckConstraint("auth_method IN ('LOCAL', 'OAUTH2', 'LDAP')", name="valid_auth_method")
+    )
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         UtcTimeStamp, server_default=func.now(), onupdate=func.now()
@@ -1169,51 +1643,166 @@ class User(Base):
     )
     api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", back_populates="user")
 
-    @hybrid_property
-    def auth_method(self) -> Optional[str]:
-        if self.password_hash is not None:
-            return AuthMethod.LOCAL.value
-        elif self.oauth2_client_id is not None:
-            return AuthMethod.OAUTH2.value
-        return None
+    __mapper_args__ = {
+        "polymorphic_on": "auth_method",
+        "polymorphic_identity": None,  # Base class is abstract
+    }
 
-    @auth_method.inplace.expression
-    @classmethod
-    def _auth_method_expression(cls) -> ColumnElement[Optional[str]]:
-        return case(
-            (
-                not_(cls.password_hash.is_(None)),
-                AuthMethod.LOCAL.value,
-            ),
-            (
-                not_(cls.oauth2_client_id.is_(None)),
-                AuthMethod.OAUTH2.value,
-            ),
-            else_=None,
-        )
-
+    # Constraint summary (R = Required, N = Must be NULL, O = Optional):
+    #
+    # | Field            | LOCAL | OAUTH2 | LDAP |
+    # |------------------|-------|--------|------|
+    # | password         |   R   |   N    |  N   |
+    # | email            |   R   |   R    |  *   |
+    # | ldap_unique_id   |   N   |   N    |  *   |
+    # | oauth2_client_id |   N   |   O    |  N   |
+    # | oauth2_user_id   |   N   |   O    |  N   |
+    #
+    # *: LDAP users must have email OR ldap_unique_id (or both).
     __table_args__ = (
+        # LOCAL users: must have password, must NOT have oauth2/ldap fields
         CheckConstraint(
-            "(password_hash IS NULL) = (password_salt IS NULL)",
-            name="password_hash_and_salt",
+            "auth_method != 'LOCAL' "
+            "OR (password_hash IS NOT NULL AND password_salt IS NOT NULL "
+            "AND oauth2_client_id IS NULL AND oauth2_user_id IS NULL "
+            "AND ldap_unique_id IS NULL)",
+            name="local_auth_has_password_no_oauth",
         ),
+        # OAUTH2/LDAP users: must NOT have password
         CheckConstraint(
-            "(oauth2_client_id IS NULL) = (oauth2_user_id IS NULL)",
-            name="oauth2_client_id_and_user_id",
+            "auth_method = 'LOCAL' OR (password_hash IS NULL AND password_salt IS NULL)",
+            name="non_local_auth_has_no_password",
         ),
+        # LDAP users: must NOT have oauth2 fields, must have at least one identifier
+        # (email or ldap_unique_id) to prevent orphan accounts that can't be found on login
         CheckConstraint(
-            "(password_hash IS NULL) != (oauth2_client_id IS NULL)",
-            name="exactly_one_auth_method",
+            "auth_method != 'LDAP' OR ("
+            "oauth2_client_id IS NULL AND oauth2_user_id IS NULL AND "
+            "(email IS NOT NULL OR ldap_unique_id IS NOT NULL))",
+            name="ldap_auth_valid",
         ),
-        UniqueConstraint(
+        # OAUTH2 users: must NOT have ldap_unique_id
+        CheckConstraint(
+            "auth_method != 'OAUTH2' OR ldap_unique_id IS NULL",
+            name="oauth2_auth_no_ldap_fields",
+        ),
+        # LOCAL and OAUTH2 users: must have email (only LDAP supports null email mode)
+        CheckConstraint(
+            "auth_method = 'LDAP' OR email IS NOT NULL",
+            name="non_ldap_auth_has_email",
+        ),
+        # Partial unique indexes for external auth providers
+        Index(
+            "ix_users_oauth2_unique",
             "oauth2_client_id",
             "oauth2_user_id",
+            unique=True,
+            postgresql_where=text("auth_method = 'OAUTH2'"),
+            sqlite_where=text("auth_method = 'OAUTH2'"),
+        ),
+        Index(
+            "ix_users_ldap_unique_id",
+            "ldap_unique_id",
+            unique=True,
+            postgresql_where=text("auth_method = 'LDAP' AND ldap_unique_id IS NOT NULL"),
+            sqlite_where=text("auth_method = 'LDAP' AND ldap_unique_id IS NOT NULL"),
         ),
         dict(sqlite_autoincrement=True),
     )
 
 
-class PasswordResetToken(Base):
+class LocalUser(User):
+    __mapper_args__ = {
+        "polymorphic_identity": "LOCAL",
+    }
+
+    def __init__(
+        self,
+        *,
+        email: str,
+        username: str,
+        password_hash: bytes,
+        password_salt: bytes,
+        reset_password: bool = True,
+        user_role_id: Optional[int] = None,
+    ) -> None:
+        if not password_hash or not password_salt:
+            raise ValueError("password_hash and password_salt are required for LocalUser")
+        super().__init__(
+            email=email.strip(),
+            username=username.strip(),
+            user_role_id=user_role_id,
+            password_hash=password_hash,
+            password_salt=password_salt,
+            reset_password=reset_password,
+            auth_method="LOCAL",
+        )
+
+
+class OAuth2User(User):
+    __mapper_args__ = {
+        "polymorphic_identity": "OAUTH2",
+    }
+
+    def __init__(
+        self,
+        *,
+        email: str,
+        username: str,
+        oauth2_client_id: Optional[str] = None,
+        oauth2_user_id: Optional[str] = None,
+        user_role_id: Optional[int] = None,
+    ) -> None:
+        super().__init__(
+            email=email.strip(),
+            username=username.strip(),
+            user_role_id=user_role_id,
+            reset_password=False,
+            auth_method="OAUTH2",
+            oauth2_client_id=oauth2_client_id,
+            oauth2_user_id=oauth2_user_id,
+        )
+
+
+class LDAPUser(User):
+    """User authenticated via LDAP.
+
+    LDAP users are identified by auth_method='LDAP'. They use the dedicated
+    ldap_unique_id field (not oauth2_* fields) to store their LDAP unique
+    identifier (objectGUID, entryUUID, etc.).
+    """
+
+    __mapper_args__ = {
+        "polymorphic_identity": "LDAP",
+    }
+
+    def __init__(
+        self,
+        *,
+        email: Optional[str],
+        username: str,
+        ldap_unique_id: Optional[str] = None,
+        user_role_id: Optional[int] = None,
+    ) -> None:
+        """Create an LDAP user.
+
+        Args:
+            email: User's email address (can be None if LDAP directory has no email)
+            username: User's display name
+            ldap_unique_id: User's LDAP unique ID (objectGUID, entryUUID, etc.)
+            user_role_id: Phoenix role ID (ADMIN, MEMBER, VIEWER)
+        """
+        super().__init__(
+            email=email.strip() if email else None,
+            username=username.strip(),
+            user_role_id=user_role_id,
+            reset_password=False,
+            auth_method="LDAP",
+            ldap_unique_id=ldap_unique_id,
+        )
+
+
+class PasswordResetToken(HasId):
     __tablename__ = "password_reset_tokens"
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -1222,11 +1811,11 @@ class PasswordResetToken(Base):
     )
     user: Mapped["User"] = relationship("User", back_populates="password_reset_token")
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
-    expires_at: Mapped[Optional[datetime]] = mapped_column(UtcTimeStamp, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UtcTimeStamp, nullable=False, index=True)
     __table_args__ = (dict(sqlite_autoincrement=True),)
 
 
-class RefreshToken(Base):
+class RefreshToken(HasId):
     __tablename__ = "refresh_tokens"
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -1234,11 +1823,11 @@ class RefreshToken(Base):
     )
     user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
-    expires_at: Mapped[Optional[datetime]] = mapped_column(UtcTimeStamp, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UtcTimeStamp, nullable=False, index=True)
     __table_args__ = (dict(sqlite_autoincrement=True),)
 
 
-class AccessToken(Base):
+class AccessToken(HasId):
     __tablename__ = "access_tokens"
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -1246,7 +1835,7 @@ class AccessToken(Base):
     )
     user: Mapped["User"] = relationship("User", back_populates="access_tokens")
     created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
-    expires_at: Mapped[Optional[datetime]] = mapped_column(UtcTimeStamp, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UtcTimeStamp, nullable=False, index=True)
     refresh_token_id: Mapped[int] = mapped_column(
         ForeignKey("refresh_tokens.id", ondelete="CASCADE"),
         index=True,
@@ -1255,7 +1844,7 @@ class AccessToken(Base):
     __table_args__ = (dict(sqlite_autoincrement=True),)
 
 
-class ApiKey(Base):
+class ApiKey(HasId):
     __tablename__ = "api_keys"
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -1269,12 +1858,89 @@ class ApiKey(Base):
     __table_args__ = (dict(sqlite_autoincrement=True),)
 
 
-class PromptLabel(Base):
-    __tablename__ = "prompt_labels"
+CostType: TypeAlias = Literal["DEFAULT", "OVERRIDE"]
 
+
+class GenerativeModel(HasId):
+    __tablename__ = "generative_models"
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str]
+    start_time: Mapped[Optional[datetime]] = mapped_column(UtcTimeStamp)
+    name_pattern: Mapped[re.Pattern[str]] = mapped_column(_RegexStr, nullable=False)
+    is_built_in: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(UtcTimeStamp)
+
+    token_prices: Mapped[list["TokenPrice"]] = relationship(
+        "TokenPrice",
+        back_populates="model",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_generative_models_match_criteria",
+            "name_pattern",
+            "provider",
+            "is_built_in",
+            postgresql_where=sa.text("deleted_at IS NULL"),
+            sqlite_where=sa.text("deleted_at IS NULL"),
+            unique=True,
+        ),
+        Index(
+            "ix_generative_models_name_is_built_in",
+            "name",
+            "is_built_in",
+            postgresql_where=sa.text("deleted_at IS NULL"),
+            sqlite_where=sa.text("deleted_at IS NULL"),
+            unique=True,
+        ),
+    )
+
+
+class TokenPrice(HasId):
+    __tablename__ = "token_prices"
+    model_id: Mapped[int] = mapped_column(
+        ForeignKey("generative_models.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_type: Mapped[str]
+    is_prompt: Mapped[bool]
+    base_rate: Mapped[float]
+    customization: Mapped[TokenPriceCustomization] = mapped_column(_TokenCustomization)
+
+    model: Mapped["GenerativeModel"] = relationship(
+        "GenerativeModel",
+        back_populates="token_prices",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "model_id",
+            "token_type",
+            "is_prompt",
+        ),
+    )
+
+
+class PromptLabel(HasId):
+    __tablename__ = "prompt_labels"
     name: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]]
-    color: Mapped[str] = mapped_column(String, nullable=True)
+    color: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     prompts_prompt_labels: Mapped[list["PromptPromptLabel"]] = relationship(
         "PromptPromptLabel",
@@ -1284,9 +1950,8 @@ class PromptLabel(Base):
     )
 
 
-class Prompt(Base):
+class Prompt(HasId):
     __tablename__ = "prompts"
-
     source_prompt_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("prompts.id", ondelete="SET NULL"),
         index=True,
@@ -1321,10 +1986,15 @@ class Prompt(Base):
         uselist=True,
     )
 
+    llm_evaluators: Mapped[list["LLMEvaluator"]] = relationship(
+        "LLMEvaluator",
+        back_populates="prompt",
+        uselist=True,
+    )
 
-class PromptPromptLabel(Base):
+
+class PromptPromptLabel(HasId):
     __tablename__ = "prompts_prompt_labels"
-
     prompt_label_id: Mapped[int] = mapped_column(
         ForeignKey("prompt_labels.id", ondelete="CASCADE"),
         index=True,
@@ -1344,7 +2014,7 @@ class PromptPromptLabel(Base):
     __table_args__ = (UniqueConstraint("prompt_label_id", "prompt_id"),)
 
 
-class PromptVersion(Base):
+class PromptVersion(HasId):
     __tablename__ = "prompt_versions"
 
     prompt_id: Mapped[int] = mapped_column(
@@ -1355,6 +2025,13 @@ class PromptVersion(Base):
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    # NULL = use built-in provider (secrets/env vars)
+    # SET = use custom provider config for evaluator execution
+    custom_provider_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("generative_model_custom_providers.id", ondelete="SET NULL"),
         index=True,
         nullable=True,
     )
@@ -1392,8 +2069,31 @@ class PromptVersion(Base):
         uselist=True,
     )
 
+    custom_provider: Mapped[Optional["GenerativeModelCustomProvider"]] = relationship(
+        "GenerativeModelCustomProvider"
+    )
 
-class PromptVersionTag(Base):
+    def has_identical_content(self, other: Self) -> bool:
+        """
+        Checks if the content of this prompt version is identical to the content of another prompt
+        version, excluding fields such as id, created_at, and user_id that do not include the actual
+        content of the prompt version.
+        """
+        return (
+            self.description == other.description
+            and self.template_type == other.template_type
+            and self.template_format == other.template_format
+            and self.template == other.template
+            and self.invocation_parameters == other.invocation_parameters
+            and self.tools == other.tools
+            and self.response_format == other.response_format
+            and self.model_provider == other.model_provider
+            and self.model_name == other.model_name
+            and self.metadata_ == other.metadata_
+        )
+
+
+class PromptVersionTag(HasId):
     __tablename__ = "prompt_version_tags"
 
     name: Mapped[Identifier] = mapped_column(_Identifier, nullable=False)
@@ -1419,21 +2119,23 @@ class PromptVersionTag(Base):
         "PromptVersion", back_populates="prompt_version_tags"
     )
 
+    llm_evaluators: Mapped[list["LLMEvaluator"]] = relationship(
+        "LLMEvaluator",
+        back_populates="prompt_version_tag",
+        uselist=True,
+    )
+
     __table_args__ = (UniqueConstraint("name", "prompt_id"),)
 
 
-class AnnotationConfig(Base):
+class AnnotationConfig(HasId):
     __tablename__ = "annotation_configs"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     config: Mapped[AnnotationConfigType] = mapped_column(_AnnotationConfig, nullable=False)
 
 
-class ProjectAnnotationConfig(Base):
+class ProjectAnnotationConfig(HasId):
     __tablename__ = "project_annotation_configs"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -1442,3 +2144,387 @@ class ProjectAnnotationConfig(Base):
     )
 
     __table_args__ = (UniqueConstraint("project_id", "annotation_config_id"),)
+
+
+class SpanCost(HasId):
+    __tablename__ = "span_costs"
+
+    span_rowid: Mapped[int] = mapped_column(
+        ForeignKey("spans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trace_rowid: Mapped[int] = mapped_column(
+        ForeignKey("traces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    span_start_time: Mapped[datetime] = mapped_column(
+        UtcTimeStamp,
+        nullable=False,
+        index=True,
+    )
+    model_id: Mapped[Optional[int]] = mapped_column(
+        sa.Integer,
+        ForeignKey(
+            "generative_models.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    total_cost: Mapped[Optional[float]]
+    total_tokens: Mapped[Optional[float]]
+
+    @hybrid_property
+    def total_cost_per_token(self) -> Optional[float]:
+        return ((self.total_cost or 0) / self.total_tokens) if self.total_tokens else None
+
+    @total_cost_per_token.inplace.expression
+    @classmethod
+    def _total_cost_per_token_expression(cls) -> ColumnElement[Optional[float]]:
+        return sql.case(
+            (
+                sa.and_(cls.total_tokens.isnot(None), cls.total_tokens != 0),
+                cls.total_cost / cls.total_tokens,
+            )
+        )
+
+    prompt_cost: Mapped[Optional[float]]
+    prompt_tokens: Mapped[Optional[float]]
+
+    @hybrid_property
+    def prompt_cost_per_token(self) -> Optional[float]:
+        return ((self.prompt_cost or 0) / self.prompt_tokens) if self.prompt_tokens else None
+
+    @prompt_cost_per_token.inplace.expression
+    @classmethod
+    def _prompt_cost_per_token_expression(cls) -> ColumnElement[Optional[float]]:
+        return sql.case(
+            (
+                sa.and_(cls.prompt_tokens.isnot(None), cls.prompt_tokens != 0),
+                cls.prompt_cost / cls.prompt_tokens,
+            )
+        )
+
+    completion_cost: Mapped[Optional[float]]
+    completion_tokens: Mapped[Optional[float]]
+
+    @hybrid_property
+    def completion_cost_per_token(self) -> Optional[float]:
+        return (
+            ((self.completion_cost or 0) / self.completion_tokens)
+            if self.completion_tokens
+            else None
+        )
+
+    @completion_cost_per_token.inplace.expression
+    @classmethod
+    def _completion_cost_per_token_expression(cls) -> ColumnElement[Optional[float]]:
+        return sql.case(
+            (
+                sa.and_(cls.completion_tokens.isnot(None), cls.completion_tokens != 0),
+                cls.completion_cost / cls.completion_tokens,
+            )
+        )
+
+    span: Mapped["Span"] = relationship("Span", back_populates="span_cost")
+    trace: Mapped["Trace"] = relationship("Trace", back_populates="span_costs")
+    span_cost_details: Mapped[list["SpanCostDetail"]] = relationship(
+        "SpanCostDetail",
+        back_populates="span_cost",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_span_costs_model_id_span_start_time",
+            "model_id",
+            "span_start_time",
+        ),
+    )
+
+    def append_detail(self, detail: "SpanCostDetail") -> None:
+        self.span_cost_details.append(detail)
+        if cost := detail.cost:
+            if detail.is_prompt:
+                self.prompt_cost = (self.prompt_cost or 0) + cost
+            else:
+                self.completion_cost = (self.completion_cost or 0) + cost
+            self.total_cost = (self.total_cost or 0) + cost
+        if tokens := detail.tokens:
+            if detail.is_prompt:
+                self.prompt_tokens = (self.prompt_tokens or 0) + tokens
+            else:
+                self.completion_tokens = (self.completion_tokens or 0) + tokens
+            self.total_tokens = (self.total_tokens or 0) + tokens
+
+
+class SpanCostDetail(HasId):
+    __tablename__ = "span_cost_details"
+    span_cost_id: Mapped[int] = mapped_column(
+        ForeignKey("span_costs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_type: Mapped[str] = mapped_column(index=True)
+    is_prompt: Mapped[bool]
+
+    cost: Mapped[Optional[float]]
+    tokens: Mapped[Optional[float]]
+    cost_per_token: Mapped[Optional[float]]
+
+    span_cost: Mapped["SpanCost"] = relationship("SpanCost", back_populates="span_cost_details")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "span_cost_id",
+            "token_type",
+            "is_prompt",
+        ),
+    )
+
+
+class Evaluator(HasId):
+    __tablename__ = "evaluators"
+    kind: Mapped[EvaluatorKind] = mapped_column(
+        CheckConstraint("kind IN ('LLM', 'CODE', 'BUILTIN')", name="valid_evaluator_kind"),
+        nullable=False,
+    )
+    name: Mapped[Identifier] = mapped_column(_Identifier, nullable=False, unique=True)
+    description: Mapped[Optional[str]]
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata")
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
+
+    user: Mapped[Optional["User"]] = relationship("User")
+    dataset_evaluators: Mapped[list["DatasetEvaluators"]] = relationship(
+        "DatasetEvaluators",
+        back_populates="evaluator",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
+
+    __mapper_args__ = {
+        "polymorphic_on": "kind",
+        "polymorphic_identity": None,  # Base class is abstract
+    }
+
+    __table_args__ = (UniqueConstraint("kind", "id"),)
+
+
+class LLMEvaluator(Evaluator):
+    __tablename__ = "llm_evaluators"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[Literal["LLM"]] = mapped_column(
+        CheckConstraint("kind = 'LLM'", name="valid_evaluator_kind"),
+        server_default="LLM",
+        nullable=False,
+    )
+    prompt_id: Mapped[int] = mapped_column(
+        ForeignKey("prompts.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    prompt_version_tag_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("prompt_version_tags.id", ondelete="SET NULL"),
+        index=True,
+    )
+    output_configs: Mapped[list[CategoricalOutputConfig]] = mapped_column(
+        _CategoricalOutputConfigList, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+
+    prompt: Mapped["Prompt"] = relationship("Prompt", back_populates="llm_evaluators")
+    prompt_version_tag: Mapped[Optional["PromptVersionTag"]] = relationship(
+        "PromptVersionTag", back_populates="llm_evaluators"
+    )
+    __mapper_args__ = {
+        "polymorphic_identity": "LLM",
+    }
+    __table_args__ = (  # type: ignore[assignment]
+        ForeignKeyConstraint(
+            ["kind", "id"],
+            ["evaluators.kind", "evaluators.id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
+class CodeEvaluator(Evaluator):
+    __tablename__ = "code_evaluators"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[Literal["CODE"]] = mapped_column(
+        CheckConstraint("kind = 'CODE'", name="valid_evaluator_kind"),
+        server_default="CODE",
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+    __mapper_args__ = {
+        "polymorphic_identity": "CODE",
+    }
+    __table_args__ = (  # type: ignore[assignment]
+        ForeignKeyConstraint(
+            ["kind", "id"],
+            ["evaluators.kind", "evaluators.id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
+class BuiltinEvaluator(Evaluator):
+    """
+    Database reflection of the in-memory builtin evaluator registry.
+
+    This table is synchronized on application startup to stay in sync
+    with the Python code definitions. IDs are auto-generated positive
+    integers by the database.
+
+    Builtin evaluators are part of the polymorphic evaluator hierarchy,
+    allowing unified queries and FK references from dataset_evaluators.
+    """
+
+    __tablename__ = "builtin_evaluators"
+
+    id: Mapped[int] = mapped_column(_Integer, primary_key=True)
+    kind: Mapped[Literal["BUILTIN"]] = mapped_column(
+        CheckConstraint("kind = 'BUILTIN'", name="valid_evaluator_kind"),
+        server_default="BUILTIN",
+        nullable=False,
+    )
+
+    key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    input_schema: Mapped[dict[str, Any]] = mapped_column(JSON_, nullable=False)
+    output_configs: Mapped[list[OutputConfigType]] = mapped_column(
+        _OutputConfigList, nullable=False
+    )
+
+    # Track when this was last synced from the registry
+    synced_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __mapper_args__ = {
+        "polymorphic_identity": "BUILTIN",
+    }
+    __table_args__ = (  # type: ignore[assignment]
+        ForeignKeyConstraint(
+            ["kind", "id"],
+            ["evaluators.kind", "evaluators.id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
+class DatasetEvaluators(HasId):
+    __tablename__ = "dataset_evaluators"
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        index=True,
+    )
+    # Unified evaluator_id FK - works for all evaluator types (LLM, CODE, BUILTIN)
+    evaluator_id: Mapped[int] = mapped_column(
+        ForeignKey("evaluators.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[Identifier] = mapped_column(_Identifier, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    output_configs: Mapped[Optional[list[OutputConfigType]]] = mapped_column(
+        _OutputConfigList, nullable=True
+    )
+    input_mapping: Mapped[InputMapping] = mapped_column(_InputMapping, nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+    dataset: Mapped["Dataset"] = relationship("Dataset", back_populates="dataset_evaluators")
+    evaluator: Mapped["Evaluator"] = relationship("Evaluator", back_populates="dataset_evaluators")
+    user: Mapped[Optional["User"]] = relationship("User")
+    project: Mapped["Project"] = relationship("Project")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "dataset_id",
+            "name",
+        ),
+    )
+
+
+class Secret(Base):
+    __tablename__ = "secrets"
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+
+
+@event.listens_for(Secret, "before_insert")
+@event.listens_for(Secret, "before_update")
+def validate_secret_config(_: Any, __: Any, target: "Secret") -> None:
+    """Validate that secret value is encrypted before database write.
+
+    Note: This uses a heuristic check (is_encrypted), not cryptographic verification.
+    The check validates structural properties of Fernet tokens (base64 encoding,
+    version byte, minimum length) to catch accidental storage of plaintext data.
+
+    This is a defense-in-depth measure - the application layer should ensure
+    encryption happens correctly, and this check catches programming errors.
+    """
+    if not is_encrypted(target.value):
+        raise ValueError("Value is not encrypted")
+
+
+class GenerativeModelCustomProvider(HasId):
+    __tablename__ = "generative_model_custom_providers"
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    description: Mapped[Optional[str]]
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    sdk: Mapped[GenerativeModelSDK] = mapped_column(String, nullable=False)
+    config: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcTimeStamp, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcTimeStamp, server_default=func.now(), onupdate=func.now()
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+@event.listens_for(GenerativeModelCustomProvider, "before_insert")
+@event.listens_for(GenerativeModelCustomProvider, "before_update")
+def validate_provider_config(_: Any, __: Any, target: "GenerativeModelCustomProvider") -> None:
+    """Validate that provider config is encrypted before database write.
+
+    Note: This uses a heuristic check (is_encrypted), not cryptographic verification.
+    The check validates structural properties of Fernet tokens (base64 encoding,
+    version byte, minimum length) to catch accidental storage of plaintext data.
+
+    This is a defense-in-depth measure - the application layer should ensure
+    encryption happens correctly, and this check catches programming errors.
+    """
+    if not is_encrypted(target.config):
+        raise ValueError("Config is not encrypted")

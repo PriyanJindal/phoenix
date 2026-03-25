@@ -1,31 +1,25 @@
-import React, { useMemo } from "react";
-import { graphql, useFragment } from "react-relay";
 import { schemePaired } from "d3-scale-chromatic";
-import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  TooltipProps,
-} from "recharts";
+import { useMemo } from "react";
+import { graphql, useFragment } from "react-relay";
+import type { TooltipContentProps } from "recharts";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { ChartTooltip, ChartTooltipItem } from "@phoenix/components/chart";
 import { percentFormatter } from "@phoenix/utils/numberFormatUtils";
 import { storageSizeFormatter } from "@phoenix/utils/storageSizeFormatUtils";
 
-import { DBUsagePieChart_data$key } from "./__generated__/DBUsagePieChart_data.graphql";
+import type { DBUsagePieChart_data$key } from "./__generated__/DBUsagePieChart_data.graphql";
 
 const REMAINING_TEXT = "remaining";
-function TooltipContent({ active, payload }: TooltipProps<number, string>) {
+function TooltipContent({ active, payload }: TooltipContentProps) {
   if (active && payload && payload.length) {
     return (
       <ChartTooltip>
         <ChartTooltipItem
           shape="square"
           color={payload[0].payload.fill || "transparent"}
-          name={payload[0].name || "--"}
-          value={storageSizeFormatter(payload[0].value || 0)}
+          name={String(payload[0].name ?? "--")}
+          value={storageSizeFormatter(Number(payload[0].value) || 0)}
         />
       </ChartTooltip>
     );
@@ -53,7 +47,7 @@ export function DBUsagePieChart({
   );
 
   const totalUsedBytes = data.dbTableStats.reduce(
-    (acc, table) => acc + table.numBytes,
+    (acc, table) => acc + (table?.numBytes ?? 0),
     0
   );
   const remainingBytes =
@@ -62,7 +56,7 @@ export function DBUsagePieChart({
       : null;
   const chartData = useMemo(() => {
     const chartData = [...data.dbTableStats];
-    if (remainingBytes !== null) {
+    if (remainingBytes !== null && remainingBytes > 0) {
       chartData.push({
         tableName: REMAINING_TEXT,
         numBytes: remainingBytes,
@@ -90,19 +84,19 @@ export function DBUsagePieChart({
               key={`cell-${index}`}
               fill={
                 x.tableName === REMAINING_TEXT
-                  ? "var(--ac-global-color-grey-200)"
+                  ? "var(--global-color-gray-200)"
                   : `${schemePaired[index % schemePaired.length]}`
               }
             />
           ))}
         </Pie>
-        <Tooltip content={<TooltipContent />} />
+        <Tooltip content={TooltipContent} />
         <text
           x="50%"
           y="50%"
           textAnchor="middle"
-          fill="var(--ac-global-text-color-900"
-          fontSize="var(--ac-global-font-size-xl)"
+          fill="var(--global-text-color-900"
+          fontSize="var(--global-font-size-xl)"
         >
           {`${typeof data.dbStorageCapacityBytes === "number" ? percentFormatter((totalUsedBytes / data.dbStorageCapacityBytes) * 100) : storageSizeFormatter(totalUsedBytes)}`}
         </text>
@@ -111,20 +105,46 @@ export function DBUsagePieChart({
           y="50%"
           dy={25}
           textAnchor="middle"
-          fill="var(--ac-global-text-color-900"
-          fontSize="var(--ac-global-font-size-s)"
+          fill="var(--global-text-color-900"
+          fontSize="var(--global-font-size-s)"
         >
           {`Used`}
         </text>
         <g>
+          {typeof data.dbStorageCapacityBytes === "number" && (
+            <>
+              <text
+                x="0%"
+                y="0%"
+                dx={10}
+                dy={15}
+                textAnchor="start"
+                fill="var(--global-text-color-500)"
+                fontSize="var(--global-font-size-xs)"
+              >
+                {"Capacity:"}
+              </text>
+              <text
+                x="0%"
+                y="0%"
+                dx={10}
+                dy={28}
+                textAnchor="start"
+                fill="var(--global-text-color-500)"
+                fontSize="var(--global-font-size-xs)"
+              >
+                {storageSizeFormatter(data.dbStorageCapacityBytes)}
+              </text>
+            </>
+          )}
           <text
             x="100%"
             y="100%"
             dx={-80}
             dy={-2}
-            textAnchor="right"
-            fill="var(--ac-global-text-color-500)"
-            fontSize="var(--ac-global-font-size-xs)"
+            textAnchor="end"
+            fill="var(--global-text-color-500)"
+            fontSize="var(--global-font-size-xs)"
           >
             {"* approximate"}
           </text>

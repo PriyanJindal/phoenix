@@ -1,34 +1,37 @@
 import invariant from "tiny-invariant";
+
 import { assertUnreachable } from "../../../utils/assertUnreachable";
-import {
+import { isObject } from "../../../utils/isObject";
+import type {
   AnthropicImageBlock,
   AnthropicMessagePart,
   AnthropicTextBlock,
   AnthropicToolUseBlock,
 } from "../anthropic/messagePartSchemas";
-import { AnthropicMessage } from "../anthropic/messageSchemas";
-import { openaiChatPartSchema } from "./messagePartSchemas";
-import { openAIMessageSchema } from "./messageSchemas";
-import {
-  PhoenixMessage,
-  PhoenixMessageRole,
-} from "../phoenixPrompt/messageSchemas";
-import {
-  makeTextPart,
-  makeToolResultPart,
+import type { AnthropicMessage } from "../anthropic/messageSchemas";
+import type { AnthropicToolCall } from "../anthropic/toolCallSchemas";
+import type { AnthropicToolChoice } from "../anthropic/toolChoiceSchemas";
+import type { AnthropicToolDefinition } from "../anthropic/toolSchemas";
+import type {
   PhoenixContentPart,
   ToolCallPart,
 } from "../phoenixPrompt/messagePartSchemas";
-import { VercelAIMessage } from "../vercel/messageSchemas";
+import {
+  makeTextPart,
+  makeToolResultPart,
+} from "../phoenixPrompt/messagePartSchemas";
+import type {
+  PhoenixMessage,
+  PhoenixMessageRole,
+} from "../phoenixPrompt/messageSchemas";
+import type { VercelAIMessage } from "../vercel/messageSchemas";
+import type { VercelAIToolChoice } from "../vercel/toolChoiceSchemas";
+import type { VercelAIToolDefinition } from "../vercel/toolSchemas";
+import { openaiChatPartSchema } from "./messagePartSchemas";
+import { openAIMessageSchema } from "./messageSchemas";
 import { openAIToolCallSchema } from "./toolCallSchemas";
-import { AnthropicToolCall } from "../anthropic/toolCallSchemas";
-import { AnthropicToolChoice } from "../anthropic/toolChoiceSchemas";
 import { openAIToolChoiceSchema } from "./toolChoiceSchemas";
-import { isObject } from "../../../utils/isObject";
-import { VercelAIToolChoice } from "../vercel/toolChoiceSchemas";
 import { openAIToolDefinitionSchema } from "./toolSchemas";
-import { AnthropicToolDefinition } from "../anthropic/toolSchemas";
-import { VercelAIToolDefinition } from "../vercel/toolSchemas";
 
 export const openAIChatPartToAnthropic = openaiChatPartSchema.transform(
   (openai) => {
@@ -272,7 +275,7 @@ export const openAIMessageToVercelAI = openAIMessageSchema.transform(
               type: "tool-call",
               toolCallId: tc.id,
               toolName: tc.function.name,
-              args: tc.function.arguments,
+              input: tc.function.arguments,
             });
           });
         }
@@ -289,7 +292,7 @@ export const openAIMessageToVercelAI = openAIMessageSchema.transform(
             type: "tool-result",
             toolCallId: openai.tool_call_id,
             toolName: "", // We don't have this??
-            result: openai.content,
+            output: { type: "text", value: openai.content },
           });
         } else {
           openai.content.forEach((part) => {
@@ -298,7 +301,10 @@ export const openAIMessageToVercelAI = openAIMessageSchema.transform(
                 type: "tool-result",
                 toolCallId: openai.tool_call_id,
                 toolName: "", // We don't have this??
-                result: part.text,
+                output: {
+                  type: "text",
+                  value: part.text,
+                },
               });
               return;
             }
@@ -391,7 +397,7 @@ export const openAIToolDefinitionToVercelAI =
     (openai): VercelAIToolDefinition => ({
       type: "function",
       description: openai.function.description,
-      parameters: {
+      inputSchema: {
         _type: undefined,
         jsonSchema: openai.function.parameters,
         validate: undefined,

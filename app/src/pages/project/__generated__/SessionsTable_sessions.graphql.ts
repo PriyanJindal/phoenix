@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d8ffc05d16e320703b1fced6251b209f>>
+ * @generated SignedSource<<8725c611cf9dbbd996db0d301dcc672b>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -9,6 +9,9 @@
 // @ts-nocheck
 
 import { ReaderFragment } from 'relay-runtime';
+export type AnnotationType = "CATEGORICAL" | "CONTINUOUS" | "FREEFORM";
+export type AnnotatorKind = "CODE" | "HUMAN" | "LLM";
+export type OptimizationDirection = "MAXIMIZE" | "MINIMIZE" | "NONE";
 import { FragmentRefs } from "relay-runtime";
 export type SessionsTable_sessions$data = {
   readonly id: string;
@@ -16,6 +19,11 @@ export type SessionsTable_sessions$data = {
   readonly sessions: {
     readonly edges: ReadonlyArray<{
       readonly session: {
+        readonly costSummary: {
+          readonly total: {
+            readonly cost: number | null;
+          };
+        };
         readonly endTime: string;
         readonly firstInput: {
           readonly value: string;
@@ -25,18 +33,54 @@ export type SessionsTable_sessions$data = {
           readonly value: string;
         } | null;
         readonly numTraces: number;
+        readonly project: {
+          readonly annotationConfigs: {
+            readonly edges: ReadonlyArray<{
+              readonly node: {
+                readonly annotationType?: AnnotationType;
+                readonly id?: string;
+                readonly name?: string;
+                readonly optimizationDirection?: OptimizationDirection;
+                readonly values?: ReadonlyArray<{
+                  readonly label: string;
+                  readonly score: number | null;
+                }>;
+              };
+            }>;
+          };
+          readonly id: string;
+        };
+        readonly sessionAnnotationSummaries: ReadonlyArray<{
+          readonly labelFractions: ReadonlyArray<{
+            readonly fraction: number;
+            readonly label: string;
+          }>;
+          readonly meanScore: number | null;
+          readonly name: string;
+        }>;
+        readonly sessionAnnotations: ReadonlyArray<{
+          readonly annotatorKind: AnnotatorKind;
+          readonly id: string;
+          readonly label: string | null;
+          readonly name: string;
+          readonly score: number | null;
+          readonly user: {
+            readonly profilePictureUrl: string | null;
+            readonly username: string;
+          } | null;
+        }>;
         readonly sessionId: string;
         readonly startTime: string;
         readonly tokenUsage: {
-          readonly completion: number;
-          readonly prompt: number;
           readonly total: number;
         };
         readonly traceLatencyMsP50: number | null;
         readonly traceLatencyMsP99: number | null;
+        readonly " $fragmentSpreads": FragmentRefs<"SessionAnnotationSummaryGroup">;
       };
     }>;
   };
+  readonly " $fragmentSpreads": FragmentRefs<"SessionColumnSelector_annotations">;
   readonly " $fragmentType": "SessionsTable_sessions";
 };
 export type SessionsTable_sessions$key = {
@@ -54,10 +98,17 @@ v1 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v2 = [
+v3 = [
   {
     "alias": null,
     "args": null,
@@ -65,7 +116,21 @@ v2 = [
     "name": "value",
     "storageKey": null
   }
-];
+],
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "label",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "score",
+  "storageKey": null
+};
 return {
   "argumentDefinitions": [
     {
@@ -82,6 +147,11 @@ return {
       "defaultValue": 30,
       "kind": "LocalArgument",
       "name": "first"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "sessionId"
     },
     {
       "defaultValue": {
@@ -127,12 +197,11 @@ return {
   },
   "name": "SessionsTable_sessions",
   "selections": [
+    (v1/*: any*/),
     {
-      "alias": null,
       "args": null,
-      "kind": "ScalarField",
-      "name": "name",
-      "storageKey": null
+      "kind": "FragmentSpread",
+      "name": "SessionColumnSelector_annotations"
     },
     {
       "alias": "sessions",
@@ -141,6 +210,11 @@ return {
           "kind": "Variable",
           "name": "filterIoSubstring",
           "variableName": "filterIoSubstring"
+        },
+        {
+          "kind": "Variable",
+          "name": "sessionId",
+          "variableName": "sessionId"
         },
         {
           "kind": "Variable",
@@ -174,7 +248,7 @@ return {
               "name": "node",
               "plural": false,
               "selections": [
-                (v1/*: any*/),
+                (v2/*: any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -210,7 +284,7 @@ return {
                   "kind": "LinkedField",
                   "name": "firstInput",
                   "plural": false,
-                  "selections": (v2/*: any*/),
+                  "selections": (v3/*: any*/),
                   "storageKey": null
                 },
                 {
@@ -220,7 +294,7 @@ return {
                   "kind": "LinkedField",
                   "name": "lastOutput",
                   "plural": false,
-                  "selections": (v2/*: any*/),
+                  "selections": (v3/*: any*/),
                   "storageKey": null
                 },
                 {
@@ -231,20 +305,6 @@ return {
                   "name": "tokenUsage",
                   "plural": false,
                   "selections": [
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "prompt",
-                      "storageKey": null
-                    },
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "completion",
-                      "storageKey": null
-                    },
                     {
                       "alias": null,
                       "args": null,
@@ -280,6 +340,213 @@ return {
                   "kind": "ScalarField",
                   "name": "traceLatencyMsQuantile",
                   "storageKey": "traceLatencyMsQuantile(probability:0.99)"
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "SpanCostSummary",
+                  "kind": "LinkedField",
+                  "name": "costSummary",
+                  "plural": false,
+                  "selections": [
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "CostBreakdown",
+                      "kind": "LinkedField",
+                      "name": "total",
+                      "plural": false,
+                      "selections": [
+                        {
+                          "alias": null,
+                          "args": null,
+                          "kind": "ScalarField",
+                          "name": "cost",
+                          "storageKey": null
+                        }
+                      ],
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "ProjectSessionAnnotation",
+                  "kind": "LinkedField",
+                  "name": "sessionAnnotations",
+                  "plural": true,
+                  "selections": [
+                    (v2/*: any*/),
+                    (v1/*: any*/),
+                    (v4/*: any*/),
+                    (v5/*: any*/),
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "annotatorKind",
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "User",
+                      "kind": "LinkedField",
+                      "name": "user",
+                      "plural": false,
+                      "selections": [
+                        {
+                          "alias": null,
+                          "args": null,
+                          "kind": "ScalarField",
+                          "name": "username",
+                          "storageKey": null
+                        },
+                        {
+                          "alias": null,
+                          "args": null,
+                          "kind": "ScalarField",
+                          "name": "profilePictureUrl",
+                          "storageKey": null
+                        }
+                      ],
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "AnnotationSummary",
+                  "kind": "LinkedField",
+                  "name": "sessionAnnotationSummaries",
+                  "plural": true,
+                  "selections": [
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "LabelFraction",
+                      "kind": "LinkedField",
+                      "name": "labelFractions",
+                      "plural": true,
+                      "selections": [
+                        {
+                          "alias": null,
+                          "args": null,
+                          "kind": "ScalarField",
+                          "name": "fraction",
+                          "storageKey": null
+                        },
+                        (v4/*: any*/)
+                      ],
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "meanScore",
+                      "storageKey": null
+                    },
+                    (v1/*: any*/)
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "Project",
+                  "kind": "LinkedField",
+                  "name": "project",
+                  "plural": false,
+                  "selections": [
+                    (v2/*: any*/),
+                    {
+                      "alias": null,
+                      "args": null,
+                      "concreteType": "AnnotationConfigConnection",
+                      "kind": "LinkedField",
+                      "name": "annotationConfigs",
+                      "plural": false,
+                      "selections": [
+                        {
+                          "alias": null,
+                          "args": null,
+                          "concreteType": "AnnotationConfigEdge",
+                          "kind": "LinkedField",
+                          "name": "edges",
+                          "plural": true,
+                          "selections": [
+                            {
+                              "alias": null,
+                              "args": null,
+                              "concreteType": null,
+                              "kind": "LinkedField",
+                              "name": "node",
+                              "plural": false,
+                              "selections": [
+                                {
+                                  "kind": "InlineFragment",
+                                  "selections": [
+                                    {
+                                      "alias": null,
+                                      "args": null,
+                                      "kind": "ScalarField",
+                                      "name": "annotationType",
+                                      "storageKey": null
+                                    }
+                                  ],
+                                  "type": "AnnotationConfigBase",
+                                  "abstractKey": "__isAnnotationConfigBase"
+                                },
+                                {
+                                  "kind": "InlineFragment",
+                                  "selections": [
+                                    (v2/*: any*/),
+                                    (v1/*: any*/),
+                                    {
+                                      "alias": null,
+                                      "args": null,
+                                      "kind": "ScalarField",
+                                      "name": "optimizationDirection",
+                                      "storageKey": null
+                                    },
+                                    {
+                                      "alias": null,
+                                      "args": null,
+                                      "concreteType": "CategoricalAnnotationValue",
+                                      "kind": "LinkedField",
+                                      "name": "values",
+                                      "plural": true,
+                                      "selections": [
+                                        (v4/*: any*/),
+                                        (v5/*: any*/)
+                                      ],
+                                      "storageKey": null
+                                    }
+                                  ],
+                                  "type": "CategoricalAnnotationConfig",
+                                  "abstractKey": null
+                                }
+                              ],
+                              "storageKey": null
+                            }
+                          ],
+                          "storageKey": null
+                        }
+                      ],
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "args": null,
+                  "kind": "FragmentSpread",
+                  "name": "SessionAnnotationSummaryGroup"
                 }
               ],
               "storageKey": null
@@ -340,13 +607,13 @@ return {
       ],
       "storageKey": null
     },
-    (v1/*: any*/)
+    (v2/*: any*/)
   ],
   "type": "Project",
   "abstractKey": null
 };
 })();
 
-(node as any).hash = "36dfca4fe1c2c0f19a1fd0e2ac1c6316";
+(node as any).hash = "5b3f781dd578f1b1198e7de5a5daf95d";
 
 export default node;

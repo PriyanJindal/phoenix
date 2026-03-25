@@ -1,14 +1,13 @@
-/* eslint-disable deprecate/import */
-import React from "react";
-import { Meta } from "@storybook/react";
 import { css } from "@emotion/react";
+import type { Meta } from "@storybook/react";
 
-import { Flex, Text, TextProps } from "@phoenix/components";
+import type { TextProps } from "@phoenix/components";
+import { Flex, Text } from "@phoenix/components";
 
 import { GLOBAL_COLORS } from "./constants/colorConstants";
 
 const meta: Meta = {
-  title: "Text",
+  title: "Core/Content/Text",
   component: Text,
 
   parameters: {
@@ -30,9 +29,8 @@ const colors: TextProps["color"][] = [
   ...GLOBAL_COLORS,
 ];
 
-/**
- * A gallery of all the variants
- */
+const fontFamilies: TextProps["fontFamily"][] = ["default", "mono"];
+
 export const Gallery = () => {
   return (
     <Flex direction="row" gap="size-200" alignItems="start" height="1000px">
@@ -51,7 +49,7 @@ function GalleryComponent() {
     >
       <p
         css={css`
-          .ac-text {
+          .text {
             display: block;
           }
         `}
@@ -66,7 +64,7 @@ function GalleryComponent() {
       </p>
       <p
         css={css`
-          .ac-text {
+          .text {
             display: block;
           }
         `}
@@ -81,7 +79,7 @@ function GalleryComponent() {
       </p>
       <p
         css={css`
-          .ac-text {
+          .text {
             display: block;
           }
         `}
@@ -90,6 +88,26 @@ function GalleryComponent() {
           return (
             <Text key={color} size="L" color={color} weight="heavy">
               {`I will not waste chalk`}
+            </Text>
+          );
+        })}
+      </p>
+      <p
+        css={css`
+          .text {
+            display: block;
+          }
+        `}
+      >
+        {fontFamilies.map((fontFamily) => {
+          return (
+            <Text
+              key={fontFamily}
+              size="L"
+              fontFamily={fontFamily}
+              weight="heavy"
+            >
+              {`I will not waste chalk (${fontFamily})`}
             </Text>
           );
         })}

@@ -1,9 +1,14 @@
-import React from "react";
+import { useEffect } from "react";
 import { Outlet, useLoaderData } from "react-router";
 import invariant from "tiny-invariant";
 
+import { isFullStoryEnabled, setIdentity } from "@phoenix/analytics/fullstory";
+import { AgentChatWidget } from "@phoenix/components/agent";
+import { AgentProvider } from "@phoenix/contexts/AgentContext";
 import { ViewerProvider } from "@phoenix/contexts/ViewerContext";
-import { authenticatedRootLoader } from "@phoenix/pages/authenticatedRootLoader";
+import type { authenticatedRootLoader } from "@phoenix/pages/authenticatedRootLoader";
+
+import { AppAlerts } from "./AppAlerts";
 
 /**
  * The root of the authenticated application. Note that authentication might be entirely disabled
@@ -11,9 +16,26 @@ import { authenticatedRootLoader } from "@phoenix/pages/authenticatedRootLoader"
 export function AuthenticatedRoot() {
   const loaderData = useLoaderData<typeof authenticatedRootLoader>();
   invariant(loaderData, "loaderData is required");
+
+  // Set analytics if enabled
+  useEffect(() => {
+    // Double check that there is a viewer and that FullStory is enabled
+    if (isFullStoryEnabled() && loaderData.viewer) {
+      setIdentity({
+        uid: loaderData.viewer.id,
+        displayName: loaderData.viewer.username,
+        email: loaderData.viewer.email,
+      });
+    }
+  }, [loaderData]);
+
   return (
     <ViewerProvider query={loaderData}>
-      <Outlet />
+      <AgentProvider>
+        <AgentChatWidget />
+        <AppAlerts />
+        <Outlet />
+      </AgentProvider>
     </ViewerProvider>
   );
 }

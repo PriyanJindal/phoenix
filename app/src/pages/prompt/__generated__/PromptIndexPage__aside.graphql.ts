@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e20b44d0e440adf4d694b239456d7c17>>
+ * @generated SignedSource<<1e525dabb86b27475bf5e829b4f94a24>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -12,7 +12,10 @@ import { ReaderFragment } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type PromptIndexPage__aside$data = {
   readonly description: string | null;
-  readonly " $fragmentSpreads": FragmentRefs<"EditPromptButton_data" | "PromptLatestVersionsListFragment">;
+  readonly id: string;
+  readonly metadata: any;
+  readonly name: string;
+  readonly " $fragmentSpreads": FragmentRefs<"EditPromptButton_data" | "PromptLabels" | "PromptLatestVersionsListFragment">;
   readonly " $fragmentType": "PromptIndexPage__aside";
 };
 export type PromptIndexPage__aside$key = {
@@ -30,7 +33,28 @@ const node: ReaderFragment = {
       "alias": null,
       "args": null,
       "kind": "ScalarField",
+      "name": "id",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "name",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
       "name": "description",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "metadata",
       "storageKey": null
     },
     {
@@ -42,12 +66,17 @@ const node: ReaderFragment = {
       "args": null,
       "kind": "FragmentSpread",
       "name": "EditPromptButton_data"
+    },
+    {
+      "args": null,
+      "kind": "FragmentSpread",
+      "name": "PromptLabels"
     }
   ],
   "type": "Prompt",
   "abstractKey": null
 };
 
-(node as any).hash = "a77263d84d9add47173ed2e3d0243952";
+(node as any).hash = "407e371e7602b5195f1061fef7705c23";
 
 export default node;

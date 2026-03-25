@@ -1,7 +1,8 @@
-import React, { ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Component } from "react";
 
 import { BugReportErrorBoundaryFallback } from "./BugReportErrorBoundaryFallback";
-import { ErrorBoundaryFallbackComponent } from "./types";
+import type { ErrorBoundaryFallbackComponent } from "./types";
 type ErrorBoundaryProps = {
   children: ReactNode;
   /**
@@ -10,7 +11,7 @@ type ErrorBoundaryProps = {
    */
   fallback?: ErrorBoundaryFallbackComponent;
 };
-export class ErrorBoundary extends React.Component<
+export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   { hasError: boolean; error: unknown }
 > {

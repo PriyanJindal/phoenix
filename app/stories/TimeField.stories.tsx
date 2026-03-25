@@ -1,17 +1,10 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
-import {
-  DateInput,
-  DateSegment,
-  Label,
-  TimeField,
-  TimeFieldProps,
-  TimeValue,
-} from "@phoenix/components";
+import type { TimeFieldProps, TimeValue } from "@phoenix/components";
+import { DateInput, DateSegment, Label, TimeField } from "@phoenix/components";
 
 const meta: Meta = {
-  title: "TimeField",
+  title: "Core/Forms/Time Field",
   component: TimeField,
   parameters: {
     layout: "centered",
@@ -27,9 +20,7 @@ const Template: StoryFn<TimeFieldProps<TimeValue>> = (args) => (
   </TimeField>
 );
 
-/**
- * DateFields are used to type in dates within the UI
- */
-export const Default = Template.bind({});
-
-Default.args = {};
+export const Default = {
+  render: Template,
+  args: {},
+};

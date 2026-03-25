@@ -1,9 +1,9 @@
-import React from "react";
-
 import { ExternalLink, Heading, Text, View } from "@phoenix/components";
-import { CodeWrap, PythonBlockWithCopy } from "@phoenix/components/code";
-
-const INSTALL_OPENINFERENCE_INSTRUMENTATION_PYTHON = `pip install openinference-instrumentation`;
+import {
+  CodeWrap,
+  PackageManagerCommandBlock,
+  PythonBlockWithCopy,
+} from "@phoenix/components/code";
 const ADD_SESSION_ID_PYTHON = `import uuid
 
 import openai
@@ -67,11 +67,12 @@ export function PythonSessionsGuide() {
           OpenInference instrumentation package.
         </Text>
       </View>
-      <CodeWrap>
-        <PythonBlockWithCopy
-          value={INSTALL_OPENINFERENCE_INSTRUMENTATION_PYTHON}
-        />
-      </CodeWrap>
+
+      <PackageManagerCommandBlock
+        language="Python"
+        packages={["openinference-instrumentation"]}
+      />
+
       <View paddingTop="size-200" paddingBottom="size-100">
         <Heading level={2} weight="heavy">
           Add Session ID to your Traces
@@ -89,7 +90,7 @@ export function PythonSessionsGuide() {
       <View paddingBottom="size-100" paddingTop="size-100">
         <Text>
           For more information on how to use sessions, consult the{" "}
-          <ExternalLink href="https://docs.arize.com/phoenix/tracing/how-to-tracing/setup-sessions">
+          <ExternalLink href="https://arize.com/docs/phoenix/tracing/how-to-tracing/setup-sessions">
             documentation
           </ExternalLink>
         </Text>

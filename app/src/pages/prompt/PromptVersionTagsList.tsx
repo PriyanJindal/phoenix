@@ -1,9 +1,10 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { graphql, useFragment } from "react-relay";
 
-import { Flex, Token, TokenProps } from "@phoenix/components";
+import type { TokenProps } from "@phoenix/components";
+import { Flex, Token } from "@phoenix/components";
 
-import { PromptVersionTagsList_data$key } from "./__generated__/PromptVersionTagsList_data.graphql";
+import type { PromptVersionTagsList_data$key } from "./__generated__/PromptVersionTagsList_data.graphql";
 
 export function PromptVersionTagsList({
   promptVersion,
@@ -25,24 +26,36 @@ export function PromptVersionTagsList({
   return (
     <Flex direction="row" gap="size-50" alignItems="center" wrap="wrap">
       {data.tags.map((tag) => (
-        <VersionLabel key={tag.id}>{tag.name}</VersionLabel>
+        <TagVersionLabel key={tag.id}>{tag.name}</TagVersionLabel>
       ))}
     </Flex>
   );
 }
 
-function VersionLabel({ children }: { children: string }) {
+export function TagVersionLabel({
+  children,
+  maxWidth,
+  size = "M",
+}: {
+  children: string;
+  maxWidth?: TokenProps["maxWidth"];
+  size?: TokenProps["size"];
+}) {
   const color: TokenProps["color"] = useMemo(() => {
     switch (children) {
       case "production":
-        return "var(--ac-global-color-green-1000)";
+        return "var(--global-color-green-1000)";
       case "staging":
-        return "var(--ac-global-color-yellow-1000)";
+        return "var(--global-color-yellow-1000)";
       case "development":
-        return "var(--ac-global-color-blue-1000)";
+        return "var(--global-color-blue-1000)";
       default:
-        return "var(--ac-global-color-grey-900)";
+        return "var(--global-color-gray-900)";
     }
   }, [children]);
-  return <Token color={color}>{children}</Token>;
+  return (
+    <Token size={size} color={color} maxWidth={maxWidth} title={children}>
+      {children}
+    </Token>
+  );
 }

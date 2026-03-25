@@ -1,11 +1,15 @@
-import React, { useMemo } from "react";
 import { css } from "@emotion/react";
+import { useMemo } from "react";
 
-import { HelpTooltip, TooltipTrigger, TriggerWrap } from "@arizeai/components";
-
-import { Flex, Text } from "@phoenix/components";
+import {
+  Flex,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+  TriggerWrap,
+} from "@phoenix/components";
 import { baseAnnotationLabelCSS } from "@phoenix/components/annotation";
-import { ColorSwatch } from "@phoenix/components/ColorSwatch";
+import { ColorSwatch } from "@phoenix/components/color/ColorSwatch";
 import { formatFloat } from "@phoenix/utils/numberFormatUtils";
 
 interface RetrievalEvaluation {
@@ -20,7 +24,7 @@ type RetrievalEvaluationLabelProps = RetrievalEvaluation;
 const textCSS = css`
   display: flex;
   align-items: center;
-  .ac-text {
+  .text {
     display: inline-block;
     max-width: 9rem;
     white-space: nowrap;
@@ -39,11 +43,11 @@ export function RetrievalEvaluationLabel(props: RetrievalEvaluationLabelProps) {
     return (typeof score == "number" && formatFloat(score)) || "--";
   }, [score, metric]);
   return (
-    <TooltipTrigger delay={500} offset={3}>
+    <TooltipTrigger delay={500}>
       <TriggerWrap>
         <div css={baseAnnotationLabelCSS}>
           <Flex direction="row" gap="size-100" alignItems={"center"}>
-            <ColorSwatch color={"var(--ac-global-color-seafoam-1000)"} />
+            <ColorSwatch color={"var(--global-color-seafoam-1000)"} />
             {name ? (
               <div css={textCSS}>
                 <Text weight="heavy" size="XS" color="inherit">
@@ -62,14 +66,14 @@ export function RetrievalEvaluationLabel(props: RetrievalEvaluationLabelProps) {
           </Flex>
         </div>
       </TriggerWrap>
-      <HelpTooltip>
+      <Tooltip offset={3} placement="bottom">
         <Flex direction="row" gap="size-100">
           <Text weight="heavy" color="inherit">
             {name} {label}
           </Text>
           <Text color="inherit">{labelValue}</Text>
         </Flex>
-      </HelpTooltip>
+      </Tooltip>
     </TooltipTrigger>
   );
 }

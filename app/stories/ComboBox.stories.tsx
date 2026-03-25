@@ -1,15 +1,14 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
 import { Flex, View } from "@phoenix/components";
+import type { ComboBoxProps } from "@phoenix/components/core/combobox/ComboBox";
 import {
   ComboBox,
   ComboBoxItem,
-  ComboBoxProps,
-} from "@phoenix/components/combobox/ComboBox";
+} from "@phoenix/components/core/combobox/ComboBox";
 
 const meta: Meta = {
-  title: "ComboBox",
+  title: "Core/Forms/Combo Box",
   component: ComboBox,
   argTypes: {
     label: {
@@ -76,10 +75,12 @@ const Template: StoryFn<ComboBoxProps<object>> = (args) => (
   </View>
 );
 
-export const Default = Template.bind({});
+export const Default = {
+  render: Template,
 
-Default.args = {
-  label: "Ice cream flavor",
+  args: {
+    label: "Ice cream flavor",
+  },
 };
 
 export function Gallery() {

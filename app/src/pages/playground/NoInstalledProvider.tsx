@@ -1,10 +1,8 @@
-import React from "react";
-
 import { Flex, Text, View } from "@phoenix/components";
-import { PythonBlock } from "@phoenix/components/code";
-import { Empty } from "@phoenix/components/Empty";
+import { BashBlock } from "@phoenix/components/code";
+import { Empty } from "@phoenix/components/core/Empty";
 
-import { PlaygroundQuery$data } from "./__generated__/PlaygroundQuery.graphql";
+import type { PlaygroundQuery$data } from "./__generated__/PlaygroundQuery.graphql";
 
 // The playground is disabled if no LLM provider client is installed on the server.
 // This message is displayed until the user installs a provider for the server to use, and then restarts the server.
@@ -39,10 +37,10 @@ export const NoInstalledProvider = (props: NoInstalledProviderProps) => {
         justifyContent="center"
         gap="size-200"
       >
-        <Empty message={NO_PROVIDER_MESSAGE} graphicKey="not found" size="L" />
+        <Empty message={NO_PROVIDER_MESSAGE} />
         {/* display instructions for installing a provider and a link to the documentation */}
         <Text>The following clients are supported:</Text>
-        <PythonBlock value={makeInstallString(props.availableProviders)} />
+        <BashBlock value={makeInstallString(props.availableProviders)} />
       </Flex>
     </View>
   );

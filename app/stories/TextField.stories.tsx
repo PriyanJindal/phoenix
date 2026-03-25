@@ -1,6 +1,6 @@
-import React from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
 
+import type { TextFieldProps } from "@phoenix/components";
 import {
   FieldError,
   Flex,
@@ -8,15 +8,27 @@ import {
   Label,
   Text,
   TextField,
-  TextFieldProps,
 } from "@phoenix/components";
+import {
+  FieldDangerIcon,
+  FieldSuccessIcon,
+} from "@phoenix/components/core/field";
 
 const meta: Meta = {
-  title: "TextField",
+  title: "Core/Forms/Text Field",
   component: TextField,
-
   parameters: {
     controls: { expanded: true },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/rMddnj6eV2TcQqNkejJ9qX/Core?node-id=32-95",
+    },
+  },
+  argTypes: {
+    size: {
+      control: { type: "radio" },
+      options: ["S", "M"],
+    },
   },
 };
 
@@ -30,7 +42,9 @@ const Template: StoryFn<TextFieldProps> = (args) => (
   </TextField>
 );
 
-export const Default = Template.bind({});
+export const Default = {
+  render: Template,
+};
 
 export const Gallery = () => (
   <Flex direction="column" gap="size-50" width="600px">
@@ -46,7 +60,14 @@ export const Gallery = () => (
     <TextField isInvalid>
       <Label>Label</Label>
       <Input type="text" />
+      <FieldDangerIcon />
       <FieldError>Field error</FieldError>
+    </TextField>
+    <TextField>
+      <Label>Label</Label>
+      <Input type="text" />
+      <FieldSuccessIcon />
+      <Text slot="description">Field success</Text>
     </TextField>
     <TextField isReadOnly>
       <Label>Label</Label>

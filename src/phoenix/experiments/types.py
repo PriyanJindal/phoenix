@@ -322,7 +322,7 @@ class _HasStats:
             text = self.stats.__str__()
         else:
             text = self.stats.to_markdown(index=False)
-        return f"{self.title}\n{'-'*len(self.title)}\n" + text
+        return f"{self.title}\n{'-' * len(self.title)}\n" + text
 
 
 @dataclass(frozen=True)
@@ -375,7 +375,7 @@ class EvaluationSummary(_HasStats):
                     n_labels=("label", "count"),
                     top_2_labels=(
                         "label",
-                        lambda s: (dict(Counter(s.dropna()).most_common(2)) or None),
+                        lambda s: dict(Counter(s.dropna()).most_common(2)) or None,
                     ),
                 )
                 if has_label

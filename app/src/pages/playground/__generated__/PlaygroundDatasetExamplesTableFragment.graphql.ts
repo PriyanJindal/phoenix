@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f7387a17ed7db065e10a1f1a5ee92041>>
+ * @generated SignedSource<<5f662bc031ef452dd5b25365446d7d71>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -17,6 +17,7 @@ export type PlaygroundDatasetExamplesTableFragment$data = {
         readonly id: string;
         readonly revision: {
           readonly input: any;
+          readonly metadata: any;
           readonly output: any;
         };
       };
@@ -59,6 +60,11 @@ return {
       "defaultValue": 20,
       "kind": "LocalArgument",
       "name": "first"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "splitIds"
     }
   ],
   "kind": "Fragment",
@@ -99,6 +105,11 @@ return {
           "kind": "Variable",
           "name": "datasetVersionId",
           "variableName": "datasetVersionId"
+        },
+        {
+          "kind": "Variable",
+          "name": "splitIds",
+          "variableName": "splitIds"
         }
       ],
       "concreteType": "DatasetExampleConnection",
@@ -143,6 +154,13 @@ return {
                       "args": null,
                       "kind": "ScalarField",
                       "name": "output",
+                      "storageKey": null
+                    },
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "metadata",
                       "storageKey": null
                     }
                   ],
@@ -214,6 +232,6 @@ return {
 };
 })();
 
-(node as any).hash = "ae68770500a29b14f7108d56c146fb99";
+(node as any).hash = "3bf2d20abbb5a73422290b8eb1d22a6e";
 
 export default node;

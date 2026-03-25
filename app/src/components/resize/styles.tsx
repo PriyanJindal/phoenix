@@ -2,67 +2,36 @@ import { css } from "@emotion/react";
 
 export const resizeHandleCSS = css`
   transition: 250ms linear all;
-  background-color: var(--ac-global-color-grey-200);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1.8px;
-  --px-resize-handle-size: 8px;
-  --px-resize-icon-width: 24px;
-  --px-resize-icon-height: 2px;
+  background-color: var(--global-resize-handle-background-color);
+  --resize-handle-size: 3px;
   outline: none;
-  &[data-panel-group-direction="vertical"] {
-    height: var(--px-resize-handle-size);
-    flex-direction: column;
-    &:before,
-    &:after {
-      width: var(--px-resize-icon-width);
-      height: var(--px-resize-icon-height);
-    }
+  &[aria-orientation="horizontal"] {
+    height: var(--resize-handle-size);
   }
-  &[data-panel-group-direction="horizontal"] {
-    width: var(--px-resize-handle-size);
-    flex-direction: row;
-    &:before,
-    &:after {
-      width: var(--px-resize-icon-height);
-      height: var(--px-resize-icon-width);
-    }
+  &[aria-orientation="vertical"] {
+    width: var(--resize-handle-size);
   }
 
-  &:hover {
-    background-color: var(--ac-global-color-grey-300);
-    border-radius: 4px;
-    &:before,
-    &:after {
-      background-color: var(--ac-global-color-primary);
-    }
-  }
-
-  &:before,
-  &:after {
-    content: "";
-    color: var(--color-solid-resize-bar);
-    flex: 0 0 1rem;
-    border-radius: 6px;
-    background-color: var(--ac-global-color-grey-300);
-    flex: none;
+  &:hover,
+  &:active {
+    background-color: var(--global-resize-handle-indicator-color-hover);
   }
 `;
 
 export const compactResizeHandleCSS = css`
   transition: 250ms linear all;
-  background-color: var(--ac-global-color-grey-200);
-  --px-resize-handle-size: 4px;
+  background-color: var(--global-resize-handle-background-color);
+  --resize-handle-size: 1px;
   outline: none;
-  &[data-panel-group-direction="vertical"] {
-    height: var(--px-resize-handle-size);
+  &[aria-orientation="horizontal"] {
+    height: var(--resize-handle-size);
   }
-  &[data-panel-group-direction="horizontal"] {
-    width: var(--px-resize-handle-size);
+  &[aria-orientation="vertical"] {
+    width: var(--resize-handle-size);
   }
 
-  &:hover {
-    background-color: var(--ac-global-color-primary);
+  &:hover,
+  &:active {
+    background-color: var(--global-resize-handle-indicator-color-hover);
   }
 `;

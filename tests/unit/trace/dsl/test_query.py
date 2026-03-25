@@ -298,7 +298,8 @@ async def test_limit(
     sq = SpanQuery()
     async with db() as session:
         actual = await session.run_sync(sq, project_name="abc", limit=2)
-    assert actual.index.tolist() == ["234", "345"]
+    # Newest-first ordering
+    assert actual.index.tolist() == ["567", "456"]
 
 
 async def test_limit_with_select_statement(
@@ -1271,8 +1272,8 @@ async def test_explode_and_concat_on_same_array_with_same_label(
     abc_project: Any,
 ) -> None:
     async with db() as session:
-        assert isinstance(engine := session.get_bind(), Engine)
-        if "asyncpg" in str(engine.url):
+        bind = session.get_bind()
+        if isinstance(bind, Engine) and "asyncpg" in str(bind.url):
             pytest.xfail("FIX THIS: this test does not currently pass for postgres")
     sq = (
         SpanQuery()
@@ -1338,8 +1339,8 @@ async def test_explode_and_concat_on_same_array_but_with_typo_in_explode_array_n
     abc_project: None,
 ) -> None:
     async with db() as session:
-        assert isinstance(engine := session.get_bind(), Engine)
-        if "asyncpg" in str(engine.url):
+        bind = session.get_bind()
+        if isinstance(bind, Engine) and "asyncpg" in str(bind.url):
             pytest.xfail("FIX THIS: this test does not currently pass for postgres")
     sq = (
         SpanQuery()

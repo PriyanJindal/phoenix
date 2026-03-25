@@ -1,10 +1,9 @@
-import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 
 import { ContentSkeleton, Flex, Skeleton } from "@phoenix/components";
 
 const meta: Meta<typeof Skeleton> = {
-  title: "Skeleton",
+  title: "Core/Feedback/Skeleton",
   component: Skeleton,
   parameters: {
     layout: "centered",

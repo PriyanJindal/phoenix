@@ -1,25 +1,24 @@
-import React, { useCallback } from "react";
+import { css } from "@emotion/react";
+import { useCallback, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { graphql, useFragment, useMutation } from "react-relay";
 import { useNavigate } from "react-router";
-import { css } from "@emotion/react";
-
-import { Form } from "@arizeai/components";
 
 import {
+  Alert,
   Button,
   FieldError,
+  Form,
   Input,
   Label,
   Text,
   TextField,
   VisuallyHidden,
 } from "@phoenix/components";
-import { useNotifyError } from "@phoenix/contexts";
 import { createRedirectUrlWithReturn } from "@phoenix/utils/routingUtils";
 
-import { ResetPasswordFormMutation } from "./__generated__/ResetPasswordFormMutation.graphql";
-import { ResetPasswordFormQuery$key } from "./__generated__/ResetPasswordFormQuery.graphql";
+import type { ResetPasswordFormMutation } from "./__generated__/ResetPasswordFormMutation.graphql";
+import type { ResetPasswordFormQuery$key } from "./__generated__/ResetPasswordFormQuery.graphql";
 
 const MIN_PASSWORD_LENGTH = 4;
 
@@ -33,7 +32,7 @@ export function ResetPasswordForm(props: {
   query: ResetPasswordFormQuery$key;
 }) {
   const navigate = useNavigate();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   const data = useFragment(
     graphql`
       fragment ResetPasswordFormQuery on Query {
@@ -71,35 +70,34 @@ export function ResetPasswordForm(props: {
         onCompleted: () => {
           const to = createRedirectUrlWithReturn({
             path: "/login",
-            searchParams: { message: "Password has been reset." },
+            searchParams: { message: "password_reset" },
           });
           navigate(to);
         },
         onError: (error) => {
-          notifyError({
-            title: "Failed to reset password",
-            message: error.message,
-          });
+          setError(error.message);
         },
       });
     },
-    [commit, navigate, notifyError]
+    [commit, navigate]
   );
   return (
     <Form onSubmit={handleSubmit(onSubmit)}>
-      <VisuallyHidden>
-        <TextField
-          name="email"
-          type="email"
-          autoComplete="email"
-          isRequired
-          isReadOnly
-          value={data.viewer?.email}
-        >
-          <Label>Email</Label>
-          <Input />
-        </TextField>
-      </VisuallyHidden>
+      {data.viewer?.email && (
+        <VisuallyHidden>
+          <TextField
+            name="email"
+            type="email"
+            autoComplete="email"
+            isRequired
+            isReadOnly
+            value={data.viewer.email}
+          >
+            <Label>Email</Label>
+            <Input />
+          </TextField>
+        </VisuallyHidden>
+      )}
       <Controller
         name="currentPassword"
         control={control}
@@ -207,14 +205,17 @@ export function ResetPasswordForm(props: {
           </TextField>
         )}
       />
+      {error && <Alert variant="danger">{error}</Alert>}
       <div
         css={css`
           display: flex;
           flex-direction: row;
-          gap: var(--ac-global-dimension-size-200);
-          padding-top: var(--ac-global-dimension-size-100);
+          gap: var(--global-dimension-size-200);
+          padding-top: var(--global-dimension-size-100);
+          overflow: hidden;
           & > * {
             width: 50%;
+            flex: 1 1 auto;
           }
         `}
       >

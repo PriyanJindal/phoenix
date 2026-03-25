@@ -1,19 +1,35 @@
-import React, { ReactNode, useCallback, useState } from "react";
+import copy from "copy-to-clipboard";
+import { useCallback, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 import { useNavigate } from "react-router";
-import copy from "copy-to-clipboard";
 
+import type { ButtonProps } from "@phoenix/components";
 import {
-  ActionMenu,
-  ActionMenuProps,
+  Alert,
+  Button,
   Dialog,
-  DialogContainer,
-  Item,
-} from "@arizeai/components";
-
-import { Button, Flex, Icon, Icons, Text, View } from "@phoenix/components";
+  Flex,
+  Icon,
+  Icons,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Modal,
+  ModalOverlay,
+  Popover,
+  Text,
+  View,
+} from "@phoenix/components";
 import { JSONBlock } from "@phoenix/components/code";
-import { useNotifyError, useNotifySuccess } from "@phoenix/contexts";
+import {
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTitleExtra,
+} from "@phoenix/components/core/dialog";
+import { StopPropagation } from "@phoenix/components/StopPropagation";
+import { useNotifySuccess } from "@phoenix/contexts";
 import { assertUnreachable } from "@phoenix/typeUtils";
 import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
 
@@ -29,16 +45,16 @@ type ExperimentActionMenuProps =
       projectId?: string | null;
       experimentId: string;
       metadata: unknown;
-      isQuiet?: ActionMenuProps<string>["isQuiet"];
       canDeleteExperiment: true;
+      size?: ButtonProps["size"];
       onExperimentDeleted: () => void;
     }
   | {
       projectId?: string | null;
       experimentId: string;
       metadata: unknown;
-      isQuiet?: ActionMenuProps<string>["isQuiet"];
       canDeleteExperiment: false;
+      size?: ButtonProps["size"];
       onExperimentDeleted?: undefined;
     };
 
@@ -52,11 +68,12 @@ export function ExperimentActionMenu(props: ExperimentActionMenuProps) {
       }
     }
   `);
-  const { projectId, isQuiet = false } = props;
+  const { projectId } = props;
   const navigate = useNavigate();
-  const [dialog, setDialog] = useState<ReactNode>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isMetadataDialogOpen, setIsMetadataDialogOpen] = useState(false);
   const notifySuccess = useNotifySuccess();
-  const notifyError = useNotifyError();
+  const [error, setError] = useState<string | null>(null);
   const onExperimentDeleted = props.onExperimentDeleted;
 
   const onDeleteExperiment = useCallback(
@@ -72,62 +89,25 @@ export function ExperimentActionMenu(props: ExperimentActionMenuProps) {
             title: "Experiment deleted",
             message: `The experiment has been deleted.`,
           });
+          onExperimentDeleted?.();
+          setIsDeleteDialogOpen(false);
         },
         onError: (error) => {
           const formattedError = getErrorMessagesFromRelayMutationError(error);
-          notifyError({
-            title: "An error occurred",
-            message: `Failed to delete experiment: ${formattedError?.[0] ?? error.message}`,
-          });
+          setError(
+            `Failed to delete experiment: ${formattedError?.[0] ?? error.message}`
+          );
         },
       });
-      onExperimentDeleted?.();
     },
-    [commitDeleteExperiment, notifySuccess, notifyError, onExperimentDeleted]
-  );
-
-  const onDeletePress = useCallback(
-    (experimentId: string) => {
-      setDialog(
-        <Dialog
-          size="S"
-          title="Delete Experiment"
-          isDismissable
-          onDismiss={() => setDialog(null)}
-        >
-          <View padding="size-200">
-            <Text color="danger">
-              Are you sure you want to delete this experiment and its
-              annotations and traces?
-            </Text>
-          </View>
-          <View
-            paddingEnd="size-200"
-            paddingTop="size-100"
-            paddingBottom="size-100"
-            borderTopColor="light"
-            borderTopWidth="thin"
-          >
-            <Flex direction="row" justifyContent="end">
-              <Button
-                variant="danger"
-                onPress={() => {
-                  onDeleteExperiment(experimentId);
-                  setDialog(null);
-                }}
-              >
-                Delete Experiment
-              </Button>
-            </Flex>
-          </View>
-        </Dialog>
-      );
-    },
-    [onDeleteExperiment]
+    [commitDeleteExperiment, notifySuccess, onExperimentDeleted]
   );
 
   const menuItems = [
-    <Item key={ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES}>
+    <MenuItem
+      key={ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES}
+      id={ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES}
+    >
       <Flex
         direction="row"
         gap="size-75"
@@ -137,8 +117,11 @@ export function ExperimentActionMenu(props: ExperimentActionMenuProps) {
         <Icon svg={<Icons.Trace />} />
         <Text>View run traces</Text>
       </Flex>
-    </Item>,
-    <Item key={ExperimentAction.VIEW_METADATA}>
+    </MenuItem>,
+    <MenuItem
+      key={ExperimentAction.VIEW_METADATA}
+      id={ExperimentAction.VIEW_METADATA}
+    >
       <Flex
         direction="row"
         gap="size-75"
@@ -148,22 +131,28 @@ export function ExperimentActionMenu(props: ExperimentActionMenuProps) {
         <Icon svg={<Icons.InfoOutline />} />
         <Text>View metadata</Text>
       </Flex>
-    </Item>,
-    <Item key={ExperimentAction.COPY_EXPERIMENT_ID}>
+    </MenuItem>,
+    <MenuItem
+      key={ExperimentAction.COPY_EXPERIMENT_ID}
+      id={ExperimentAction.COPY_EXPERIMENT_ID}
+    >
       <Flex
         direction="row"
         gap="size-75"
         justifyContent="start"
         alignItems="center"
       >
-        <Icon svg={<Icons.ClipboardCopy />} />
+        <Icon svg={<Icons.DuplicateOutline />} />
         <Text>Copy experiment ID</Text>
       </Flex>
-    </Item>,
+    </MenuItem>,
   ];
   if (props.canDeleteExperiment) {
     menuItems.push(
-      <Item key={ExperimentAction.DELETE_EXPERIMENT}>
+      <MenuItem
+        key={ExperimentAction.DELETE_EXPERIMENT}
+        id={ExperimentAction.DELETE_EXPERIMENT}
+      >
         <Flex
           direction="row"
           gap="size-75"
@@ -173,69 +162,134 @@ export function ExperimentActionMenu(props: ExperimentActionMenuProps) {
           <Icon svg={<Icons.TrashOutline />} />
           <Text>{isDeletingExperiment ? "Deleting..." : "Delete"}</Text>
         </Flex>
-      </Item>
+      </MenuItem>
     );
   }
 
   return (
-    <div
-      // TODO: add this logic to the ActionMenu component
-      onClick={(e) => {
-        // prevent parent anchor link from being followed
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-    >
-      <ActionMenu
-        buttonSize="compact"
-        align="end"
-        isQuiet={isQuiet}
-        disabledKeys={
-          projectId ? [] : [ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES]
-        }
-        onAction={(firedAction) => {
-          const action = firedAction as ExperimentAction;
-          switch (action) {
-            case ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES: {
-              return navigate(`/projects/${projectId}`);
+    <StopPropagation>
+      <MenuTrigger>
+        <Button
+          size={props.size}
+          aria-label="Experiment action menu"
+          leadingVisual={<Icon svg={<Icons.MoreHorizontalOutline />} />}
+        />
+        <Popover>
+          <Menu
+            disabledKeys={
+              projectId ? [] : [ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES]
             }
-            case ExperimentAction.VIEW_METADATA: {
-              setDialog(
-                <Dialog title="Metadata" onDismiss={() => setDialog(null)}>
-                  <JSONBlock value={JSON.stringify(props.metadata, null, 2)} />
-                </Dialog>
-              );
-              break;
-            }
-            case ExperimentAction.COPY_EXPERIMENT_ID: {
-              copy(props.experimentId);
-              notifySuccess({
-                title: "Copied",
-                message: "The experiment ID has been copied to your clipboard",
-              });
-              break;
-            }
-            case ExperimentAction.DELETE_EXPERIMENT: {
-              onDeletePress(props.experimentId);
-              break;
-            }
-            default: {
-              assertUnreachable(action);
-            }
-          }
-        }}
-      >
-        {menuItems}
-      </ActionMenu>
-      <DialogContainer
-        type="modal"
+            onAction={(firedAction) => {
+              const action = firedAction as ExperimentAction;
+              switch (action) {
+                case ExperimentAction.GO_TO_EXPERIMENT_RUN_TRACES: {
+                  return navigate(`/projects/${projectId}`);
+                }
+                case ExperimentAction.VIEW_METADATA: {
+                  setIsMetadataDialogOpen(true);
+                  break;
+                }
+                case ExperimentAction.COPY_EXPERIMENT_ID: {
+                  copy(props.experimentId);
+                  notifySuccess({
+                    title: "Copied",
+                    message:
+                      "The experiment ID has been copied to your clipboard",
+                  });
+                  break;
+                }
+                case ExperimentAction.DELETE_EXPERIMENT: {
+                  setIsDeleteDialogOpen(true);
+                  break;
+                }
+                default: {
+                  assertUnreachable(action);
+                }
+              }
+            }}
+          >
+            {menuItems}
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+      <ModalOverlay
         isDismissable
-        onDismiss={() => {
-          setDialog(null);
+        isOpen={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (open) setError(null);
+          setIsDeleteDialogOpen(open);
         }}
       >
-        {dialog}
-      </DialogContainer>
-    </div>
+        <Modal size="S">
+          <Dialog>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Experiment</DialogTitle>
+                <DialogTitleExtra>
+                  <DialogCloseButton slot="close" />
+                </DialogTitleExtra>
+              </DialogHeader>
+              {error && (
+                <View paddingX="size-200" paddingTop="size-100">
+                  <Alert
+                    variant="danger"
+                    dismissable
+                    onDismissClick={() => setError(null)}
+                  >
+                    {error}
+                  </Alert>
+                </View>
+              )}
+              <View padding="size-200">
+                <Text color="danger">
+                  Are you sure you want to delete this experiment and its
+                  annotations and traces?
+                </Text>
+              </View>
+              <View
+                paddingEnd="size-200"
+                paddingTop="size-100"
+                paddingBottom="size-100"
+                borderTopColor="default"
+                borderTopWidth="thin"
+              >
+                <Flex direction="row" justifyContent="end" gap="size-100">
+                  <Button size="S" onPress={() => setIsDeleteDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="S"
+                    onPress={() => onDeleteExperiment(props.experimentId)}
+                  >
+                    Delete Experiment
+                  </Button>
+                </Flex>
+              </View>
+            </DialogContent>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+      {/* Metadata Dialog */}
+      <ModalOverlay
+        isDismissable
+        isOpen={isMetadataDialogOpen}
+        onOpenChange={setIsMetadataDialogOpen}
+      >
+        <Modal size="S">
+          <Dialog>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Metadata</DialogTitle>
+                <DialogTitleExtra>
+                  <DialogCloseButton slot="close" />
+                </DialogTitleExtra>
+              </DialogHeader>
+              <JSONBlock value={JSON.stringify(props.metadata, null, 2)} />
+            </DialogContent>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+    </StopPropagation>
   );
 }

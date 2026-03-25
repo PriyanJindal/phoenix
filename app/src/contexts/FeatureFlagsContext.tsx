@@ -1,11 +1,17 @@
-import React, { createContext, PropsWithChildren, useState } from "react";
+import type { PropsWithChildren } from "react";
+import React, { createContext, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
-import { Dialog, DialogContainer, Switch } from "@arizeai/components";
+import { Dialog, Modal, ModalOverlay, Switch, View } from "@phoenix/components";
+import {
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTitleExtra,
+} from "@phoenix/components/core/dialog";
 
-import { View } from "@phoenix/components";
-
-type FeatureFlag = "__RESET__";
+type FeatureFlag = "agents";
 export type FeatureFlagsContextType = {
   featureFlags: Record<FeatureFlag, boolean>;
   setFeatureFlags: (featureFlags: Record<FeatureFlag, boolean>) => void;
@@ -14,7 +20,7 @@ export type FeatureFlagsContextType = {
 export const LOCAL_STORAGE_FEATURE_FLAGS_KEY = "arize-phoenix-feature-flags";
 
 const DEFAULT_FEATURE_FLAGS: Record<FeatureFlag, boolean> = {
-  __RESET__: false,
+  agents: false,
 };
 
 function getFeatureFlags(): Record<FeatureFlag, boolean> {
@@ -28,7 +34,7 @@ function getFeatureFlags(): Record<FeatureFlag, boolean> {
   try {
     const parsedFeatureFlags = JSON.parse(featureFlagsFromLocalStorage);
     return Object.assign({}, DEFAULT_FEATURE_FLAGS, parsedFeatureFlags);
-  } catch (e) {
+  } catch (_e) {
     return DEFAULT_FEATURE_FLAGS;
   }
 }
@@ -77,32 +83,37 @@ function FeatureFlagsControls(props: PropsWithChildren) {
   return (
     <>
       {children}
-      <DialogContainer
-        type="modal"
-        isDismissable
-        onDismiss={() => setShowControls(false)}
-      >
-        {showControls && (
-          <Dialog title="Feature Flags">
-            <View height="size-1000" padding="size-100">
-              {Object.keys(featureFlags).map((featureFlag) => (
-                <Switch
-                  key={featureFlag}
-                  isSelected={featureFlags[featureFlag as FeatureFlag]}
-                  onChange={(isSelected) =>
-                    setFeatureFlags({
-                      ...featureFlags,
-                      [featureFlag]: isSelected,
-                    })
-                  }
-                >
-                  {featureFlag}
-                </Switch>
-              ))}
-            </View>
+
+      <ModalOverlay isOpen={showControls} onOpenChange={setShowControls}>
+        <Modal size="S">
+          <Dialog>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Feature Flags</DialogTitle>
+                <DialogTitleExtra>
+                  <DialogCloseButton slot="close" />
+                </DialogTitleExtra>
+              </DialogHeader>
+              <View padding="size-100">
+                {Object.keys(featureFlags).map((featureFlag) => (
+                  <Switch
+                    key={featureFlag}
+                    isSelected={featureFlags[featureFlag as FeatureFlag]}
+                    onChange={(isSelected) =>
+                      setFeatureFlags({
+                        ...featureFlags,
+                        [featureFlag]: isSelected,
+                      })
+                    }
+                  >
+                    {featureFlag}
+                  </Switch>
+                ))}
+              </View>
+            </DialogContent>
           </Dialog>
-        )}
-      </DialogContainer>
+        </Modal>
+      </ModalOverlay>
     </>
   );
 }

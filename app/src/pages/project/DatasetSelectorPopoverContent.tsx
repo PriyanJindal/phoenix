@@ -1,21 +1,25 @@
-import React, { useMemo, useState } from "react";
+import { startTransition, useMemo } from "react";
 import { graphql, useLazyLoadQuery, useRefetchableFragment } from "react-relay";
-import { css } from "@emotion/react";
-
-import { Card, Item, ListBox } from "@arizeai/components";
 
 import {
-  Button,
-  Flex,
+  Autocomplete,
+  Icon,
+  IconButton,
+  Icons,
   Input,
+  Menu,
+  MenuEmpty,
+  MenuHeader,
+  MenuHeaderTitle,
+  MenuItem,
   SearchField,
-  Text,
-  View,
+  useFilter,
 } from "@phoenix/components";
+import { SearchIcon } from "@phoenix/components/core/field";
 
-import { DatasetSelectorPopoverContent_datasets$key } from "./__generated__/DatasetSelectorPopoverContent_datasets.graphql";
-import { DatasetSelectorPopoverContentDatasetsQuery } from "./__generated__/DatasetSelectorPopoverContentDatasetsQuery.graphql";
-import { DatasetSelectorPopoverContentQuery } from "./__generated__/DatasetSelectorPopoverContentQuery.graphql";
+import type { DatasetSelectorPopoverContent_datasets$key } from "./__generated__/DatasetSelectorPopoverContent_datasets.graphql";
+import type { DatasetSelectorPopoverContentDatasetsQuery } from "./__generated__/DatasetSelectorPopoverContentDatasetsQuery.graphql";
+import type { DatasetSelectorPopoverContentQuery } from "./__generated__/DatasetSelectorPopoverContentQuery.graphql";
 
 export type DatasetSelectorPopoverContentProps = {
   onCreateNewDataset: () => void;
@@ -25,71 +29,41 @@ export function DatasetSelectorPopoverContent(
   props: DatasetSelectorPopoverContentProps
 ) {
   const { onCreateNewDataset, onDatasetSelected } = props;
-  const [search, setSearch] = useState<string>("");
-  const data = useLazyLoadQuery<DatasetSelectorPopoverContentQuery>(
+  const query = useLazyLoadQuery<DatasetSelectorPopoverContentQuery>(
     graphql`
       query DatasetSelectorPopoverContentQuery {
-        ...DatasetSelectorPopoverContent_datasets
+        ...DatasetSelectorPopoverContent_datasets @arguments(search: "")
       }
     `,
     {},
     { fetchPolicy: "network-only" }
   );
   return (
-    <Card
-      title="Add to Dataset"
-      variant="compact"
-      backgroundColor="light"
-      borderColor="light"
-      bodyStyle={{ padding: 0 }}
-      extra={
-        <Button variant="default" size="S" onPress={onCreateNewDataset}>
-          New Dataset
-        </Button>
-      }
-    >
-      <View padding="size-100">
-        <SearchField
-          onChange={(newSearch) => {
-            setSearch(newSearch);
-          }}
-        >
-          <Input placeholder="Search datasets" />
-        </SearchField>
-      </View>
-      <View borderTopWidth="thin" borderColor="light">
-        <div
-          css={css`
-            height: 400px;
-            overflow-y: auto;
-            min-width: 300px;
-          `}
-        >
-          <DatasetsListBox
-            query={data}
-            search={search}
-            onDatasetSelected={onDatasetSelected}
-          />
-        </div>
-      </View>
-    </Card>
+    <DatasetsList
+      query={query}
+      onCreateNewDataset={onCreateNewDataset}
+      onDatasetSelected={onDatasetSelected}
+    />
   );
 }
 
-function DatasetsListBox(props: {
-  search: string;
+function DatasetsList(props: {
   query: DatasetSelectorPopoverContent_datasets$key;
   onDatasetSelected: (datasetId: string) => void;
+  onCreateNewDataset: () => void;
 }) {
-  const { search, onDatasetSelected } = props;
-  const [data] = useRefetchableFragment<
+  const { contains } = useFilter({ sensitivity: "base" });
+
+  const { onDatasetSelected, onCreateNewDataset } = props;
+  const [data, refetch] = useRefetchableFragment<
     DatasetSelectorPopoverContentDatasetsQuery,
     DatasetSelectorPopoverContent_datasets$key
   >(
     graphql`
       fragment DatasetSelectorPopoverContent_datasets on Query
-      @refetchable(queryName: "DatasetSelectorPopoverContentDatasetsQuery") {
-        datasets {
+      @refetchable(queryName: "DatasetSelectorPopoverContentDatasetsQuery")
+      @argumentDefinitions(search: { type: "String!" }) {
+        datasets(filter: { col: name, value: $search }) {
           edges {
             dataset: node {
               id
@@ -101,44 +75,57 @@ function DatasetsListBox(props: {
     `,
     props.query
   );
-  const datasets = useMemo(() => {
-    let datasets = data.datasets.edges.map((edge) => edge.dataset);
-    if (search) {
-      datasets = datasets.filter((dataset) =>
-        dataset.name.toLowerCase().includes(search.toLowerCase())
-      );
-    }
-    return datasets;
-  }, [search, data]);
 
-  const isEmpty = datasets.length === 0;
-  if (isEmpty) {
-    return (
-      <View padding="size-200">
-        <Flex
-          direction="column"
-          justifyContent="center"
-          alignItems="center"
-          flex="1 1 auto"
-        >
-          <Text>No datasets found</Text>
-        </Flex>
-      </View>
-    );
-  }
+  const items = useMemo(() => {
+    return data.datasets.edges.map((edge) => edge.dataset);
+  }, [data]);
+
+  const onSearchChange = (search: string) => {
+    startTransition(() => {
+      refetch({ search });
+    });
+  };
+
   return (
-    <ListBox
-      selectionMode="single"
-      onSelectionChange={(selection) => {
-        if (typeof selection === "object") {
-          const selectedDatasetIds = Array.from(selection);
-          onDatasetSelected(selectedDatasetIds[0] as string);
-        }
-      }}
-    >
-      {datasets.map((ds) => (
-        <Item key={ds.id}>{ds.name}</Item>
-      ))}
-    </ListBox>
+    <Autocomplete filter={contains}>
+      <MenuHeader>
+        <MenuHeaderTitle
+          trailingContent={
+            <IconButton size="S" onPress={onCreateNewDataset}>
+              <Icon svg={<Icons.PlusOutline />} />
+            </IconButton>
+          }
+        >
+          Add to Dataset
+        </MenuHeaderTitle>
+        <SearchField
+          aria-label="Search datasets"
+          variant="quiet"
+          autoFocus
+          onChange={onSearchChange}
+        >
+          <SearchIcon />
+          <Input placeholder="Search datasets..." />
+        </SearchField>
+      </MenuHeader>
+      <Menu
+        aria-label="datasets"
+        items={items}
+        selectionMode="single"
+        renderEmptyState={() => <MenuEmpty>No datasets found</MenuEmpty>}
+        onSelectionChange={(selection) => {
+          if (typeof selection === "object") {
+            const selectedDatasetIds = Array.from(selection);
+            onDatasetSelected(selectedDatasetIds[0] as string);
+          }
+        }}
+      >
+        {(item) => (
+          <MenuItem id={item.id} textValue={item.name}>
+            {item.name}
+          </MenuItem>
+        )}
+      </Menu>
+    </Autocomplete>
   );
 }

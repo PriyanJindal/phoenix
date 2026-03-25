@@ -1,17 +1,33 @@
-import React, {
-  ReactNode,
-  startTransition,
-  useCallback,
-  useState,
-} from "react";
+import { startTransition, useCallback, useState } from "react";
 import { graphql, useMutation } from "react-relay";
 
-import { ActionMenu, Dialog, DialogContainer, Item } from "@arizeai/components";
+import {
+  Button,
+  Dialog,
+  Flex,
+  Icon,
+  Icons,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Modal,
+  ModalOverlay,
+  Popover,
+  Text,
+  View,
+} from "@phoenix/components";
+import {
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTitleExtra,
+} from "@phoenix/components/core/dialog";
+import { StopPropagation } from "@phoenix/components/StopPropagation";
+import { useNotifySuccess } from "@phoenix/contexts";
 
-import { Button, Flex, Icon, Icons, Text, View } from "@phoenix/components";
-
-import { ProjectActionMenuClearMutation } from "./__generated__/ProjectActionMenuClearMutation.graphql";
-import { ProjectActionMenuDeleteMutation } from "./__generated__/ProjectActionMenuDeleteMutation.graphql";
+import type { ProjectActionMenuClearMutation } from "./__generated__/ProjectActionMenuClearMutation.graphql";
+import type { ProjectActionMenuDeleteMutation } from "./__generated__/ProjectActionMenuDeleteMutation.graphql";
 import { RemoveProjectDataForm } from "./RemoveProjectDataForm";
 
 enum ProjectAction {
@@ -34,10 +50,13 @@ export function ProjectActionMenu({
   onProjectRemoveData: () => void;
   onProjectDelete: () => void;
 }) {
-  const [dialog, setDialog] = useState<ReactNode>(null);
+  const notifySuccess = useNotifySuccess();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [showRemoveDataDialog, setShowRemoveDataDialog] = useState(false);
   const canDelete = projectName !== "default";
   const [commitDelete] = useMutation<ProjectActionMenuDeleteMutation>(graphql`
-    mutation ProjectActionMenuDeleteMutation($projectId: GlobalID!) {
+    mutation ProjectActionMenuDeleteMutation($projectId: ID!) {
       deleteProject(id: $projectId) {
         __typename
       }
@@ -56,9 +75,10 @@ export function ProjectActionMenu({
         variables: {
           projectId: projectId,
         },
+        onCompleted: () => {
+          onProjectDelete();
+        },
       });
-
-      onProjectDelete();
     });
   }, [commitDelete, projectId, onProjectDelete]);
 
@@ -81,170 +101,201 @@ export function ProjectActionMenu({
   }, [commitClear, projectId, onProjectClear]);
 
   const onDelete = useCallback(() => {
-    setDialog(
-      <Dialog size="S" title="Delete Project">
-        <View padding="size-200">
-          <Text color="danger">
-            {`Are you sure you want to delete project ${projectName}? This cannot be undone.`}
-          </Text>
-        </View>
-        <View
-          paddingEnd="size-200"
-          paddingTop="size-100"
-          paddingBottom="size-100"
-          borderTopColor="light"
-          borderTopWidth="thin"
-        >
-          <Flex direction="row" justifyContent="end">
-            <Button
-              variant="danger"
-              onPress={() => {
-                handleDelete();
-                setDialog(null);
-              }}
-            >
-              Delete Project
-            </Button>
-          </Flex>
-        </View>
-      </Dialog>
-    );
-  }, [handleDelete, projectName]);
+    setShowDeleteDialog(true);
+  }, []);
 
   const onClear = useCallback(() => {
-    setDialog(
-      <Dialog size="S" title="Clear Project">
-        <View padding="size-200">
-          <Text color="danger">
-            {`Are you sure you want to clear project ${projectName}? All traces and evaluations for this project will be deleted. This cannot be undone.`}
-          </Text>
-        </View>
-        <View
-          paddingEnd="size-200"
-          paddingTop="size-100"
-          paddingBottom="size-100"
-          borderTopColor="light"
-          borderTopWidth="thin"
-        >
-          <Flex direction="row" justifyContent="end">
-            <Button
-              variant="danger"
-              onPress={() => {
-                handleClear();
-                setDialog(null);
-              }}
-            >
-              Clear
-            </Button>
-          </Flex>
-        </View>
-      </Dialog>
-    );
-  }, [handleClear, projectName]);
+    setShowClearDialog(true);
+  }, []);
 
   const onRemoveData = useCallback(() => {
-    setDialog(
-      <Dialog size="S" title="Remove Data">
-        <RemoveProjectDataForm
-          projectId={projectId}
-          onComplete={() => {
-            onProjectRemoveData();
-            setDialog(null);
-          }}
-        />
-      </Dialog>
-    );
-  }, [onProjectRemoveData, projectId]);
+    setShowRemoveDataDialog(true);
+  }, []);
 
   return (
-    <div
-      // TODO: add this logic to the ActionMenu component
-      onClick={(e) => {
-        // prevent parent anchor link from being followed
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-    >
-      <ActionMenu
-        buttonVariant="quiet"
-        buttonSize="compact"
-        align="end"
-        onAction={(action) => {
-          switch (action as ProjectAction) {
-            case ProjectAction.COPY_NAME: {
-              navigator.clipboard.writeText(projectName);
-              return;
-            }
-            case ProjectAction.DELETE: {
-              return onDelete();
-            }
-            case ProjectAction.CLEAR: {
-              return onClear();
-            }
-            case ProjectAction.REMOVE_DATA: {
-              return onRemoveData();
-            }
-          }
-        }}
-        disabledKeys={canDelete ? [] : [ProjectAction.DELETE]}
+    <StopPropagation>
+      <MenuTrigger>
+        <Button
+          size="S"
+          leadingVisual={<Icon svg={<Icons.MoreHorizontalOutline />} />}
+        />
+        <Popover placement="bottom end">
+          <Menu
+            aria-label="Project Actions Menu"
+            onAction={(action) => {
+              switch (action as ProjectAction) {
+                case ProjectAction.COPY_NAME: {
+                  navigator.clipboard.writeText(projectName);
+                  notifySuccess({
+                    title: "Project name copied to clipboard",
+                  });
+                  return;
+                }
+                case ProjectAction.DELETE: {
+                  return onDelete();
+                }
+                case ProjectAction.CLEAR: {
+                  return onClear();
+                }
+                case ProjectAction.REMOVE_DATA: {
+                  return onRemoveData();
+                }
+              }
+            }}
+            disabledKeys={canDelete ? [] : [ProjectAction.DELETE]}
+          >
+            <MenuItem id={ProjectAction.COPY_NAME} textValue="Copy Name">
+              <Flex
+                direction={"row"}
+                gap="size-75"
+                justifyContent={"start"}
+                alignItems={"center"}
+              >
+                <Icon svg={<Icons.DuplicateOutline />} />
+                <Text>Copy Name</Text>
+              </Flex>
+            </MenuItem>
+            <MenuItem id={ProjectAction.CLEAR} textValue="Clear All Traces">
+              <Flex
+                direction={"row"}
+                gap="size-75"
+                justifyContent={"start"}
+                alignItems={"center"}
+              >
+                <Icon svg={<Icons.Refresh />} />
+                <Text>Clear All Data</Text>
+              </Flex>
+            </MenuItem>
+            <MenuItem id={ProjectAction.REMOVE_DATA} textValue="Remove Data">
+              <Flex
+                direction={"row"}
+                gap="size-75"
+                justifyContent={"start"}
+                alignItems={"center"}
+              >
+                <Icon svg={<Icons.CloseCircleOutline />} />
+                <Text>Remove Data</Text>
+              </Flex>
+            </MenuItem>
+            {canDelete ? (
+              <MenuItem id={ProjectAction.DELETE}>
+                <Flex
+                  direction={"row"}
+                  gap="size-75"
+                  justifyContent={"start"}
+                  alignItems={"center"}
+                >
+                  <Icon svg={<Icons.TrashOutline />} />
+                  <Text>Delete</Text>
+                </Flex>
+              </MenuItem>
+            ) : null}
+          </Menu>
+        </Popover>
+      </MenuTrigger>
+      <ModalOverlay
+        isOpen={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
       >
-        <Item key={ProjectAction.COPY_NAME} textValue="Copy Name">
-          <Flex
-            direction={"row"}
-            gap="size-75"
-            justifyContent={"start"}
-            alignItems={"center"}
-          >
-            <Icon svg={<Icons.ClipboardCopy />} />
-            <Text>Copy Name</Text>
-          </Flex>
-        </Item>
-        <Item key={ProjectAction.CLEAR} textValue="Clear All Traces">
-          <Flex
-            direction={"row"}
-            gap="size-75"
-            justifyContent={"start"}
-            alignItems={"center"}
-          >
-            <Icon svg={<Icons.Refresh />} />
-            <Text>Clear All Data</Text>
-          </Flex>
-        </Item>
-        <Item key={ProjectAction.REMOVE_DATA} textValue="Remove Data">
-          <Flex
-            direction={"row"}
-            gap="size-75"
-            justifyContent={"start"}
-            alignItems={"center"}
-          >
-            <Icon svg={<Icons.CloseCircleOutline />} />
-            <Text>Remove Data</Text>
-          </Flex>
-        </Item>
-        {canDelete ? (
-          <Item key={ProjectAction.DELETE}>
-            <Flex
-              direction={"row"}
-              gap="size-75"
-              justifyContent={"start"}
-              alignItems={"center"}
-            >
-              <Icon svg={<Icons.TrashOutline />} />
-              <Text>Delete</Text>
-            </Flex>
-          </Item>
-        ) : (
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (null as any)
-        )}
-      </ActionMenu>
-      <DialogContainer
-        type="modal"
-        isDismissable
-        onDismiss={() => setDialog(null)}
+        <Modal size="S">
+          <Dialog>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Project</DialogTitle>
+                <DialogTitleExtra>
+                  <DialogCloseButton />
+                </DialogTitleExtra>
+              </DialogHeader>
+              <View padding="size-200">
+                <Text color="danger">
+                  {`Are you sure you want to delete project ${projectName}? This cannot be undone.`}
+                </Text>
+              </View>
+              <View
+                paddingEnd="size-200"
+                paddingTop="size-100"
+                paddingBottom="size-100"
+                borderTopColor="default"
+                borderTopWidth="thin"
+              >
+                <Flex direction="row" justifyContent="end">
+                  <Button
+                    variant="danger"
+                    onPress={() => {
+                      handleDelete();
+                      setShowDeleteDialog(false);
+                    }}
+                  >
+                    Delete Project
+                  </Button>
+                </Flex>
+              </View>
+            </DialogContent>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+      <ModalOverlay isOpen={showClearDialog} onOpenChange={setShowClearDialog}>
+        <Modal size="S">
+          <Dialog>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Clear Project</DialogTitle>
+                <DialogTitleExtra>
+                  <DialogCloseButton />
+                </DialogTitleExtra>
+              </DialogHeader>
+              <View padding="size-200">
+                <Text color="danger">
+                  {`Are you sure you want to clear project ${projectName}? All traces and evaluations for this project will be deleted. This cannot be undone.`}
+                </Text>
+              </View>
+              <View
+                paddingEnd="size-200"
+                paddingTop="size-100"
+                paddingBottom="size-100"
+                borderTopColor="default"
+                borderTopWidth="thin"
+              >
+                <Flex direction="row" justifyContent="end">
+                  <Button
+                    variant="danger"
+                    onPress={() => {
+                      handleClear();
+                      setShowClearDialog(false);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                </Flex>
+              </View>
+            </DialogContent>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+      <ModalOverlay
+        isOpen={showRemoveDataDialog}
+        onOpenChange={setShowRemoveDataDialog}
       >
-        {dialog}
-      </DialogContainer>
-    </div>
+        <Modal size="S">
+          <Dialog>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Remove Data</DialogTitle>
+                <DialogTitleExtra>
+                  <DialogCloseButton />
+                </DialogTitleExtra>
+              </DialogHeader>
+              <RemoveProjectDataForm
+                projectId={projectId}
+                onComplete={() => {
+                  onProjectRemoveData();
+                  setShowRemoveDataDialog(false);
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+    </StopPropagation>
   );
 }

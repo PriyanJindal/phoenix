@@ -16,12 +16,11 @@ from llama_index.callbacks import CallbackManager, OpenInferenceCallbackHandler
 from llama_index.callbacks.open_inference_callback import as_dataframe
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms import OpenAI
-from tqdm import tqdm
-
 from phoenix.evals.retrievals import (
     classify_relevance,
     compute_precisions_at_k,
 )
+from tqdm import tqdm
 
 
 def create_user_feedback(
@@ -155,10 +154,10 @@ if __name__ == "__main__":
     ]
     user_feedback = create_user_feedback(first_document_relevances, second_document_relevances)
     logging.info(
-        f"Thumbs up: {sum([value == 1.0 for value in  user_feedback]) / len(user_feedback)}"
+        f"Thumbs up: {sum([value == 1.0 for value in user_feedback]) / len(user_feedback)}"
     )
     logging.info(
-        f"Thumbs down: {sum([value == -1.0 for value in  user_feedback]) / len(user_feedback)}"
+        f"Thumbs down: {sum([value == -1.0 for value in user_feedback]) / len(user_feedback)}"
     )
 
     query_dataframe = query_dataframe.assign(

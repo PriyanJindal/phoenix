@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 
 /**
  * Utility function that uses the type system to check if a switch statement is exhaustive.
@@ -22,6 +22,15 @@ export function isNumberOrNull(value: unknown): value is number | null {
  */
 export function isStringOrNull(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
+}
+
+/**
+ * A type guard for checking if a value is a string or null
+ */
+export function isStringOrNullOrUndefined(
+  value: unknown
+): value is string | null | undefined {
+  return isStringOrNull(value) || value === undefined;
 }
 
 /**
@@ -81,3 +90,22 @@ export const schemaForType =
   <S extends z.ZodType<T>>(arg: S) => {
     return arg;
   };
+
+/**
+ * A type utility that deeply makes a type partially optional.
+ * @see https://www.totaltypescript.com/tips/use-deep-partials-to-help-with-mocking-an-entity
+ */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+export type DeepPartial<T> = T extends Function
+  ? T
+  : T extends Array<infer InferredArrayMember>
+    ? DeepPartialArray<InferredArrayMember>
+    : T extends object
+      ? DeepPartialObject<T>
+      : T | undefined;
+
+interface DeepPartialArray<T> extends Array<DeepPartial<T>> {}
+
+type DeepPartialObject<T> = {
+  [Key in keyof T]?: DeepPartial<T[Key]>;
+};

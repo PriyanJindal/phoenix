@@ -1,18 +1,17 @@
+import { css } from "@emotion/react";
+import type { PropsWithChildren } from "react";
 import React, {
   forwardRef,
-  PropsWithChildren,
   useImperativeHandle,
   useRef,
   useState,
 } from "react";
-import {
-  ImperativePanelHandle,
-  Panel,
+import type {
+  PanelImperativeHandle,
   PanelProps,
-  PanelResizeHandle,
-  PanelResizeHandleProps,
+  SeparatorProps,
 } from "react-resizable-panels";
-import { css } from "@emotion/react";
+import { Panel, Separator } from "react-resizable-panels";
 
 import { Icon, Icons } from "@phoenix/components";
 import { compactResizeHandleCSS } from "@phoenix/components/resize";
@@ -21,14 +20,14 @@ import { compactResizeHandleCSS } from "@phoenix/components/resize";
  * A panel with a title that can be collapsed and expanded.
  *
  * Add `resizable` prop to make the panel resizable with an automatically added handle.
- * The first TitledPanel in a PanelGroup SHOULD NOT be resizable or things will break.
+ * The first TitledPanel in a Group SHOULD NOT be resizable or things will break.
  */
 export const TitledPanel = forwardRef<
-  ImperativePanelHandle | null,
+  PanelImperativeHandle | null,
   PropsWithChildren<{
     title: React.ReactNode;
-    panelProps?: PanelProps;
-    panelResizeHandleProps?: PanelResizeHandleProps;
+    panelProps?: Omit<PanelProps, "onResize">;
+    panelResizeHandleProps?: SeparatorProps;
     resizable?: boolean;
     bordered?: boolean;
     disabled?: boolean;
@@ -46,10 +45,10 @@ export const TitledPanel = forwardRef<
     },
     ref
   ) => {
-    const panelRef = useRef<ImperativePanelHandle | null>(null);
+    const panelRef = useRef<PanelImperativeHandle | null>(null);
     useImperativeHandle<
-      ImperativePanelHandle | null,
-      ImperativePanelHandle | null
+      PanelImperativeHandle | null,
+      PanelImperativeHandle | null
     >(ref, () => panelRef.current);
     const [collapsed, setCollapsed] = useState(false);
 
@@ -65,19 +64,19 @@ export const TitledPanel = forwardRef<
     return (
       <>
         {resizable && (
-          <PanelResizeHandle
+          <Separator
             {...panelResizeHandleProps}
             data-bordered={bordered}
             css={css(
               compactResizeHandleCSS,
               css`
-                border-radius: var(--ac-global-rounding-small);
+                border-radius: var(--global-rounding-small);
                 opacity: 1;
                 background-color: unset;
                 &[data-bordered="true"] {
-                  background-color: var(--ac-global-border-color-default);
+                  background-color: var(--global-border-color-default);
                 }
-                &[data-panel-group-direction="vertical"] {
+                &[aria-orientation="horizontal"] {
                   height: 1px;
                 }
                 &:hover,
@@ -85,10 +84,7 @@ export const TitledPanel = forwardRef<
                 &:active,
                 &:focus-visible {
                   // Make hover target bigger
-                  background-color: var(--ac-global-color-primary);
-                }
-                &:not([data-resize-handle-state="drag"]) ~ [data-panel] {
-                  // transition: flex 0.2s ease-in-out;
+                  background-color: var(--global-color-primary);
                 }
               `
             )}
@@ -103,17 +99,13 @@ export const TitledPanel = forwardRef<
           {title}
         </PanelTitle>
         <Panel
-          maxSize={100}
+          maxSize="100%"
           {...panelProps}
-          ref={panelRef}
+          panelRef={panelRef}
           collapsible
-          onCollapse={() => {
-            setCollapsed(true);
-            panelProps?.onCollapse?.();
-          }}
-          onExpand={() => {
-            setCollapsed(false);
-            panelProps?.onExpand?.();
+          onResize={(panelSize) => {
+            const isCollapsed = panelSize.asPercentage === 0;
+            setCollapsed((prev) => (prev === isCollapsed ? prev : isCollapsed));
           }}
         >
           {children}
@@ -130,24 +122,23 @@ const panelTitleCSS = css`
   width: 100%;
   &:hover {
     cursor: pointer;
-    background-color: var(--ac-global-input-field-background-color-active);
+    background-color: var(--global-card-header-background-color-hover);
   }
   &:hover[disabled] {
     cursor: default;
     background-color: unset;
   }
   &[disabled] {
-    opacity: var(--ac-opacity-disabled);
+    opacity: var(--global-opacity-disabled);
   }
   display: flex;
   align-items: center;
-  gap: var(--ac-global-dimension-size-100);
-  padding: var(--ac-global-dimension-size-100)
-    var(--ac-global-dimension-size-50);
-  font-weight: var(--px-font-weight-heavy);
-  font-size: var(--ac-global-font-size-s);
+  gap: var(--global-dimension-size-100);
+  padding: var(--global-dimension-size-100) var(--global-dimension-size-50);
+  font-weight: var(--font-weight-heavy);
+  font-size: var(--global-font-size-s);
   &[data-bordered="true"] {
-    border-bottom: 1px solid var(--ac-global-border-color-default);
+    border-bottom: 1px solid var(--global-border-color-default);
   }
   &[data-collapsed="true"] {
     border-bottom: none;

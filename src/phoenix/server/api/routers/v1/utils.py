@@ -3,10 +3,6 @@ from typing import Any, Generic, Optional, TypedDict, TypeVar, Union
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.status import (
-    HTTP_404_NOT_FOUND,
-    HTTP_422_UNPROCESSABLE_ENTITY,
-)
 from strawberry.relay import GlobalID
 from typing_extensions import TypeAlias, assert_never
 
@@ -107,7 +103,7 @@ def add_text_csv_content_to_responses(
     return output_responses
 
 
-async def _get_project_by_identifier(
+async def get_project_by_identifier(
     session: AsyncSession,
     project_identifier: str,
 ) -> models.Project:
@@ -135,21 +131,21 @@ async def _get_project_by_identifier(
             name = project_identifier
         except HTTPException:
             raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
                 detail=f"Invalid project identifier format: {project_identifier}",
             )
         stmt = select(models.Project).filter_by(name=name)
         project = await session.scalar(stmt)
         if project is None:
             raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"Project with name {name} not found",
             )
     else:
         project = await session.get(models.Project, id_)
         if project is None:
             raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"Project with ID {project_identifier} not found",
             )
     return project

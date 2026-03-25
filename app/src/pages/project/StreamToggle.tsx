@@ -1,13 +1,12 @@
-import React, { startTransition, useCallback, useEffect, useRef } from "react";
+import { startTransition, useCallback, useEffect, useRef } from "react";
 import { graphql, useRefetchableFragment } from "react-relay";
 import { useLocation } from "react-router";
 
-import { Switch } from "@arizeai/components";
-
+import { Switch } from "@phoenix/components";
 import { useStreamState } from "@phoenix/contexts/StreamStateContext";
 import { useInterval } from "@phoenix/hooks/useInterval";
 
-import { StreamToggle_data$key } from "./__generated__/StreamToggle_data.graphql";
+import type { StreamToggle_data$key } from "./__generated__/StreamToggle_data.graphql";
 
 /**
  * Check every few seconds for new data

@@ -1,17 +1,48 @@
 import { z } from "zod";
 
-import { TemplateFormat } from "@phoenix/components/templateEditor/types";
-import { InvocationParameterInput } from "@phoenix/pages/playground/__generated__/PlaygroundOutputSubscription.graphql";
-import { InvocationParameter } from "@phoenix/pages/playground/InvocationParametersFormFields";
+import type { InvocationParameter } from "@phoenix/components/playground/model/InvocationParametersFormFields";
+import type { TemplateFormat } from "@phoenix/components/templateEditor/types";
+import type { InvocationParameterInput } from "@phoenix/pages/playground/invocationParameterUtils";
 import type { chatMessageSchema } from "@phoenix/pages/playground/schemas";
-import { LlmProviderToolDefinition } from "@phoenix/schemas";
-import {
-  AnthropicToolChoice,
-  OpenaiToolChoice,
-} from "@phoenix/schemas/toolChoiceSchemas";
+import type { PhoenixToolEditorType } from "@phoenix/schemas/phoenixToolTypeSchemas";
+/**
+ * Provider-agnostic canonical tool choice stored on PlaygroundInstance.
+ * Mirrors the DB PromptToolChoice enum plus an optional function name.
+ */
+export type CanonicalToolChoice = {
+  type: "NONE" | "ZERO_OR_MORE" | "ONE_OR_MORE" | "SPECIFIC_FUNCTION";
+  functionName?: string;
+};
 
-import { ModelConfigByProvider } from "../preferencesStore";
+/**
+ * Provider-agnostic canonical response format stored on ModelConfig.
+ * Matches the GraphQL PromptResponseFormatJSONSchemaInput wire type.
+ */
+export type CanonicalResponseFormat = {
+  type: string;
+  jsonSchema: {
+    name: string;
+    schema?: unknown;
+    strict?: boolean | null;
+    description?: string | null;
+  };
+};
+
+/**
+ * Provider-agnostic canonical tool definition stored on Tool.
+ * Isomorphic to OpenAIToolDefinition.function but named independently
+ * of any provider, consistent with CanonicalToolChoice and CanonicalResponseFormat.
+ */
+export type CanonicalToolDefinition = {
+  name: string;
+  description?: string | null;
+  parameters?: unknown;
+  strict?: boolean | null;
+};
+
+import type { ModelConfigByProvider } from "../preferencesStore";
 export type GenAIOperationType = "chat" | "text_completion";
+import type { PartialOutputToolCall } from "@phoenix/pages/playground/PlaygroundToolCall";
 
 /**
  * A chat message with a role and content
@@ -64,22 +95,53 @@ export type PlaygroundInput = {
   variablesValueCache?: Record<string, string | undefined>;
 };
 
+export type PlaygroundError = {
+  title: string;
+  message?: string;
+};
+
 export type ModelConfig = {
   provider: ModelProvider;
   modelName: string | null;
   baseUrl?: string | null;
   endpoint?: string | null;
-  apiVersion?: string | null;
-  invocationParameters: InvocationParameterInput[];
+  /**
+   * The region of the deployment (e.x. us-east-1 for AWS Bedrock)
+   */
+  region?: string | null;
+  /**
+   * OpenAI/Azure built-in only: which API to use (Chat Completions vs Responses).
+   * Omitted for custom providers (API type is set on the provider in Settings).
+   */
+  openaiApiType?: OpenAIApiType | null;
+  /**
+   * Custom headers to be sent with requests to the LLM provider
+   */
+  customHeaders?: Record<string, string> | null;
+  /**
+   * Reference to custom provider if using a custom provider configuration.
+   * When set, the request will use the custom provider instead of the built-in provider.
+   */
+  customProvider?: { id: string; name: string } | null;
+  /**
+   * The response format for the model in canonical provider-agnostic form.
+   * Null means no response format is set.
+   */
+  responseFormat?: CanonicalResponseFormat | null;
+  invocationParameters: (InvocationParameterInput & { dirty?: boolean })[];
   supportedInvocationParameters: InvocationParameter[];
 };
+
+export type ModelInvocationParameterInput =
+  ModelConfig["invocationParameters"][number];
 
 /**
  * The type of a tool in the playground
  */
 export type Tool = {
   id: number;
-  definition: LlmProviderToolDefinition;
+  editorType: PhoenixToolEditorType;
+  definition: CanonicalToolDefinition;
 };
 
 export type PlaygroundInstancePrompt = {
@@ -92,9 +154,59 @@ export type PlaygroundInstancePrompt = {
    */
   name: string;
   /**
-   * The version of the prompt. Assumes latest version if not provided.
+   * The version of the prompt.
    */
-  version?: string;
+  version: string;
+  /**
+   * The selected tag, if any
+   */
+  tag: string | null;
+};
+
+export type PlaygroundRepetitionStatus =
+  | "notStarted"
+  | "pending" // awaiting first token in streaming mode or awaiting response in non-streaming mode
+  | "streamInProgress" // only in streaming mode
+  | "finished"; // includes error states
+
+type ToolCallId = string;
+
+export type PlaygroundRepetition = {
+  output: ChatMessage[] | string | null;
+  toolCalls: Record<ToolCallId, PartialOutputToolCall>;
+  spanId: string | null;
+  error: PlaygroundError | null;
+  status: PlaygroundRepetitionStatus;
+};
+
+/**
+ * Tracks progress of experiment runs over a dataset
+ */
+export type ExperimentRunProgress = {
+  /**
+   * Total number of experiment runs expected (exampleCount * repetitions)
+   */
+  totalRuns: number;
+  /**
+   * Number of runs completed successfully
+   */
+  runsCompleted: number;
+  /**
+   * Number of runs that failed with errors
+   */
+  runsFailed: number;
+  /**
+   * Total number of evaluations expected (exampleCount * repetitions * evaluatorCount)
+   */
+  totalEvals: number;
+  /**
+   * Number of evaluations completed
+   */
+  evalsCompleted: number;
+  /**
+   * Number of evaluations that failed
+   */
+  evalsFailed: number;
 };
 
 /**
@@ -111,13 +223,12 @@ export interface PlaygroundInstance {
   template: PlaygroundTemplate;
   tools: Tool[];
   /**
-   * How the LLM should choose the tool to use
-   * @default "auto"
+   * How the LLM should choose the tool to use (canonical, provider-agnostic).
+   * @default { type: "ZERO_OR_MORE" } (auto)
    */
-  toolChoice?: OpenaiToolChoice | AnthropicToolChoice;
+  toolChoice?: CanonicalToolChoice | null;
   model: ModelConfig;
-  output?: ChatMessage[] | string;
-  spanId: string | null;
+  repetitions: Record<number, PlaygroundRepetition | undefined>;
   activeRunId: number | null;
   /**
    * The id of the experiment associated with the last playground run on the instance if any
@@ -127,6 +238,14 @@ export interface PlaygroundInstance {
    * Details about the prompt hub prompt associated with the instance, if any
    */
   prompt?: PlaygroundInstancePrompt | null;
+  /**
+   * The selected repetition number for the instance
+   */
+  selectedRepetitionNumber: number;
+  /**
+   * Progress tracking for experiment runs over a dataset
+   */
+  experimentRunProgress?: ExperimentRunProgress | null;
 }
 
 /**
@@ -161,7 +280,7 @@ export interface PlaygroundProps {
   instances: Array<PlaygroundInstance>;
   /**
    * The current template format for all instances
-   * @default "mustache"
+   * @default "MUSTACHE"
    */
   templateFormat: TemplateFormat;
   /**
@@ -169,10 +288,48 @@ export interface PlaygroundProps {
    * @default true
    */
   streaming: boolean;
+  /**
+   * The number of repetitions for the playground
+   * @default 1
+   */
+  repetitions: number;
 }
+
+export const PlaygroundStateByDatasetIdSchema = z.record(
+  z.string(),
+  z.object({
+    /**
+     * Dot-notation path to messages in dataset example input to append to prompt.
+     * When set, messages at this path will be appended to the playground prompt
+     * after template variables are applied.
+     * @example "messages" or "input_messages"
+     * @default null
+     */
+    appendedMessagesPath: z.string().nullish(),
+    /**
+     * Dot-notation path prefix for template variables when running over a dataset.
+     * Default 'input' means {{query}} resolves to input.query of the dataset example.
+     * Empty string or null means full paths like {{input.query}} or {{reference.answer}} are required.
+     * @example "input" or "reference" or null
+     * @default "input"
+     */
+    templateVariablesPath: z.string().nullish(),
+    /**
+     * Available paths for template variable autocomplete.
+     * These are extracted from dataset examples and cached per dataset.
+     * Not persisted - computed at runtime when dataset is loaded.
+     */
+    availablePaths: z.array(z.string()).optional(),
+  })
+);
+
+export type PlaygroundStateByDatasetId = z.infer<
+  typeof PlaygroundStateByDatasetIdSchema
+>;
 
 export type InitialPlaygroundState = Partial<PlaygroundProps> & {
   modelConfigByProvider: ModelConfigByProvider;
+  datasetId?: string | null;
 };
 
 /**
@@ -212,6 +369,22 @@ export interface PlaygroundState extends Omit<PlaygroundProps, "instances"> {
    * A map of instance id to whether the instance is dirty
    */
   dirtyInstances: Record<number, boolean>;
+
+  /**
+   * A map of dataset id to the playground state for that dataset
+   */
+  stateByDatasetId: PlaygroundStateByDatasetId;
+
+  /**
+   * The id of the dataset currently being used
+   * @default null
+   */
+  datasetId: string | null;
+  /**
+   * Setter for the dataset id
+   * @param datasetId the id of the dataset to set
+   */
+  setDatasetId: (datasetId: string | null) => void;
 
   /**
    * Setter for the invocation mode
@@ -279,7 +452,7 @@ export interface PlaygroundState extends Omit<PlaygroundProps, "instances"> {
    */
   upsertInvocationParameterInput: (params: {
     instanceId: number;
-    invocationParameterInput: InvocationParameterInput;
+    invocationParameterInput: ModelInvocationParameterInput;
   }) => void;
   /**
    * Delete an invocation parameter input for a model
@@ -308,6 +481,17 @@ export interface PlaygroundState extends Omit<PlaygroundProps, "instances"> {
      */
     modelConfigByProvider: ModelConfigByProvider;
   }) => void;
+  /**
+   * Set the response format for an instance in canonical form.
+   */
+  setResponseFormat: (params: {
+    instanceId: number;
+    responseFormat: CanonicalResponseFormat;
+  }) => void;
+  /**
+   * Clear the response format for an instance.
+   */
+  deleteResponseFormat: (params: { instanceId: number }) => void;
   /**
    * Update an instance's model configuration excluding the provider and invocation parameters
    */
@@ -340,7 +524,130 @@ export interface PlaygroundState extends Omit<PlaygroundProps, "instances"> {
    */
   setStreaming: (streaming: boolean) => void;
   /**
+   * set the repetitions for the playground
+   */
+  setRepetitions: (repetitions: number) => void;
+  /**
+   * Set the appended messages path
+   */
+  setAppendedMessagesPath: ({
+    path,
+    datasetId,
+  }: {
+    path: string | null;
+    datasetId: string;
+  }) => void;
+  /**
+   * Set the template variables path for dataset experiments
+   */
+  setTemplateVariablesPath: ({
+    templateVariablesPath,
+    datasetId,
+  }: {
+    templateVariablesPath: string | null;
+    datasetId: string;
+  }) => void;
+  /**
+   * Set the available paths for template variable autocomplete.
+   * These are extracted from dataset examples.
+   */
+  setAvailablePaths: ({
+    availablePaths,
+    datasetId,
+  }: {
+    availablePaths: string[];
+    datasetId: string;
+  }) => void;
+  /**
    * Set the dirty state of an instance
    */
   setDirty: (instanceId: number, dirty: boolean) => void;
+  /**
+   * Set the selected repetition number for an instance, which controls the currently displayed repetition
+   */
+  setSelectedRepetitionNumber: (
+    instanceId: number,
+    repetitionNumber: number
+  ) => void;
+  /**
+   * Append a content chunk to the output of an instance
+   */
+  appendRepetitionOutput: (
+    instanceId: number,
+    repetitionNumber: number,
+    content: string
+  ) => void;
+  /**
+   * Set the error for a repetition
+   */
+  setRepetitionError: (
+    instanceId: number,
+    repetitionNumber: number,
+    error: PlaygroundError
+  ) => void;
+  /**
+   * Set the span id for a repetition
+   */
+  setRepetitionSpanId: (
+    instanceId: number,
+    repetitionNumber: number,
+    spanId: string
+  ) => void;
+  /**
+   * Set the status for a repetition
+   */
+  setRepetitionStatus: (
+    instanceId: number,
+    repetitionNumber: number,
+    status: PlaygroundRepetitionStatus
+  ) => void;
+  /**
+   * Add a partial tool call to a repetition
+   * If the tool call already exists, it will be updated with the new arguments
+   * If the tool call does not exist, it will be added
+   */
+  addRepetitionPartialToolCall: (
+    instanceId: number,
+    repetitionNumber: number,
+    toolCall: PartialOutputToolCall
+  ) => void;
+  /**
+   * Set the tool calls for a repetition
+   */
+  setRepetitionToolCalls: (
+    instanceId: number,
+    repetitionNumber: number,
+    toolCalls: PartialOutputToolCall[]
+  ) => void;
+  /**
+   * Clears all repetitions for an instance
+   */
+  clearRepetitions: (instanceId: number) => void;
+  /**
+   * Initialize experiment run progress for an instance
+   */
+  initExperimentRunProgress: (
+    instanceId: number,
+    progress: ExperimentRunProgress
+  ) => void;
+  /**
+   * Increment the number of completed runs for an instance
+   */
+  incrementRunsCompleted: (instanceId: number) => void;
+  /**
+   * Increment the number of failed runs for an instance
+   */
+  incrementRunsFailed: (instanceId: number) => void;
+  /**
+   * Increment the number of completed evaluations for an instance
+   */
+  incrementEvalsCompleted: (instanceId: number) => void;
+  /**
+   * Increment the number of failed evaluations for an instance
+   */
+  incrementEvalsFailed: (instanceId: number) => void;
+  /**
+   * Clear experiment run progress for an instance
+   */
+  clearExperimentRunProgress: (instanceId: number) => void;
 }

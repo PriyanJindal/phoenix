@@ -1,43 +1,47 @@
-import React, { useState } from "react";
-import { Meta, StoryFn } from "@storybook/react";
+import type { Meta, StoryFn } from "@storybook/react";
+import { useState } from "react";
 
-import {
+import type {
   OpenTimeRangeWithKey,
-  TimeRangeSelector,
   TimeRangeSelectorProps,
 } from "@phoenix/components";
-import { timeRangeFormatter } from "@phoenix/utils/timeFormatUtils";
+import { TimeRangeSelector } from "@phoenix/components";
+import { PreferencesProvider } from "@phoenix/contexts";
+import { createTimeRangeFormatter } from "@phoenix/utils/timeFormatUtils";
 
 const meta: Meta = {
-  title: "TimeRangeSelector",
+  title: "DateTime/Time Range Selector",
   component: TimeRangeSelector,
   parameters: {
     layout: "centered",
   },
 };
 
+const timeRangeFormatter = createTimeRangeFormatter({
+  locale: "en-US",
+  timeZone: "UTC",
+});
+
 export default meta;
 
 const Template: StoryFn<TimeRangeSelectorProps> = (args) => {
   const [timeRange, setTimeRange] = useState<OpenTimeRangeWithKey>({
     timeRangeKey: "7d",
-    start: new Date(),
+    start: new Date("2024-01-15T10:00:00Z"),
   });
   return (
-    <div>
+    <PreferencesProvider>
       <span>{timeRangeFormatter(timeRange)}</span>
       <TimeRangeSelector
         {...args}
         value={timeRange}
         onChange={(value) => setTimeRange(value)}
       />
-    </div>
+    </PreferencesProvider>
   );
 };
 
-/**
- * Used to specify a time range in a pop up or modal
- */
-export const Default = Template.bind({});
-
-Default.args = {};
+export const Default = {
+  render: Template,
+  args: {},
+};

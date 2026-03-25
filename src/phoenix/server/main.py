@@ -1,13 +1,14 @@
+import asyncio
 import atexit
 import codecs
 import os
 import sys
-from argparse import SUPPRESS, ArgumentParser
+from argparse import SUPPRESS, ArgumentParser, Namespace
 from pathlib import Path
 from ssl import CERT_REQUIRED
 from threading import Thread
 from time import sleep, time
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 from urllib.parse import urljoin
 
 from jinja2 import BaseLoader, Environment
@@ -15,26 +16,30 @@ from uvicorn import Config, Server
 
 import phoenix.trace.v1 as pb
 from phoenix.config import (
-    EXPORT_DIR,
     TLSConfigVerifyClient,
     get_env_access_token_expiry,
     get_env_allowed_origins,
     get_env_auth_settings,
+    get_env_dangerously_enable_agents,
     get_env_database_connection_str,
     get_env_database_schema,
     get_env_db_logging_level,
     get_env_disable_migrations,
     get_env_enable_prometheus,
+    get_env_fullstory_org,
     get_env_grpc_port,
     get_env_host,
     get_env_host_root_path,
     get_env_log_migrations,
+    get_env_log_sql,
     get_env_logging_level,
     get_env_logging_mode,
+    get_env_management_url,
     get_env_oauth2_settings,
     get_env_password_reset_token_expiry,
     get_env_port,
     get_env_refresh_token_expiry,
+    get_env_scarf_sh_pixel_id,
     get_env_smtp_hostname,
     get_env_smtp_mail_from,
     get_env_smtp_password,
@@ -46,22 +51,13 @@ from phoenix.config import (
     get_env_tls_enabled_for_http,
     get_pids_path,
 )
-from phoenix.core.model_schema_adapter import create_model_from_inferences
 from phoenix.db import get_printable_db_url
-from phoenix.inferences.fixtures import FIXTURES, get_inferences
-from phoenix.inferences.inferences import EMPTY_INFERENCES, Inferences
+from phoenix.db.engines import create_engine
 from phoenix.logging import setup_logging
-from phoenix.pointcloud.umap_parameters import (
-    DEFAULT_MIN_DIST,
-    DEFAULT_N_NEIGHBORS,
-    DEFAULT_N_SAMPLES,
-    UMAPParameters,
-)
 from phoenix.server.app import (
     ScaffolderConfig,
     _db,
     create_app,
-    create_engine_and_run_migrations,
     instrument_engine_if_enabled,
 )
 from phoenix.server.email.sender import SimpleEmailSender
@@ -90,19 +86,23 @@ _WELCOME_MESSAGE = Environment(loader=BaseLoader()).from_string("""
 ██║     ██║  ██║╚██████╔╝███████╗██║ ╚████║██║██╔╝ ██╗
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═╝ v{{ version }}
 
-|
-|  🌎 Join our Community 🌎
-|  https://join.slack.com/t/arize-ai/shared_invite/zt-1px8dcmlf-fmThhDFD_V_48oU7ALan4Q
-|
-|  ⭐️ Leave us a Star ⭐️
+|  ⭐️⭐️⭐️ Support Open Source ⭐️⭐️⭐️
+|  ⭐️⭐️⭐️ Star on GitHub! ⭐️⭐️⭐️
 |  https://github.com/Arize-ai/phoenix
 |
+|  🌎 Join our Community 🌎
+|  https://join.slack.com/t/arize-ai/shared_invite/zt-3r07iavnk-ammtATWSlF0pSrd1DsMW7g
+|
 |  📚 Documentation 📚
-|  https://docs.arize.com/phoenix
+|  https://arize.com/docs/phoenix
 |
 |  🚀 Phoenix Server 🚀
 |  Phoenix UI: {{ ui_path }}
+|
 |  Authentication: {{ auth_enabled }}
+{%- if basic_auth_disabled %}
+|  Basic Auth: Disabled
+{%- endif %}
 {%- if auth_enabled_for_http or auth_enabled_for_grpc %}
 {%- if tls_enabled_for_http %}
 |  TLS: Enabled for HTTP
@@ -123,6 +123,11 @@ _WELCOME_MESSAGE = Environment(loader=BaseLoader()).from_string("""
 |  Storage: {{ storage }}
 {%- if schema %}
 |    - Schema: {{ schema }}
+{%- endif %}
+{%- if agents_enabled %}
+|
+|  🧪 Experimental Features 🧪
+|  Agents: Enabled
 {%- endif %}
 """)
 
@@ -148,24 +153,19 @@ def _get_pid_file() -> Path:
     return get_pids_path() / str(os.getpid())
 
 
-DEFAULT_UMAP_PARAMS_STR = f"{DEFAULT_MIN_DIST},{DEFAULT_N_NEIGHBORS},{DEFAULT_N_SAMPLES}"
+def _resolve_grpc_port(args: Namespace) -> int:
+    return args.grpc_port if args.grpc_port is not None else get_env_grpc_port()
 
 
 def main() -> None:
     initialize_settings()
     setup_logging()
 
-    primary_inferences_name: str
-    reference_inferences_name: Optional[str]
     trace_dataset_name: Optional[str] = None
-
-    primary_inferences: Inferences = EMPTY_INFERENCES
-    reference_inferences: Optional[Inferences] = None
-    corpus_inferences: Optional[Inferences] = None
 
     atexit.register(_remove_pid_file)
 
-    parser = ArgumentParser(usage="phoenix serve", add_help=False)
+    parser = ArgumentParser(prog="phoenix", add_help=False)
     parser.add_argument(
         "-h",
         "--help",
@@ -173,27 +173,24 @@ def main() -> None:
         help=SUPPRESS,
     )
     parser.add_argument("--database-url", required=False, help=SUPPRESS)
-    parser.add_argument("--export_path", help=SUPPRESS)
     parser.add_argument("--host", type=str, required=False, help=SUPPRESS)
     parser.add_argument("--port", type=int, required=False, help=SUPPRESS)
     parser.add_argument("--read-only", action="store_true", required=False, help=SUPPRESS)
     parser.add_argument("--no-internet", action="store_true", help=SUPPRESS)
-    parser.add_argument(
-        "--umap_params", type=str, required=False, default=DEFAULT_UMAP_PARAMS_STR, help=SUPPRESS
-    )
     parser.add_argument("--debug", action="store_true", help=SUPPRESS)
     parser.add_argument("--dev", action="store_true", help=SUPPRESS)
+    parser.add_argument("--dev-vite-port", type=int, default=5173, help=SUPPRESS)
     parser.add_argument("--no-ui", action="store_true", help=SUPPRESS)
     parser.add_argument("--enable-websockets", type=str, help=SUPPRESS)
-    subparsers = parser.add_subparsers(dest="command", required=True, help=SUPPRESS)
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Command to run.")
+    parser.set_defaults(grpc_port=None)
 
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument(
-        "--with-fixture",
-        type=str,
+        "--grpc-port",
+        type=int,
         required=False,
-        default="",
-        help=("Name of an inference fixture. Example: 'fixture1'"),
+        help="Port for the OTLP/gRPC trace ingestion server.",
     )
     serve_parser.add_argument(
         "--with-trace-fixtures",
@@ -236,76 +233,45 @@ def main() -> None:
         ),
     )
 
-    datasets_parser = subparsers.add_parser("datasets")
-    datasets_parser.add_argument("--primary", type=str, required=True)
-    datasets_parser.add_argument("--reference", type=str, required=False)
-    datasets_parser.add_argument("--corpus", type=str, required=False)
-    datasets_parser.add_argument("--trace", type=str, required=False)
-
-    fixture_parser = subparsers.add_parser("fixture")
-    fixture_parser.add_argument("fixture", type=str, choices=[fixture.name for fixture in FIXTURES])
-    fixture_parser.add_argument("--primary-only", action="store_true")
-
     trace_fixture_parser = subparsers.add_parser("trace-fixture")
     trace_fixture_parser.add_argument(
         "fixture", type=str, choices=[fixture.name for fixture in TRACES_FIXTURES]
     )
     trace_fixture_parser.add_argument("--simulate-streaming", action="store_true")
 
-    demo_parser = subparsers.add_parser("demo")
-    demo_parser.add_argument("fixture", type=str, choices=[fixture.name for fixture in FIXTURES])
-    demo_parser.add_argument(
-        "trace_fixture", type=str, choices=[fixture.name for fixture in TRACES_FIXTURES]
+    db_parser = subparsers.add_parser("db", help="Database utility commands.")
+    db_subparsers = db_parser.add_subparsers(
+        dest="db_command",
+        required=True,
+        help="Database command to run.",
     )
-    demo_parser.add_argument("--simulate-streaming", action="store_true")
+    db_subparsers.add_parser(
+        "migrate",
+        help="Run database migrations and exit.",
+    )
 
     args = parser.parse_args()
     db_connection_str = (
         args.database_url if args.database_url else get_env_database_connection_str()
     )
-    export_path = Path(args.export_path) if args.export_path else Path(EXPORT_DIR)
+
+    if args.command == "db":
+        if args.db_command == "migrate":
+            engine = create_engine(
+                connection_str=db_connection_str,
+                migrate=True,
+                log_to_stdout=True,
+                log_migrations=True,
+            )
+            asyncio.run(engine.dispose())
+        return
 
     force_fixture_ingestion = False
     scaffold_datasets = False
     tracing_fixture_names = set()
-    if args.command == "datasets":
-        primary_inferences_name = args.primary
-        reference_inferences_name = args.reference
-        corpus_inferences_name = args.corpus
-        primary_inferences = Inferences.from_name(primary_inferences_name)
-        reference_inferences = (
-            Inferences.from_name(reference_inferences_name)
-            if reference_inferences_name is not None
-            else None
-        )
-        corpus_inferences = (
-            None if corpus_inferences_name is None else Inferences.from_name(corpus_inferences_name)
-        )
-    elif args.command == "fixture":
-        fixture_name = args.fixture
-        primary_only = args.primary_only
-        primary_inferences, reference_inferences, corpus_inferences = get_inferences(
-            fixture_name,
-            args.no_internet,
-        )
-        if primary_only:
-            reference_inferences_name = None
-            reference_inferences = None
-    elif args.command == "trace-fixture":
+    if args.command == "trace-fixture":
         trace_dataset_name = args.fixture
-    elif args.command == "demo":
-        fixture_name = args.fixture
-        primary_inferences, reference_inferences, corpus_inferences = get_inferences(
-            fixture_name,
-            args.no_internet,
-        )
-        trace_dataset_name = args.trace_fixture
     elif args.command == "serve":
-        if args.with_fixture:
-            primary_inferences, reference_inferences, corpus_inferences = get_inferences(
-                str(args.with_fixture),
-                args.no_internet,
-            )
         if args.with_trace_fixtures:
             tracing_fixture_names.update(
                 [name.strip() for name in args.with_trace_fixtures.split(",")]
@@ -324,15 +290,11 @@ def main() -> None:
         host = None
 
     port = args.port or get_env_port()
+    grpc_port = _resolve_grpc_port(args)
     host_root_path = get_env_host_root_path()
     read_only = args.read_only
 
-    model = create_model_from_inferences(
-        primary_inferences,
-        reference_inferences,
-    )
-
-    authentication_enabled, secret = get_env_auth_settings()
+    auth_settings = get_env_auth_settings()
 
     fixture_spans: list[Span] = []
     fixture_evals: list[pb.Evaluation] = []
@@ -352,26 +314,25 @@ def main() -> None:
                 target=send_dataset_fixtures,
                 args=(f"http://{host}:{port}", dataset_fixtures),
             ).start()
-    umap_params_list = args.umap_params.split(",")
-    umap_params = UMAPParameters(
-        min_dist=float(umap_params_list[0]),
-        n_neighbors=int(umap_params_list[1]),
-        n_samples=int(umap_params_list[2]),
-    )
-
     if enable_prometheus := get_env_enable_prometheus():
         from phoenix.server.prometheus import start_prometheus
 
         start_prometheus()
 
-    engine = create_engine_and_run_migrations(db_connection_str)
-    instrumentation_cleanups = instrument_engine_if_enabled(engine)
-    factory = DbSessionFactory(db=_db(engine), dialect=engine.dialect.name)
-    corpus_model = (
-        None if corpus_inferences is None else create_model_from_inferences(corpus_inferences)
+    engine = create_engine(
+        connection_str=db_connection_str,
+        migrate=not Settings.disable_migrations,
+        log_to_stdout=get_env_log_sql(),
+        log_migrations=Settings.log_migrations,
     )
+    shutdown_callbacks: list[Callable[[], None | Awaitable[None]]] = []
+    shutdown_callbacks.extend(instrument_engine_if_enabled(engine))
+    # Ensure engine is disposed on shutdown to properly close database connections
+    shutdown_callbacks.append(engine.dispose)
+    factory = DbSessionFactory(db=_db(engine), dialect=engine.dialect.name)
 
     allowed_origins = get_env_allowed_origins()
+    management_url = get_env_management_url()
 
     # Get TLS configuration
     tls_enabled_for_http = get_env_tls_enabled_for_http()
@@ -382,20 +343,26 @@ def main() -> None:
     # Print information about the server
     http_scheme = "https" if tls_enabled_for_http else "http"
     grpc_scheme = "https" if tls_enabled_for_grpc else "http"
+    # Use localhost for display when host is the loopback address to make URLs clickable
+    display_host = "localhost" if host in ("0.0.0.0", "::") else host
     root_path = urljoin(f"{http_scheme}://{host}:{port}", host_root_path)
+    display_root_path = urljoin(f"{http_scheme}://{display_host}:{port}", host_root_path)
     msg = _WELCOME_MESSAGE.render(
         version=phoenix_version,
-        ui_path=root_path,
-        grpc_path=f"{grpc_scheme}://{host}:{get_env_grpc_port()}",
-        http_path=urljoin(root_path, "v1/traces"),
+        ui_path=display_root_path,
+        grpc_path=f"{grpc_scheme}://{display_host}:{grpc_port}",
+        http_path=urljoin(display_root_path, "v1/traces"),
         storage=get_printable_db_url(db_connection_str),
         schema=get_env_database_schema(),
-        auth_enabled=authentication_enabled,
+        auth_enabled=auth_settings.enable_auth,
+        disable_basic_auth=auth_settings.disable_basic_auth,
         tls_enabled_for_http=tls_enabled_for_http,
         tls_enabled_for_grpc=tls_enabled_for_grpc,
         tls_verify_client=tls_verify_client,
         allowed_origins=allowed_origins,
+        agents_enabled=get_env_dangerously_enable_agents(),
     )
+
     if sys.platform.startswith("win"):
         msg = codecs.encode(msg, "ascii", errors="ignore").decode("ascii").strip()
     scaffolder_config = ScaffolderConfig(
@@ -422,28 +389,29 @@ def main() -> None:
 
     app = create_app(
         db=factory,
-        export_path=export_path,
-        model=model,
-        authentication_enabled=authentication_enabled,
-        umap_params=umap_params,
-        corpus=corpus_model,
+        authentication_enabled=auth_settings.enable_auth,
+        basic_auth_disabled=auth_settings.disable_basic_auth,
         debug=args.debug,
         dev=args.dev,
+        dev_vite_port=args.dev_vite_port,
         serve_ui=not args.no_ui,
         read_only=read_only,
+        grpc_port=grpc_port,
         enable_prometheus=enable_prometheus,
         initial_spans=fixture_spans,
         initial_evaluations=fixture_evals,
         startup_callbacks=[lambda: print(msg)],
-        shutdown_callbacks=instrumentation_cleanups,
-        secret=secret,
+        shutdown_callbacks=shutdown_callbacks,
+        secret=auth_settings.phoenix_secret,
         password_reset_token_expiry=get_env_password_reset_token_expiry(),
         access_token_expiry=get_env_access_token_expiry(),
         refresh_token_expiry=get_env_refresh_token_expiry(),
         scaffolder_config=scaffolder_config,
         email_sender=email_sender,
         oauth2_client_configs=get_env_oauth2_settings(),
+        ldap_config=auth_settings.ldap_config,
         allowed_origins=allowed_origins,
+        management_url=management_url,
     )
 
     # Configure server with TLS if enabled
@@ -452,6 +420,7 @@ def main() -> None:
         host=host,  # type: ignore[arg-type]
         port=port,
         root_path=host_root_path,
+        log_level=Settings.logging_level,
     )
 
     if tls_enabled_for_http:
@@ -476,11 +445,14 @@ def main() -> None:
 
 
 def initialize_settings() -> None:
+    """Initialize the settings from environment variables."""
     Settings.logging_mode = get_env_logging_mode()
     Settings.logging_level = get_env_logging_level()
     Settings.db_logging_level = get_env_db_logging_level()
     Settings.log_migrations = get_env_log_migrations()
     Settings.disable_migrations = get_env_disable_migrations()
+    Settings.fullstory_org = get_env_fullstory_org()
+    Settings.scarf_sh_pixel_id = get_env_scarf_sh_pixel_id()
 
 
 if __name__ == "__main__":

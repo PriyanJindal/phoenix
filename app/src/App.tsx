@@ -1,18 +1,16 @@
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import { RelayEnvironmentProvider } from "react-relay";
 
-import { Provider } from "@arizeai/components";
-
+import { ThemeProvider } from "./contexts";
 import { CredentialsProvider } from "./contexts/CredentialsContext";
 import { FeatureFlagsProvider } from "./contexts/FeatureFlagsContext";
 import { FunctionalityProvider } from "./contexts/FunctionalityContext";
 import { PreferencesProvider } from "./contexts/PreferencesContext";
-import { NotificationProvider, ThemeProvider, useTheme } from "./contexts";
 import { GlobalStyles } from "./GlobalStyles";
 import RelayEnvironment from "./RelayEnvironment";
 import { AppRoutes } from "./Routes";
 
-import "normalize.css";
+import "react-resizable/css/styles.css";
 
 export function App() {
   return (
@@ -25,23 +23,18 @@ export function App() {
 }
 
 export function AppContent() {
-  const { theme: componentsTheme } = useTheme();
   return (
-    <Provider theme={componentsTheme} mountGlobalStyles={false}>
-      <RelayEnvironmentProvider environment={RelayEnvironment}>
-        <GlobalStyles />
-        <FeatureFlagsProvider>
-          <PreferencesProvider>
-            <CredentialsProvider>
-              <Suspense>
-                <NotificationProvider>
-                  <AppRoutes />
-                </NotificationProvider>
-              </Suspense>
-            </CredentialsProvider>
-          </PreferencesProvider>
-        </FeatureFlagsProvider>
-      </RelayEnvironmentProvider>
-    </Provider>
+    <RelayEnvironmentProvider environment={RelayEnvironment}>
+      <GlobalStyles />
+      <FeatureFlagsProvider>
+        <PreferencesProvider>
+          <CredentialsProvider>
+            <Suspense>
+              <AppRoutes />
+            </Suspense>
+          </CredentialsProvider>
+        </PreferencesProvider>
+      </FeatureFlagsProvider>
+    </RelayEnvironmentProvider>
   );
 }

@@ -1,4 +1,14 @@
+import re
+from base64 import b64decode
+
 from strawberry.relay import GlobalID
+
+_COMPOSITE_GLOBAL_ID_PATTERN = re.compile(r"[^:]+:[^:]+(:[^:]+)+")
+
+
+def is_composite_global_id(node_id: str) -> bool:
+    decoded_node_id = b64decode(node_id).decode()
+    return _COMPOSITE_GLOBAL_ID_PATTERN.match(decoded_node_id) is not None
 
 
 def from_global_id(global_id: GlobalID) -> tuple[str, int]:

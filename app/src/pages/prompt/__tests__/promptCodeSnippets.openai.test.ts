@@ -1,10 +1,10 @@
 import { mapPromptToSDKSnippet } from "../promptCodeSnippets";
-
+import type { FixturePromptVersion } from "./fixtures";
 import {
   BASE_MOCK_PROMPT_VERSION,
-  FixturePromptVersion,
-  OPENAI_RESPONSE_FORMAT,
   OPENAI_TOOL,
+  RESPONSE_FORMAT_FIXTURE,
+  TOOLS_FIXTURE,
 } from "./fixtures";
 
 describe("promptCodeSnippets", () => {
@@ -62,7 +62,7 @@ describe("promptCodeSnippets", () => {
           invocationParameters: {
             toolChoice: "auto",
           },
-          tools: [{ definition: OPENAI_TOOL }],
+          tools: TOOLS_FIXTURE,
           template: {
             __typename: "PromptChatTemplate",
             messages: [
@@ -203,7 +203,7 @@ describe("promptCodeSnippets", () => {
       it("should handle response format", () => {
         const prompt = {
           ...BASE_MOCK_PROMPT_VERSION,
-          responseFormat: { definition: OPENAI_RESPONSE_FORMAT },
+          responseFormat: RESPONSE_FORMAT_FIXTURE,
         } satisfies FixturePromptVersion;
 
         const result = mapPromptToSDKSnippet({
@@ -302,7 +302,7 @@ describe("promptCodeSnippets", () => {
           invocationParameters: {
             toolChoice: "auto",
           },
-          tools: [{ definition: OPENAI_TOOL }],
+          tools: TOOLS_FIXTURE,
           template: {
             __typename: "PromptChatTemplate",
             messages: [
@@ -443,7 +443,7 @@ describe("promptCodeSnippets", () => {
       it("should handle response format", () => {
         const prompt = {
           ...BASE_MOCK_PROMPT_VERSION,
-          responseFormat: { definition: OPENAI_RESPONSE_FORMAT },
+          responseFormat: RESPONSE_FORMAT_FIXTURE,
         } satisfies FixturePromptVersion;
 
         const result = mapPromptToSDKSnippet({

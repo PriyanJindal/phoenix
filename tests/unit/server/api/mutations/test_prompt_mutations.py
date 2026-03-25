@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 from strawberry.relay.types import GlobalID
@@ -14,6 +14,7 @@ class TestPromptMutations:
           id
           name
           description
+          metadata
           createdAt
           promptVersions {
             edges {
@@ -42,10 +43,27 @@ class TestPromptMutations:
                 }
                 invocationParameters
                 tools {
-                  definition
+                  tools {
+                    function {
+                      name
+                      description
+                      parameters
+                      strict
+                    }
+                  }
+                  toolChoice {
+                    type
+                    functionName
+                  }
+                  disableParallelToolCalls
                 }
                 responseFormat {
-                  definition
+                  jsonSchema {
+                    name
+                    description
+                    schema
+                    strict
+                  }
                 }
                 modelName
                 modelProvider
@@ -87,10 +105,27 @@ class TestPromptMutations:
                 }
                 invocationParameters
                 tools {
-                  definition
+                  tools {
+                    function {
+                      name
+                      description
+                      parameters
+                      strict
+                    }
+                  }
+                  toolChoice {
+                    type
+                    functionName
+                  }
+                  disableParallelToolCalls
                 }
                 responseFormat {
-                  definition
+                  jsonSchema {
+                    name
+                    description
+                    schema
+                    strict
+                  }
                 }
                 modelName
                 modelProvider
@@ -106,6 +141,7 @@ class TestPromptMutations:
           id
           name
           description
+          metadata
           createdAt
           promptVersions {
             edges {
@@ -134,10 +170,27 @@ class TestPromptMutations:
                 }
                 invocationParameters
                 tools {
-                  definition
+                  tools {
+                    function {
+                      name
+                      description
+                      parameters
+                      strict
+                    }
+                  }
+                  toolChoice {
+                    type
+                    functionName
+                  }
+                  disableParallelToolCalls
                 }
                 responseFormat {
-                  definition
+                  jsonSchema {
+                    name
+                    description
+                    schema
+                    strict
+                  }
                 }
                 modelName
                 modelProvider
@@ -149,7 +202,7 @@ class TestPromptMutations:
     """
 
     @pytest.mark.parametrize(
-        "variables",
+        "variables,expected_tools_output,expected_rf_output",
         [
             pytest.param(
                 {
@@ -173,6 +226,8 @@ class TestPromptMutations:
                         },
                     }
                 },
+                None,
+                None,
                 id="basic-input",
             ),
             pytest.param(
@@ -194,19 +249,18 @@ class TestPromptMutations:
                             "invocationParameters": {"temperature": 0.4},
                             "modelProvider": "OPENAI",
                             "modelName": "gpt-4o",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "type": "function",
+                            "tools": {
+                                "tools": [
+                                    {
                                         "function": {
                                             "name": "get_weather",
-                                            "description": "Get current temperature for a given location.",  # noqa: E501
+                                            "description": "Get current temperature for a given location.",
                                             "parameters": {
                                                 "type": "object",
                                                 "properties": {
                                                     "location": {
                                                         "type": "string",
-                                                        "description": "City and country e.g. Bogotá, Colombia",  # noqa: E501
+                                                        "description": "City and country e.g. Bogotá, Colombia",
                                                     }
                                                 },
                                                 "required": ["location"],
@@ -215,11 +269,37 @@ class TestPromptMutations:
                                             "strict": True,
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
+                {
+                    "tools": [
+                        {
+                            "function": {
+                                "name": "get_weather",
+                                "description": "Get current temperature for a given location.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "location": {
+                                            "type": "string",
+                                            "description": "City and country e.g. Bogotá, Colombia",
+                                        }
+                                    },
+                                    "required": ["location"],
+                                    "additionalProperties": False,
+                                },
+                                "strict": True,
+                            }
+                        }
+                    ],
+                    "toolChoice": None,
+                    "disableParallelToolCalls": None,
+                },
+                None,
                 id="with-tools",
             ),
             pytest.param(
@@ -241,10 +321,9 @@ class TestPromptMutations:
                             "invocationParameters": {"temperature": 0.4},
                             "modelProvider": "OPENAI",
                             "modelName": "o1-mini",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "type": "function",
+                            "tools": {
+                                "tools": [
+                                    {
                                         "function": {
                                             "name": "get_weather",
                                             "parameters": {
@@ -253,11 +332,30 @@ class TestPromptMutations:
                                             },
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
+                {
+                    "tools": [
+                        {
+                            "function": {
+                                "name": "get_weather",
+                                "description": None,
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"location": {"type": "string"}},
+                                },
+                                "strict": None,
+                            }
+                        }
+                    ],
+                    "toolChoice": None,
+                    "disableParallelToolCalls": None,
+                },
+                None,
                 id="with-valid-openai-tools",
             ),
             pytest.param(
@@ -279,32 +377,64 @@ class TestPromptMutations:
                             "invocationParameters": {"max_tokens": 1024, "temperature": 0.4},
                             "modelProvider": "ANTHROPIC",
                             "modelName": "claude-2",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "name": "get_weather",
-                                        "description": "Get the current weather in a given location",  # noqa: E501
-                                        "input_schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "location": {
-                                                    "type": "string",
-                                                    "description": "The city and state, e.g. San Francisco, CA",  # noqa: E501
+                            "tools": {
+                                "tools": [
+                                    {
+                                        "function": {
+                                            "name": "get_weather",
+                                            "description": "Get the current weather in a given location",
+                                            "parameters": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "location": {
+                                                        "type": "string",
+                                                        "description": "The city and state, e.g. San Francisco, CA",
+                                                    },
+                                                    "unit": {
+                                                        "type": "string",
+                                                        "enum": ["celsius", "fahrenheit"],
+                                                        "description": 'The unit of temperature, either "celsius" or "fahrenheit"',
+                                                    },
                                                 },
-                                                "unit": {
-                                                    "type": "string",
-                                                    "enum": ["celsius", "fahrenheit"],
-                                                    "description": 'The unit of temperature, either "celsius" or "fahrenheit"',  # noqa: E501
-                                                },
+                                                "required": ["location"],
                                             },
-                                            "required": ["location"],
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
+                {
+                    "tools": [
+                        {
+                            "function": {
+                                "name": "get_weather",
+                                "description": "Get the current weather in a given location",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "location": {
+                                            "type": "string",
+                                            "description": "The city and state, e.g. San Francisco, CA",
+                                        },
+                                        "unit": {
+                                            "type": "string",
+                                            "enum": ["celsius", "fahrenheit"],
+                                            "description": 'The unit of temperature, either "celsius" or "fahrenheit"',
+                                        },
+                                    },
+                                    "required": ["location"],
+                                },
+                                "strict": None,
+                            }
+                        }
+                    ],
+                    "toolChoice": None,
+                    "disableParallelToolCalls": None,
+                },
+                None,
                 id="with-valid-anthropic-tools",
             ),
             pytest.param(
@@ -327,26 +457,69 @@ class TestPromptMutations:
                             "modelProvider": "OPENAI",
                             "modelName": "o1-mini",
                             "responseFormat": {
-                                "definition": {
-                                    "type": "json_schema",
-                                    "json_schema": {
-                                        "name": "response",
-                                        "schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "foo": {"type": "string"},
-                                            },
-                                            "required": ["foo"],
-                                            "additionalProperties": False,
+                                "type": "json_schema",
+                                "jsonSchema": {
+                                    "name": "response",
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "foo": {"type": "string"},
                                         },
-                                        "strict": True,
+                                        "required": ["foo"],
+                                        "additionalProperties": False,
                                     },
-                                }
+                                    "strict": True,
+                                },
                             },
                         },
                     }
                 },
+                None,
+                {
+                    "jsonSchema": {
+                        "name": "response",
+                        "description": None,
+                        "schema": {
+                            "type": "object",
+                            "properties": {"foo": {"type": "string"}},
+                            "required": ["foo"],
+                            "additionalProperties": False,
+                        },
+                        "strict": True,
+                    },
+                },
                 id="with-output-schema",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "name": "prompt-name",
+                        "description": "prompt-description",
+                        "metadata": {
+                            "environment": "production",
+                            "version": "1.0",
+                            "tags": ["important"],
+                        },
+                        "promptVersion": {
+                            "description": "prompt-version-description",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {
+                                        "role": "USER",
+                                        "content": [{"text": {"text": "hello world"}}],
+                                    }
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.4},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                None,
+                None,
+                id="with-metadata",
             ),
         ],
     )
@@ -355,6 +528,8 @@ class TestPromptMutations:
         db: DbSessionFactory,
         gql_client: AsyncGraphQLClient,
         variables: dict[str, Any],
+        expected_tools_output: Any,
+        expected_rf_output: Any,
     ) -> None:
         result = await gql_client.execute(self.CREATE_CHAT_PROMPT_MUTATION, variables)
         assert not result.errors
@@ -362,6 +537,8 @@ class TestPromptMutations:
         data = result.data["createChatPrompt"]
         assert data.pop("name") == "prompt-name"
         assert data.pop("description") == "prompt-description"
+        expected_metadata = variables["input"].get("metadata", {})
+        assert data.pop("metadata") == expected_metadata
         assert isinstance(data.pop("id"), str)
         assert isinstance(data.pop("createdAt"), str)
         prompt_version = data.pop("promptVersions")["edges"][0]["promptVersion"]
@@ -378,10 +555,8 @@ class TestPromptMutations:
         assert prompt_version.pop("modelName") == expected_model_name
         expected_invocation_parameters = variables["input"]["promptVersion"]["invocationParameters"]
         assert prompt_version.pop("invocationParameters") == expected_invocation_parameters
-        expected_tools = variables["input"]["promptVersion"].get("tools", [])
-        assert prompt_version.pop("tools") == expected_tools
-        expected_response_format = variables["input"]["promptVersion"].get("responseFormat")
-        assert prompt_version.pop("responseFormat") == expected_response_format
+        assert prompt_version.pop("tools") == expected_tools_output
+        assert prompt_version.pop("responseFormat") == expected_rf_output
         assert isinstance(prompt_version.pop("createdAt"), str)
         assert isinstance(prompt_version.pop("id"), str)
 
@@ -451,9 +626,6 @@ class TestPromptMutations:
                             "invocationParameters": {"temperature": 0.4},
                             "modelProvider": "OPENAI",
                             "modelName": "o1-mini",
-                            "responseFormat": {
-                                "definition": {"type": "object"},
-                            },
                         },
                     }
                 },
@@ -509,18 +681,18 @@ class TestPromptMutations:
                                 {
                                     "definition": {
                                         "name": "get_weather",
-                                        "description": "Get the current weather in a given location",  # noqa: E501
+                                        "description": "Get the current weather in a given location",
                                         "input_schema": {
                                             "type": "object",
                                             "properties": {
                                                 "location": {
                                                     "type": "string",
-                                                    "description": "The city and state, e.g. San Francisco, CA",  # noqa: E501
+                                                    "description": "The city and state, e.g. San Francisco, CA",
                                                 },
                                                 "unit": {
                                                     "type": "string",
                                                     "enum": ["celsius", "fahrenheit"],
-                                                    "description": 'The unit of temperature, either "celsius" or "fahrenheit"',  # noqa: E501
+                                                    "description": 'The unit of temperature, either "celsius" or "fahrenheit"',
                                                 },
                                             },
                                             "required": ["location"],
@@ -543,7 +715,7 @@ class TestPromptMutations:
         assert result.data is None
 
     @pytest.mark.parametrize(
-        "variables",
+        "variables,expected_tools_output,expected_rf_output",
         [
             pytest.param(
                 {
@@ -566,6 +738,8 @@ class TestPromptMutations:
                         },
                     }
                 },
+                None,
+                None,
                 id="basic-input",
             ),
             pytest.param(
@@ -586,19 +760,18 @@ class TestPromptMutations:
                             "invocationParameters": {"temperature": 0.4},
                             "modelProvider": "OPENAI",
                             "modelName": "gpt-4o",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "type": "function",
+                            "tools": {
+                                "tools": [
+                                    {
                                         "function": {
                                             "name": "get_weather",
-                                            "description": "Get current temperature for a given location.",  # noqa: E501
+                                            "description": "Get current temperature for a given location.",
                                             "parameters": {
                                                 "type": "object",
                                                 "properties": {
                                                     "location": {
                                                         "type": "string",
-                                                        "description": "City and country e.g. Bogotá, Colombia",  # noqa: E501
+                                                        "description": "City and country e.g. Bogotá, Colombia",
                                                     }
                                                 },
                                                 "required": ["location"],
@@ -607,11 +780,37 @@ class TestPromptMutations:
                                             "strict": True,
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
+                {
+                    "tools": [
+                        {
+                            "function": {
+                                "name": "get_weather",
+                                "description": "Get current temperature for a given location.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "location": {
+                                            "type": "string",
+                                            "description": "City and country e.g. Bogotá, Colombia",
+                                        }
+                                    },
+                                    "required": ["location"],
+                                    "additionalProperties": False,
+                                },
+                                "strict": True,
+                            }
+                        }
+                    ],
+                    "toolChoice": None,
+                    "disableParallelToolCalls": None,
+                },
+                None,
                 id="with-tools",
             ),
             pytest.param(
@@ -632,10 +831,9 @@ class TestPromptMutations:
                             "invocationParameters": {"temperature": 0.4},
                             "modelProvider": "OPENAI",
                             "modelName": "o1-mini",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "type": "function",
+                            "tools": {
+                                "tools": [
+                                    {
                                         "function": {
                                             "name": "get_weather",
                                             "parameters": {
@@ -644,11 +842,30 @@ class TestPromptMutations:
                                             },
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
+                {
+                    "tools": [
+                        {
+                            "function": {
+                                "name": "get_weather",
+                                "description": None,
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"location": {"type": "string"}},
+                                },
+                                "strict": None,
+                            }
+                        }
+                    ],
+                    "toolChoice": None,
+                    "disableParallelToolCalls": None,
+                },
+                None,
                 id="with-valid-openai-tools",
             ),
             pytest.param(
@@ -670,24 +887,36 @@ class TestPromptMutations:
                             "modelProvider": "OPENAI",
                             "modelName": "o1-mini",
                             "responseFormat": {
-                                "definition": {
-                                    "type": "json_schema",
-                                    "json_schema": {
-                                        "name": "response",
-                                        "schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "foo": {"type": "string"},
-                                            },
-                                            "required": ["foo"],
-                                            "additionalProperties": False,
+                                "type": "json_schema",
+                                "jsonSchema": {
+                                    "name": "response",
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "foo": {"type": "string"},
                                         },
-                                        "strict": True,
+                                        "required": ["foo"],
+                                        "additionalProperties": False,
                                     },
-                                }
+                                    "strict": True,
+                                },
                             },
                         },
                     }
+                },
+                None,
+                {
+                    "jsonSchema": {
+                        "name": "response",
+                        "description": None,
+                        "schema": {
+                            "type": "object",
+                            "properties": {"foo": {"type": "string"}},
+                            "required": ["foo"],
+                            "additionalProperties": False,
+                        },
+                        "strict": True,
+                    },
                 },
                 id="with-output-schema",
             ),
@@ -709,32 +938,64 @@ class TestPromptMutations:
                             "invocationParameters": {"max_tokens": 1024, "temperature": 0.4},
                             "modelProvider": "ANTHROPIC",
                             "modelName": "claude-2",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "name": "get_weather",
-                                        "description": "Get the current weather in a given location",  # noqa: E501
-                                        "input_schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "location": {
-                                                    "type": "string",
-                                                    "description": "The city and state, e.g. San Francisco, CA",  # noqa: E501
+                            "tools": {
+                                "tools": [
+                                    {
+                                        "function": {
+                                            "name": "get_weather",
+                                            "description": "Get the current weather in a given location",
+                                            "parameters": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "location": {
+                                                        "type": "string",
+                                                        "description": "The city and state, e.g. San Francisco, CA",
+                                                    },
+                                                    "unit": {
+                                                        "type": "string",
+                                                        "enum": ["celsius", "fahrenheit"],
+                                                        "description": 'The unit of temperature, either "celsius" or "fahrenheit"',
+                                                    },
                                                 },
-                                                "unit": {
-                                                    "type": "string",
-                                                    "enum": ["celsius", "fahrenheit"],
-                                                    "description": 'The unit of temperature, either "celsius" or "fahrenheit"',  # noqa: E501
-                                                },
+                                                "required": ["location"],
                                             },
-                                            "required": ["location"],
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
+                {
+                    "tools": [
+                        {
+                            "function": {
+                                "name": "get_weather",
+                                "description": "Get the current weather in a given location",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "location": {
+                                            "type": "string",
+                                            "description": "The city and state, e.g. San Francisco, CA",
+                                        },
+                                        "unit": {
+                                            "type": "string",
+                                            "enum": ["celsius", "fahrenheit"],
+                                            "description": 'The unit of temperature, either "celsius" or "fahrenheit"',
+                                        },
+                                    },
+                                    "required": ["location"],
+                                },
+                                "strict": None,
+                            }
+                        }
+                    ],
+                    "toolChoice": None,
+                    "disableParallelToolCalls": None,
+                },
+                None,
                 id="with-valid-anthropic-tools",
             ),
         ],
@@ -744,6 +1005,8 @@ class TestPromptMutations:
         db: DbSessionFactory,
         gql_client: AsyncGraphQLClient,
         variables: dict[str, Any],
+        expected_tools_output: Any,
+        expected_rf_output: Any,
     ) -> None:
         # Create initial prompt
         create_prompt_result = await gql_client.execute(
@@ -795,10 +1058,8 @@ class TestPromptMutations:
         assert latest_prompt_version.pop("modelName") == expected_model_name
         expected_invocation_parameters = variables["input"]["promptVersion"]["invocationParameters"]
         assert latest_prompt_version.pop("invocationParameters") == expected_invocation_parameters
-        expected_tools = variables["input"]["promptVersion"].get("tools", [])
-        assert latest_prompt_version.pop("tools") == expected_tools
-        expected_response_format = variables["input"]["promptVersion"].get("responseFormat")
-        assert latest_prompt_version.pop("responseFormat") == expected_response_format
+        assert latest_prompt_version.pop("tools") == expected_tools_output
+        assert latest_prompt_version.pop("responseFormat") == expected_rf_output
         assert isinstance(latest_prompt_version.pop("id"), str)
 
         # Verify messages
@@ -904,31 +1165,34 @@ class TestPromptMutations:
                                 ]
                             },
                             "invocationParameters": {"temperature": 0.4},
-                            "modelProvider": "anthropic",
+                            "modelProvider": "anthropic",  # lowercase → invalid enum
                             "modelName": "claude-2",
-                            "tools": [
-                                {
-                                    "definition": {
-                                        "name": "get_weather",
-                                        "description": "Get the current weather in a given location",  # noqa: E501
-                                        "input_schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "location": {
-                                                    "type": "string",
-                                                    "description": "The city and state, e.g. San Francisco, CA",  # noqa: E501
+                            "tools": {
+                                "tools": [
+                                    {
+                                        "function": {
+                                            "name": "get_weather",
+                                            "description": "Get the current weather in a given location",
+                                            "parameters": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "location": {
+                                                        "type": "string",
+                                                        "description": "The city and state, e.g. San Francisco, CA",
+                                                    },
+                                                    "unit": {
+                                                        "type": "string",
+                                                        "enum": ["celsius", "fahrenheit"],
+                                                        "description": 'The unit of temperature, either "celsius" or "fahrenheit"',
+                                                    },
                                                 },
-                                                "unit": {
-                                                    "type": "string",
-                                                    "enum": ["celsius", "fahrenheit"],
-                                                    "description": 'The unit of temperature, either "celsius" or "fahrenheit"',  # noqa: E501
-                                                },
+                                                "required": ["location"],
                                             },
-                                            "required": ["location"],
                                         },
                                     }
-                                }
-                            ],
+                                ],
+                                "toolChoice": None,
+                            },
                         },
                     }
                 },
@@ -1008,6 +1272,39 @@ class TestPromptMutations:
                 },
                 id="with-valid-input",
             ),
+            pytest.param(
+                {
+                    "input": {
+                        "name": "prompt-name-copy",
+                        "description": "new prompt-description",
+                        "metadata": {"cloned": True, "source": "original"},
+                        "promptId": str(GlobalID("Prompt", "1")),
+                    }
+                },
+                {
+                    "input": {
+                        "name": "prompt-name",
+                        "description": "prompt-description",
+                        "metadata": {"environment": "staging", "version": "2.0"},
+                        "promptVersion": {
+                            "description": "initial-version",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {
+                                        "role": "USER",
+                                        "content": [{"text": {"text": "initial"}}],
+                                    }
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.4},
+                            "modelProvider": "OPENAI",
+                            "modelName": "o1-mini",
+                        },
+                    }
+                },
+                id="with-metadata-override",
+            ),
         ],
     )
     async def test_clone_prompt_succeeds_with_valid_input(
@@ -1039,6 +1336,9 @@ class TestPromptMutations:
         assert data.pop("name") != created_prompt["name"]
         assert data.pop("createdAt") is not None
         assert data.pop("description") != created_prompt["description"]
+        # Metadata should be overridden if provided, otherwise copied from original
+        expected_metadata = variables["input"].get("metadata", created_prompt["metadata"])
+        assert data.pop("metadata") == expected_metadata
         cloned_prompt_version = data["promptVersions"]["edges"][0].pop("promptVersion")
         assert cloned_prompt_version.pop("id") != created_prompt_version["id"]
         assert cloned_prompt_version.pop("description") == created_prompt_version["description"]
@@ -1121,3 +1421,372 @@ class TestPromptMutations:
             in result.errors[0].message
         )
         assert result.data is None
+
+    PATCH_PROMPT_MUTATION = """
+      mutation PatchPromptMutation($input: PatchPromptInput!) {
+        patchPrompt(input: $input) {
+          id
+          name
+          description
+          metadata
+        }
+      }
+    """
+
+    @pytest.mark.parametrize(
+        "variables, initial_prompt_variables, expected_description, expected_metadata",
+        [
+            pytest.param(
+                {
+                    "input": {
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "description": "updated description",
+                        "metadata": {"env": "staging", "version": "2.0"},
+                    }
+                },
+                {
+                    "input": {
+                        "name": "test-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod", "version": "1.0"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                "updated description",
+                {"env": "staging", "version": "2.0"},
+                id="update-both-fields",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "description": "only description updated",
+                    }
+                },
+                {
+                    "input": {
+                        "name": "test-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                "only description updated",
+                {"env": "prod"},  # metadata unchanged
+                id="update-description-only",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "metadata": {"new": "metadata"},
+                    }
+                },
+                {
+                    "input": {
+                        "name": "test-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                "original description",  # description unchanged
+                {"new": "metadata"},
+                id="update-metadata-only",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "description": None,
+                        "metadata": None,
+                    }
+                },
+                {
+                    "input": {
+                        "name": "test-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                None,  # cleared to null
+                {},  # cleared to empty dict
+                id="clear-both-with-null",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "metadata": None,
+                    }
+                },
+                {
+                    "input": {
+                        "name": "test-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                "original description",  # unchanged
+                {},  # cleared
+                id="clear-metadata-only",
+            ),
+        ],
+    )
+    async def test_patch_prompt_succeeds_with_valid_input(
+        self,
+        db: DbSessionFactory,
+        gql_client: AsyncGraphQLClient,
+        variables: dict[str, Any],
+        initial_prompt_variables: dict[str, Any],
+        expected_description: Optional[str],
+        expected_metadata: dict[str, Any],
+    ) -> None:
+        # Create initial prompt
+        create_result = await gql_client.execute(
+            self.CREATE_CHAT_PROMPT_MUTATION, initial_prompt_variables
+        )
+        assert not create_result.errors
+        assert create_result.data is not None
+
+        # Patch the prompt
+        result = await gql_client.execute(self.PATCH_PROMPT_MUTATION, variables)
+        assert not result.errors
+        assert result.data is not None
+
+        data = result.data["patchPrompt"]
+        assert data["name"] == initial_prompt_variables["input"]["name"]
+        assert data["description"] == expected_description
+        assert data["metadata"] == expected_metadata
+        assert isinstance(data["id"], str)
+
+    async def test_patch_prompt_fails_with_no_fields(
+        self, db: DbSessionFactory, gql_client: AsyncGraphQLClient
+    ) -> None:
+        # Create initial prompt
+        create_result = await gql_client.execute(
+            self.CREATE_CHAT_PROMPT_MUTATION,
+            {
+                "input": {
+                    "name": "test-prompt",
+                    "description": "original",
+                    "promptVersion": {
+                        "description": "v1",
+                        "templateFormat": "MUSTACHE",
+                        "template": {
+                            "messages": [{"role": "USER", "content": [{"text": {"text": "test"}}]}]
+                        },
+                        "invocationParameters": {"temperature": 0.5},
+                        "modelProvider": "OPENAI",
+                        "modelName": "gpt-4o",
+                    },
+                }
+            },
+        )
+        assert not create_result.errors
+
+        # Try to patch with no fields
+        result = await gql_client.execute(
+            self.PATCH_PROMPT_MUTATION,
+            {"input": {"promptId": str(GlobalID("Prompt", "1"))}},
+        )
+        assert len(result.errors) == 1
+        assert "No fields provided to update" in result.errors[0].message
+        assert result.data is None
+
+    async def test_patch_prompt_fails_with_nonexistent_prompt(
+        self, db: DbSessionFactory, gql_client: AsyncGraphQLClient
+    ) -> None:
+        result = await gql_client.execute(
+            self.PATCH_PROMPT_MUTATION,
+            {
+                "input": {
+                    "promptId": str(GlobalID("Prompt", "999")),
+                    "description": "test",
+                }
+            },
+        )
+        assert len(result.errors) == 1
+        assert "not found" in result.errors[0].message.lower()
+        assert result.data is None
+
+    @pytest.mark.parametrize(
+        "variables, initial_prompt_variables, expected_description, expected_metadata",
+        [
+            pytest.param(
+                {
+                    "input": {
+                        "name": "cloned-prompt",
+                        "promptId": str(GlobalID("Prompt", "1")),
+                    }
+                },
+                {
+                    "input": {
+                        "name": "original-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod", "version": "1.0"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                "original description",  # inherited
+                {"env": "prod", "version": "1.0"},  # inherited
+                id="clone-inherit-both-fields",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "name": "cloned-prompt",
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "description": None,
+                    }
+                },
+                {
+                    "input": {
+                        "name": "original-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                None,  # cleared to null
+                {"env": "prod"},  # inherited
+                id="clone-clear-description-inherit-metadata",
+            ),
+            pytest.param(
+                {
+                    "input": {
+                        "name": "cloned-prompt",
+                        "promptId": str(GlobalID("Prompt", "1")),
+                        "metadata": None,
+                    }
+                },
+                {
+                    "input": {
+                        "name": "original-prompt",
+                        "description": "original description",
+                        "metadata": {"env": "prod"},
+                        "promptVersion": {
+                            "description": "v1",
+                            "templateFormat": "MUSTACHE",
+                            "template": {
+                                "messages": [
+                                    {"role": "USER", "content": [{"text": {"text": "test"}}]}
+                                ]
+                            },
+                            "invocationParameters": {"temperature": 0.5},
+                            "modelProvider": "OPENAI",
+                            "modelName": "gpt-4o",
+                        },
+                    }
+                },
+                "original description",  # inherited
+                {},  # cleared
+                id="clone-inherit-description-clear-metadata",
+            ),
+        ],
+    )
+    async def test_clone_prompt_unset_semantics(
+        self,
+        db: DbSessionFactory,
+        gql_client: AsyncGraphQLClient,
+        variables: dict[str, Any],
+        initial_prompt_variables: dict[str, Any],
+        expected_description: Optional[str],
+        expected_metadata: dict[str, Any],
+    ) -> None:
+        # Create initial prompt
+        create_result = await gql_client.execute(
+            self.CREATE_CHAT_PROMPT_MUTATION, initial_prompt_variables
+        )
+        assert not create_result.errors
+        assert create_result.data is not None
+
+        # Clone the prompt
+        result = await gql_client.execute(self.CLONE_PROMPT_MUTATION, variables)
+        assert not result.errors
+        assert result.data is not None
+
+        data = result.data["clonePrompt"]
+        assert data["name"] == variables["input"]["name"]
+        assert data["description"] == expected_description
+        assert data["metadata"] == expected_metadata
+        assert isinstance(data["id"], str)

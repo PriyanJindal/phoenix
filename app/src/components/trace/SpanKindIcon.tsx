@@ -1,7 +1,6 @@
-import React from "react";
 import { css } from "@emotion/react";
 
-import { useTheme } from "@phoenix/contexts";
+import { useSpanKindColor } from "./useSpanKindColor";
 
 const ToolSVG = () => (
   <svg
@@ -542,6 +541,57 @@ const GuardrailFilledSVG = () => (
   </svg>
 );
 
+const PromptSVG = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <rect
+      x="0.5"
+      y="0.5"
+      width="19"
+      height="19"
+      rx="3.5"
+      stroke="currentColor"
+      strokeOpacity="0.9"
+    />
+    <path
+      d="M4.5 15.5V5.5C4.5 5 5 4.5 5.5 4.5H14.5C15 4.5 15.5 5 15.5 5.5V12.5C15.5 13 15 13.5 14.5 13.5H8C7.8 13.5 7.6 13.55 7.45 13.65L4.5 15.5Z"
+      stroke="currentColor"
+      strokeOpacity="1"
+      strokeWidth="1.1"
+    />
+  </svg>
+);
+
+const PromptFilledSVG = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <rect
+      x="0.5"
+      y="0.5"
+      width="19"
+      height="19"
+      rx="3.5"
+      fill="currentColor"
+      stroke="currentColor"
+    />
+    <path
+      d="M4.5 15.5V5.5C4.5 5 5 4.5 5.5 4.5H14.5C15 4.5 15.5 5 15.5 5.5V12.5C15.5 13 15 13.5 14.5 13.5H8C7.8 13.5 7.6 13.55 7.45 13.65L4.5 15.5Z"
+      stroke="black"
+      strokeWidth="1.05"
+    />
+  </svg>
+);
+
 export function SpanKindIcon({
   spanKind,
   variant = "fill",
@@ -549,74 +599,46 @@ export function SpanKindIcon({
   spanKind: string;
   variant?: "fill" | "outline";
 }) {
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
   const isFilled = variant === "fill";
   let icon = isFilled ? <UnknownFilledSVG /> : <UnknownSVG />;
-  let color = isDark
-    ? "--ac-global-color-grey-600"
-    : "--ac-global-color-grey-200";
+  const color = useSpanKindColor({ spanKind });
   switch (spanKind) {
     case "llm":
-      color = isDark
-        ? "--ac-global-color-orange-1000"
-        : "--ac-global-color-orange-500";
       icon = isFilled ? <LLMFilledSVG /> : <LLMSVG />;
       break;
     case "chain":
-      color = isDark
-        ? "--ac-global-color-blue-1000"
-        : "--ac-global-color-blue-500";
       icon = isFilled ? <ChainFilledSVG /> : <ChainSVG />;
       break;
     case "retriever":
-      color = isDark
-        ? "--ac-global-color-seafoam-1000"
-        : "--ac-global-color-seafoam-500";
       icon = isFilled ? <RetrieverFilledSVG /> : <RetrieverSVG />;
       break;
     case "embedding":
-      color = isDark
-        ? "--ac-global-color-indigo-1000"
-        : "--ac-global-color-indigo-500";
       icon = isFilled ? <EmbeddingFilledSVG /> : <EmbeddingSVG />;
       break;
     case "agent":
-      color = isDark
-        ? "--ac-global-color-grey-600"
-        : "--ac-global-color-grey-300";
       icon = isFilled ? <AgentFilledSVG /> : <AgentSVG />;
       break;
     case "tool":
-      color = isDark
-        ? "--ac-global-color-yellow-1200"
-        : "--ac-global-color-yellow-500";
       icon = isFilled ? <ToolFilledSVG /> : <ToolSVG />;
       break;
     case "reranker":
-      color = isDark
-        ? "--ac-global-color-celery-1000"
-        : "--ac-global-color-celery-500";
       icon = isFilled ? <RerankerFilledSVG /> : <RerankerSVG />;
       break;
     case "evaluator":
-      color = isDark
-        ? "--ac-global-color-indigo-1000"
-        : "--ac-global-color-indigo-500";
       icon = isFilled ? <EvaluatorFilledSVG /> : <EvaluatorSVG />;
       break;
     case "guardrail":
-      color = isDark
-        ? "--ac-global-color-fuchsia-1200"
-        : "--ac-global-color-fuchsia-500";
       icon = isFilled ? <GuardrailFilledSVG /> : <GuardrailSVG />;
+      break;
+    case "prompt":
+      icon = isFilled ? <PromptFilledSVG /> : <PromptSVG />;
       break;
   }
 
   return (
     <div
       css={css`
-        color: var(${color});
+        color: ${color};
         width: 20px;
         height: 20px;
       `}

@@ -1,20 +1,24 @@
-import React from "react";
 import { css } from "@emotion/react";
 
-import { EmptyGraphic } from "@arizeai/components";
-
-import { ExternalLink, Flex, View } from "@phoenix/components";
-
-import { ErrorBoundaryFallbackProps } from "./types";
+import { Button } from "../core/button";
+import { ExternalLink } from "../core/ExternalLink";
+import { Flex } from "../core/layout";
+import { View } from "../core/view";
+import { isConnectionTimeoutError } from "./isConnectionTimeoutError";
+import type { ErrorBoundaryFallbackProps } from "./types";
 
 export function BugReportErrorBoundaryFallback({
   error,
 }: ErrorBoundaryFallbackProps) {
+  // Check if this is a connection timeout error
+  if (isConnectionTimeoutError(error)) {
+    return <ConnectionTimeoutFallback error={error} />;
+  }
+
   return (
     <View padding="size-200">
       <Flex direction="column">
         <Flex direction="column" width="100%" alignItems="center">
-          <EmptyGraphic graphicKey="error" />
           <h1>Something went wrong</h1>
         </Flex>
         <p>
@@ -43,6 +47,65 @@ export function BugReportErrorBoundaryFallback({
             {error}
           </pre>
         </details>
+      </Flex>
+    </View>
+  );
+}
+
+function ConnectionTimeoutFallback({
+  error,
+}: {
+  error: string | null | undefined;
+}) {
+  return (
+    <View padding="size-200">
+      <Flex direction="column">
+        <Flex direction="column" width="100%" alignItems="center">
+          <h1>Connection timed out</h1>
+        </Flex>
+        <p>
+          The connection to the Phoenix server timed out before a response was
+          received. This typically happens when a load balancer or proxy closes
+          the connection before the server can respond.
+        </p>
+        <p>Possible solutions:</p>
+        <ul
+          css={css`
+            margin: var(--global-dimension-static-size-100) 0;
+            padding-left: var(--global-dimension-static-size-300);
+          `}
+        >
+          <li>Increase your load balancer or proxy timeout settings</li>
+          <li>Check if the Phoenix server is overloaded or slow to respond</li>
+          <li>Verify network connectivity between components</li>
+        </ul>
+        <Flex direction="row" width="100%" justifyContent="end">
+          <Button
+            variant="primary"
+            size="S"
+            onPress={() => {
+              window.location.reload();
+            }}
+          >
+            Retry
+          </Button>
+        </Flex>
+        {error && (
+          <details>
+            <summary>error details</summary>
+            <pre
+              css={css`
+                white-space: pre-wrap;
+                overflow-wrap: break-word;
+                overflow: hidden;
+                overflow-y: auto;
+                max-height: 500px;
+              `}
+            >
+              {error}
+            </pre>
+          </details>
+        )}
       </Flex>
     </View>
   );

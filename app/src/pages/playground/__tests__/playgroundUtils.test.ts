@@ -1,16 +1,11 @@
+import type { InvocationParameter } from "@phoenix/components/playground/model/InvocationParametersFormFields";
 import { TemplateFormats } from "@phoenix/components/templateEditor/constants";
 import { DEFAULT_MODEL_PROVIDER } from "@phoenix/constants/generativeConstants";
-import { LlmProviderToolDefinition } from "@phoenix/schemas";
-import { LlmProviderToolCall } from "@phoenix/schemas/toolCallSchemas";
-import {
-  _resetInstanceId,
-  _resetMessageId,
-  createOpenAIResponseFormat,
-  PlaygroundInput,
-  PlaygroundInstance,
-} from "@phoenix/store";
+import type { LlmProviderToolCall } from "@phoenix/schemas/toolCallSchemas";
+import type { PlaygroundInput, PlaygroundInstance } from "@phoenix/store";
+import { _resetInstanceId, _resetMessageId } from "@phoenix/store";
+import type { CanonicalToolDefinition } from "@phoenix/store/playground";
 
-import { InvocationParameterInput } from "../__generated__/PlaygroundDatasetExamplesTableSubscription.graphql";
 import {
   INPUT_MESSAGES_PARSING_ERROR,
   MODEL_CONFIG_PARSING_ERROR,
@@ -22,11 +17,17 @@ import {
   SPAN_ATTRIBUTES_PARSING_ERROR,
   TOOLS_PARSING_ERROR,
 } from "../constants";
-import { InvocationParameter } from "../InvocationParametersFormFields";
+import type { InvocationParameterInput } from "../invocationParameterUtils";
 import {
   areInvocationParamsEqual,
+  mergeInvocationParametersWithDefaults,
+} from "../invocationParameterUtils";
+import {
   areRequiredInvocationParametersConfigured,
+  extractRootVariable,
+  extractRootVariables,
   extractVariablesFromInstances,
+  getAzureConfigFromAttributes,
   getBaseModelConfigFromAttributes,
   getChatRole,
   getModelInvocationParametersFromAttributes,
@@ -35,26 +36,24 @@ import {
   getPromptTemplateVariablesFromAttributes,
   getTemplateMessagesFromAttributes,
   getToolsFromAttributes,
+  getResponseFormatFromAttributes,
+  getToolChoiceFromAttributes,
   getVariablesMapFromInstances,
-  mergeInvocationParametersWithDefaults,
-  normalizeMessageContent,
   processAttributeToolCalls,
   transformSpanAttributesToPlaygroundInstance,
 } from "../playgroundUtils";
-import { PlaygroundSpan } from "../spanPlaygroundPageLoader";
-
+import type { PlaygroundSpan } from "../spanPlaygroundPageLoader";
+import type { SpanTool, SpanToolCall } from "./fixtures";
 import {
   basePlaygroundSpan,
   expectedAnthropicToolCall,
   expectedTestOpenAIToolCall,
   expectedUnknownToolCall,
   spanAttributesWithInputMessages,
-  SpanTool,
-  SpanToolCall,
-  tesSpanAnthropicTool,
-  testSpanAnthropicToolDefinition,
+  testSpanAnthropicTool,
+  testSpanAnthropicToolCanonical,
   testSpanOpenAITool,
-  testSpanOpenAIToolJsonSchema,
+  testSpanOpenAIToolCanonical,
   testSpanToolCall,
 } from "./fixtures";
 
@@ -68,8 +67,17 @@ const baseTestPlaygroundInstance: PlaygroundInstance = {
     supportedInvocationParameters: [],
   },
   tools: [],
-  toolChoice: "auto",
-  spanId: null,
+  toolChoice: { type: "ZERO_OR_MORE" },
+  repetitions: {
+    1: {
+      output: null,
+      spanId: null,
+      error: null,
+      status: "notStarted",
+      toolCalls: {},
+    },
+  },
+  selectedRepetitionNumber: 1,
   template: {
     __type: "chat",
     messages: [],
@@ -86,8 +94,17 @@ const expectedPlaygroundInstanceWithIO: PlaygroundInstance = {
     supportedInvocationParameters: [],
   },
   tools: [],
-  toolChoice: "auto",
-  spanId: "fake-span-global-id",
+  toolChoice: { type: "ZERO_OR_MORE" },
+  repetitions: {
+    1: {
+      output: [{ id: 4, content: "This is an AI Answer", role: "ai" }],
+      spanId: "fake-span-global-id",
+      error: null,
+      status: "finished",
+      toolCalls: {},
+    },
+  },
+  selectedRepetitionNumber: 1,
   template: {
     __type: "chat",
     // These id's are not 0, 1, 2, because we create a playground instance (including messages) at the top of the transformSpanAttributesToPlaygroundInstance function
@@ -97,7 +114,6 @@ const expectedPlaygroundInstanceWithIO: PlaygroundInstance = {
       { id: 3, content: "hello?", role: "user" },
     ],
   },
-  output: [{ id: 4, content: "This is an AI Answer", role: "ai" }],
 };
 
 const defaultTemplate = {
@@ -136,7 +152,16 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
           supportedInvocationParameters: [],
         },
         template: defaultTemplate,
-        output: undefined,
+        repetitions: {
+          1: {
+            output: null,
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "notStarted",
+            toolCalls: {},
+          },
+        },
+        selectedRepetitionNumber: 1,
       },
       parsingErrors: [SPAN_ATTRIBUTES_PARSING_ERROR],
     });
@@ -156,7 +181,16 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
           modelName: "gpt-4o",
         },
         template: defaultTemplate,
-        output: undefined,
+        repetitions: {
+          1: {
+            output: null,
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "finished",
+            toolCalls: {},
+          },
+        },
+        selectedRepetitionNumber: 1,
       },
       playgroundInput: undefined,
       parsingErrors: [
@@ -184,7 +218,15 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
     expect(transformSpanAttributesToPlaygroundInstance(span)).toEqual({
       playgroundInstance: {
         ...expectedPlaygroundInstanceWithIO,
-        output: undefined,
+        repetitions: {
+          1: {
+            output: null,
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "finished",
+            toolCalls: {},
+          },
+        },
       },
       parsingErrors: [
         OUTPUT_MESSAGES_PARSING_ERROR,
@@ -211,8 +253,15 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
     expect(transformSpanAttributesToPlaygroundInstance(span)).toEqual({
       playgroundInstance: {
         ...expectedPlaygroundInstanceWithIO,
-
-        output: "This is an AI Answer",
+        repetitions: {
+          1: {
+            output: "This is an AI Answer",
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "finished",
+            toolCalls: {},
+          },
+        },
       },
       parsingErrors: [OUTPUT_MESSAGES_PARSING_ERROR],
     });
@@ -274,7 +323,15 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
             },
           ],
         },
-        output: [{ id: 3, content: "This is an AI Answer", role: "ai" }],
+        repetitions: {
+          1: {
+            output: [{ id: 3, content: "This is an AI Answer", role: "ai" }],
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "finished",
+            toolCalls: {},
+          },
+        },
       },
       parsingErrors: [],
     });
@@ -325,7 +382,15 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
             },
           ],
         },
-        output: [{ id: 3, content: "This is an AI Answer", role: "ai" }],
+        repetitions: {
+          1: {
+            output: [{ id: 3, content: "This is an AI Answer", role: "ai" }],
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "finished",
+            toolCalls: {},
+          },
+        },
       },
       parsingErrors: [],
     });
@@ -369,10 +434,19 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
         tools: [
           {
             id: expect.any(Number),
-            definition: testSpanOpenAIToolJsonSchema,
+            editorType: "json",
+            definition: testSpanOpenAIToolCanonical,
           },
         ],
-        output: [{ id: 4, content: "This is an AI Answer", role: "ai" }],
+        repetitions: {
+          1: {
+            output: [{ id: 4, content: "This is an AI Answer", role: "ai" }],
+            spanId: "fake-span-global-id",
+            error: null,
+            status: "finished",
+            toolCalls: {},
+          },
+        },
       },
       parsingErrors: [],
     });
@@ -468,7 +542,21 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
           ...spanAttributesWithInputMessages.llm,
           // only parameters defined on the span InvocationParameter[] field are parsed
           // note that snake case keys are automatically converted to camel case
-          invocation_parameters: `{"top_p": 0.5, "max_tokens": 100, "seed": 12345, "stop": ["stop", "me"], "response_format": ${JSON.stringify(createOpenAIResponseFormat())}}`,
+          invocation_parameters: `{"top_p": 0.5, "max_tokens": 100, "seed": 12345, "stop": ["stop", "me"], "response_format": ${JSON.stringify(
+            {
+              type: "json_schema",
+              json_schema: {
+                name: "response",
+                schema: {
+                  type: "object",
+                  properties: {},
+                  required: [],
+                  additionalProperties: false,
+                },
+                strict: true,
+              },
+            }
+          )}}`,
         },
       }),
     };
@@ -477,6 +565,19 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
         ...expectedPlaygroundInstanceWithIO,
         model: {
           ...expectedPlaygroundInstanceWithIO.model,
+          responseFormat: {
+            type: "json_schema",
+            jsonSchema: {
+              name: "response",
+              schema: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false,
+              },
+              strict: true,
+            },
+          },
           invocationParameters: [
             {
               canonicalName: "TOP_P",
@@ -497,11 +598,6 @@ describe("transformSpanAttributesToPlaygroundInstance", () => {
               canonicalName: "STOP_SEQUENCES",
               invocationName: "stop",
               valueStringList: ["stop", "me"],
-            },
-            {
-              canonicalName: "RESPONSE_FORMAT",
-              invocationName: "response_format",
-              valueJson: createOpenAIResponseFormat(),
             },
           ],
         },
@@ -741,6 +837,10 @@ describe("processAttributeToolCalls", () => {
   const ProviderToToolCallTestMap: ProviderToolCallTestMap = {
     ANTHROPIC: ["ANTHROPIC", testSpanToolCall, expectedAnthropicToolCall],
     OPENAI: ["OPENAI", testSpanToolCall, expectedTestOpenAIToolCall],
+    AWS: ["AWS", testSpanToolCall, expectedTestOpenAIToolCall],
+    DEEPSEEK: ["DEEPSEEK", testSpanToolCall, expectedTestOpenAIToolCall],
+    XAI: ["XAI", testSpanToolCall, expectedTestOpenAIToolCall],
+    OLLAMA: ["OLLAMA", testSpanToolCall, expectedTestOpenAIToolCall],
     AZURE_OPENAI: [
       "AZURE_OPENAI",
       testSpanToolCall,
@@ -748,6 +848,12 @@ describe("processAttributeToolCalls", () => {
     ],
     // TODO(apowell): #5348 Add Google tool tests
     GOOGLE: ["GOOGLE", testSpanToolCall, expectedUnknownToolCall],
+    CEREBRAS: ["CEREBRAS", testSpanToolCall, expectedTestOpenAIToolCall],
+    FIREWORKS: ["FIREWORKS", testSpanToolCall, expectedTestOpenAIToolCall],
+    GROQ: ["GROQ", testSpanToolCall, expectedTestOpenAIToolCall],
+    MOONSHOT: ["MOONSHOT", testSpanToolCall, expectedTestOpenAIToolCall],
+    PERPLEXITY: ["PERPLEXITY", testSpanToolCall, expectedTestOpenAIToolCall],
+    TOGETHER: ["TOGETHER", testSpanToolCall, expectedTestOpenAIToolCall],
   };
   test.for(Object.values(ProviderToToolCallTestMap))(
     "should return %s tools, if they are valid",
@@ -963,7 +1069,6 @@ describe("getModelConfigFromAttributes", () => {
         invocationParameters: [],
         supportedInvocationParameters: [],
         baseUrl: "https://api.openai.com/v1/chat/completions",
-        endpoint: "https://api.openai.com",
       },
       parsingErrors: [],
     });
@@ -994,14 +1099,12 @@ describe("getModelConfigFromAttributes", () => {
         invocationParameters: [],
         supportedInvocationParameters: [],
         baseUrl: "https://api.openai.com/v1/",
-        endpoint: "https://api.openai.com",
-        apiVersion: "2020-05-03",
       },
       parsingErrors: [],
     });
   });
 
-  it("should return apiVersion if url.full contains api-version in params", () => {
+  it("should not set apiVersion for non-Azure providers even if url contains api-version", () => {
     const parsedAttributes = {
       llm: {
         model_name: "gpt-3.5-turbo",
@@ -1025,8 +1128,6 @@ describe("getModelConfigFromAttributes", () => {
         invocationParameters: [],
         supportedInvocationParameters: [],
         baseUrl: "https://api.openai.com/v1/chat/completions",
-        endpoint: "https://api.openai.com",
-        apiVersion: "2020-05-03",
       },
       parsingErrors: [],
     });
@@ -1133,8 +1234,17 @@ describe("getVariablesMapFromInstances", () => {
       supportedInvocationParameters: [],
     },
     tools: [],
-    toolChoice: "auto",
-    spanId: null,
+    toolChoice: { type: "ZERO_OR_MORE" },
+    repetitions: {
+      1: {
+        output: null,
+        spanId: null,
+        error: null,
+        status: "notStarted",
+        toolCalls: {},
+      },
+    },
+    selectedRepetitionNumber: 1,
     template: {
       __type: "chat",
       messages: [],
@@ -1253,10 +1363,71 @@ describe("getVariablesMapFromInstances", () => {
   });
 });
 
+describe("getResponseFormatFromAttributes", () => {
+  it("should parse AWS outputConfig with schema as JSON string into responseFormat", () => {
+    const schemaString = JSON.stringify({
+      type: "object",
+      title: "MathReasoning",
+      properties: {
+        steps: { type: "array", items: { $ref: "#/$defs/Step" } },
+        final_answer: { type: "string", title: "Final Answer" },
+      },
+      required: ["steps", "final_answer"],
+      additionalProperties: false,
+    });
+    const parsedAttributes = {
+      llm: {
+        invocation_parameters: JSON.stringify({
+          inferenceConfig: { maxTokens: 1024 },
+          outputConfig: {
+            textFormat: {
+              type: "json_schema",
+              structure: {
+                jsonSchema: {
+                  schema: schemaString,
+                  name: "response",
+                },
+              },
+            },
+          },
+        }),
+      },
+    };
+    const result = getResponseFormatFromAttributes(parsedAttributes, "AWS");
+    expect(result.parsingErrors).toEqual([]);
+    expect(result.responseFormat).toEqual({
+      type: "json_schema",
+      jsonSchema: {
+        name: "response",
+        schema: JSON.parse(schemaString),
+      },
+    });
+  });
+});
+
+describe("getToolChoiceFromAttributes", () => {
+  it("should parse AWS Bedrock toolChoice shape { tool: { name } } as SPECIFIC_FUNCTION", () => {
+    const parsedAttributes = {
+      llm: {
+        invocation_parameters: JSON.stringify({
+          inferenceConfig: { maxTokens: 1024 },
+          toolConfig: {
+            toolChoice: { tool: { name: "new_function_1" } },
+          },
+        }),
+      },
+    };
+    expect(getToolChoiceFromAttributes(parsedAttributes)).toEqual({
+      type: "SPECIFIC_FUNCTION",
+      functionName: "new_function_1",
+    });
+  });
+});
+
 type ProviderToolTestTuple<T extends ModelProvider> = [
   T,
   SpanTool,
-  LlmProviderToolDefinition,
+  CanonicalToolDefinition,
 ];
 
 type ProviderToolTestMap = {
@@ -1267,17 +1438,27 @@ describe("getToolsFromAttributes", () => {
   const ProviderToToolTestMap: ProviderToolTestMap = {
     ANTHROPIC: [
       "ANTHROPIC",
-      tesSpanAnthropicTool,
-      testSpanAnthropicToolDefinition,
+      testSpanAnthropicTool,
+      testSpanAnthropicToolCanonical,
     ],
-    OPENAI: ["OPENAI", testSpanOpenAITool, testSpanOpenAIToolJsonSchema],
+    OPENAI: ["OPENAI", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    AWS: ["AWS", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    DEEPSEEK: ["DEEPSEEK", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    XAI: ["XAI", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    OLLAMA: ["OLLAMA", testSpanOpenAITool, testSpanOpenAIToolCanonical],
     AZURE_OPENAI: [
       "AZURE_OPENAI",
       testSpanOpenAITool,
-      testSpanOpenAIToolJsonSchema,
+      testSpanOpenAIToolCanonical,
     ],
     // TODO(apowell): #5348 Add Google tool tests
-    GOOGLE: ["GOOGLE", testSpanOpenAITool, testSpanOpenAIToolJsonSchema],
+    GOOGLE: ["GOOGLE", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    CEREBRAS: ["CEREBRAS", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    FIREWORKS: ["FIREWORKS", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    GROQ: ["GROQ", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    MOONSHOT: ["MOONSHOT", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    PERPLEXITY: ["PERPLEXITY", testSpanOpenAITool, testSpanOpenAIToolCanonical],
+    TOGETHER: ["TOGETHER", testSpanOpenAITool, testSpanOpenAIToolCanonical],
   };
 
   test.for(Object.values(ProviderToToolTestMap))(
@@ -1293,6 +1474,7 @@ describe("getToolsFromAttributes", () => {
         tools: [
           {
             id: expect.any(Number),
+            editorType: "json",
             definition: toolDefinition,
           },
         ],
@@ -1576,72 +1758,174 @@ describe("mergeInvocationParametersWithDefaults", () => {
   });
 });
 
-describe("normalizeMessageContent", () => {
-  it("should return unknown json content as a string", () => {
-    const content = "Hello, world!";
-    expect(normalizeMessageContent(content)).toBe('"Hello, world!"');
-    const content2 = ".123";
-    expect(normalizeMessageContent(content2)).toBe('".123"');
-    const content3 = "True";
-    expect(normalizeMessageContent(content3)).toBe('"True"');
-    const content4 = "False";
-    expect(normalizeMessageContent(content4)).toBe('"False"');
-    const content5 = "Null";
-    expect(normalizeMessageContent(content5)).toBe('"Null"');
-    const content6 = "a";
-    expect(normalizeMessageContent(content6)).toBe('"a"');
-    const content7 = "u";
-    expect(normalizeMessageContent(content7)).toBe('"u"');
+describe("getAzureConfigFromAttributes", () => {
+  it("returns values from URL when only URL is present (URL precedence)", () => {
+    const attrs = {
+      url: {
+        full: "https://example.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-10-01-preview",
+      },
+    };
+
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "gpt-4o-mini",
+      endpoint: "https://example.openai.azure.com",
+    });
   });
 
-  it("should return the content as a stringified JSON with pretty printing if it is an object", () => {
-    const content = { foo: "bar" };
-    expect(normalizeMessageContent(content)).toBe(
-      JSON.stringify(content, null, 2)
-    );
+  it("falls back to metadata.ls_model_name when URL is absent", () => {
+    const attrs = {
+      metadata: {
+        ls_model_name: "my-azure-deployment",
+      },
+    };
+
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "my-azure-deployment",
+      endpoint: null,
+    });
   });
 
-  it("should return the content as a string if it is a number", () => {
-    const content = 123;
-    expect(normalizeMessageContent(content)).toBe("123");
-    const content2 = 123.456;
-    expect(normalizeMessageContent(content2)).toBe("123.456");
-    const content3 = -123.456;
-    expect(normalizeMessageContent(content3)).toBe("-123.456");
-    const content4 = 0;
-    expect(normalizeMessageContent(content4)).toBe("0");
-    const content6 = 0.5;
-    expect(normalizeMessageContent(content6)).toBe("0.5");
+  it("prefers URL deployment name over metadata when both are present", () => {
+    const attrs = {
+      url: {
+        full: "https://example.openai.azure.com/openai/deployments/url-deploy/chat/completions?api-version=2024-06-01",
+      },
+      metadata: {
+        ls_model_name: "meta-deploy",
+      },
+    };
+
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "url-deploy",
+      endpoint: "https://example.openai.azure.com",
+    });
   });
 
-  it("should return the content as a string if it is a boolean", () => {
-    const content = true;
-    expect(normalizeMessageContent(content)).toBe("true");
-    const content2 = false;
-    expect(normalizeMessageContent(content2)).toBe("false");
+  it("returns nulls when neither URL nor metadata are present", () => {
+    const attrs = {};
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: null,
+      endpoint: null,
+    });
   });
 
-  it("should return the content as a string if it is null", () => {
-    const content = null;
-    expect(normalizeMessageContent(content)).toBe("null");
+  it("handles malformed URL by falling back to metadata", () => {
+    const attrs = {
+      url: {
+        full: "not a valid url",
+      },
+      metadata: {
+        ls_model_name: "meta-deploy",
+      },
+    };
+
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "meta-deploy",
+      endpoint: null,
+    });
   });
 
-  it("should return the content as a string if it is an array", () => {
-    const content = [1, "2", 3, { foo: "bar" }];
-    expect(normalizeMessageContent(content)).toBe(
-      `[
-  1,
-  "2",
-  3,
-  {
-    "foo": "bar"
-  }
-]`
-    );
+  it("parses deployment when URL path ends with trailing slash", () => {
+    const attrs = {
+      url: {
+        full: "https://example.openai.azure.com/openai/deployments/url-deploy/",
+      },
+    };
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "url-deploy",
+      endpoint: "https://example.openai.azure.com",
+    });
   });
 
-  it("should handle double quoted strings", () => {
-    const content = `"\\"Hello, world!\\""`;
-    expect(normalizeMessageContent(content)).toBe(`"Hello, world!"`);
+  it("does not override metadata when URL has no deployments segment", () => {
+    const attrs = {
+      url: {
+        full: "https://example.openai.azure.com/openai/chat/completions",
+      },
+      metadata: {
+        ls_model_name: "meta-deploy",
+      },
+    };
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "meta-deploy",
+      endpoint: "https://example.openai.azure.com",
+    });
+  });
+
+  it("trims ls_model_name from metadata", () => {
+    const attrs = {
+      metadata: {
+        ls_model_name: "  meta-deploy  ",
+      },
+    };
+    const result = getAzureConfigFromAttributes(attrs);
+    expect(result).toEqual({
+      deploymentName: "meta-deploy",
+      endpoint: null,
+    });
+  });
+});
+
+describe("extractRootVariable", () => {
+  it("should return simple variable names unchanged", () => {
+    expect(extractRootVariable("name")).toBe("name");
+    expect(extractRootVariable("input")).toBe("input");
+    expect(extractRootVariable("reference")).toBe("reference");
+  });
+
+  it("should extract root from dot notation paths", () => {
+    expect(extractRootVariable("reference.label")).toBe("reference");
+    expect(extractRootVariable("user.name")).toBe("user");
+    expect(extractRootVariable("input.input.messages")).toBe("input");
+    expect(extractRootVariable("user.address.city")).toBe("user");
+  });
+
+  it("should extract root from bracket notation", () => {
+    expect(extractRootVariable("items[0]")).toBe("items");
+    expect(extractRootVariable("reference[label]")).toBe("reference");
+  });
+
+  it("should extract root from mixed notation", () => {
+    expect(extractRootVariable("items[0].name")).toBe("items");
+    expect(extractRootVariable("user.addresses[0].city")).toBe("user");
+  });
+
+  it("should handle empty string", () => {
+    expect(extractRootVariable("")).toBe("");
+  });
+});
+
+describe("extractRootVariables", () => {
+  it("should extract unique root variables from paths", () => {
+    const paths = [
+      "input.input.messages",
+      "reference.label",
+      "input.question",
+      "metadata",
+    ];
+    const result = extractRootVariables(paths);
+    expect(result).toEqual(["input", "reference", "metadata"]);
+  });
+
+  it("should return empty array for empty input", () => {
+    expect(extractRootVariables([])).toEqual([]);
+  });
+
+  it("should deduplicate root variables", () => {
+    const paths = [
+      "user.name",
+      "user.email",
+      "user.address.city",
+      "reference.label",
+    ];
+    const result = extractRootVariables(paths);
+    expect(result).toEqual(["user", "reference"]);
   });
 });

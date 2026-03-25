@@ -1,21 +1,35 @@
-import React from "react";
-import { graphql, useFragment, useMutation } from "react-relay";
-import { useLoaderData, useRevalidator } from "react-router";
+import {
+  graphql,
+  useMutation,
+  usePreloadedQuery,
+  useRefetchableFragment,
+} from "react-relay";
+import { useLoaderData } from "react-router";
+import invariant from "tiny-invariant";
 
-import { Card } from "@arizeai/components";
-
-import { Button, DialogTrigger, Icon, Icons, Modal } from "@phoenix/components";
-import { AnnotationConfigDialog } from "@phoenix/pages/settings/AnnotationConfigDialog";
+import {
+  Button,
+  Card,
+  DialogTrigger,
+  Icon,
+  Icons,
+  Modal,
+  ModalOverlay,
+} from "@phoenix/components";
+import { AnnotationConfigDialog } from "@phoenix/components/annotation/AnnotationConfigDialog";
 import { AnnotationConfigTable } from "@phoenix/pages/settings/AnnotationConfigTable";
-import { SettingsAnnotationsPageLoaderData } from "@phoenix/pages/settings/settingsAnnotationsPageLoader";
-import { AnnotationConfig } from "@phoenix/pages/settings/types";
+import type { SettingsAnnotationsPageLoaderType } from "@phoenix/pages/settings/settingsAnnotationsPageLoader";
+import { settingsAnnotationsPageLoaderGql } from "@phoenix/pages/settings/settingsAnnotationsPageLoader";
+import type { AnnotationConfig } from "@phoenix/pages/settings/types";
 import { getErrorMessagesFromRelayMutationError } from "@phoenix/utils/errorUtils";
 
-import { SettingsAnnotationsPageFragment$key } from "./__generated__/SettingsAnnotationsPageFragment.graphql";
+import type { SettingsAnnotationsPageFragment$key } from "./__generated__/SettingsAnnotationsPageFragment.graphql";
 
 export const SettingsAnnotationsPage = () => {
-  const annotations = useLoaderData() as SettingsAnnotationsPageLoaderData;
-  return <SettingsAnnotations annotations={annotations} />;
+  const loaderData = useLoaderData<SettingsAnnotationsPageLoaderType>();
+  invariant(loaderData, "loaderData is required");
+  const data = usePreloadedQuery(settingsAnnotationsPageLoaderGql, loaderData);
+  return <SettingsAnnotations annotations={data} />;
 };
 
 const SettingsAnnotations = ({
@@ -23,24 +37,26 @@ const SettingsAnnotations = ({
 }: {
   annotations: SettingsAnnotationsPageFragment$key;
 }) => {
-  const { revalidate } = useRevalidator();
-  const data = useFragment(
+  const [data, _refetch] = useRefetchableFragment(
     graphql`
-      fragment SettingsAnnotationsPageFragment on Query {
+      fragment SettingsAnnotationsPageFragment on Query
+      @refetchable(queryName: "SettingsAnnotationsPageFragmentQuery") {
         ...AnnotationConfigTableFragment
       }
     `,
     annotations
   );
 
+  const refetch = () => {
+    // without this fetchPolicy, you won't see changes due to the relay cache
+    _refetch({}, { fetchPolicy: "store-and-network" });
+  };
+
   const [deleteAnnotationConfigs] = useMutation(graphql`
     mutation SettingsAnnotationsPageDeleteAnnotationConfigsMutation(
       $input: DeleteAnnotationConfigsInput!
     ) {
       deleteAnnotationConfigs(input: $input) {
-        query {
-          ...AnnotationConfigTableFragment
-        }
         annotationConfigs {
           __typename
         }
@@ -53,19 +69,8 @@ const SettingsAnnotations = ({
       $input: CreateAnnotationConfigInput!
     ) {
       createAnnotationConfig(input: $input) {
-        query {
-          ...AnnotationConfigTableFragment
-        }
         annotationConfig {
-          ... on ContinuousAnnotationConfig {
-            id
-          }
-          ... on CategoricalAnnotationConfig {
-            id
-          }
-          ... on FreeformAnnotationConfig {
-            id
-          }
+          __typename
         }
       }
     }
@@ -83,15 +88,16 @@ const SettingsAnnotations = ({
       onError,
     }: { onCompleted?: () => void; onError?: (error: string) => void } = {}
   ) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _, annotationType, ...config } = _config;
     const key = annotationType.toLowerCase();
     createAnnotationConfig({
       variables: { input: { annotationConfig: { [key]: config } } },
-      onCompleted,
+      onCompleted: () => {
+        onCompleted?.();
+        refetch();
+      },
       onError: parseError(onError),
     });
-    revalidate();
   };
 
   const [updateAnnotationConfig] = useMutation(graphql`
@@ -101,17 +107,6 @@ const SettingsAnnotations = ({
       updateAnnotationConfig(input: $input) {
         query {
           ...AnnotationConfigTableFragment
-        }
-        annotationConfig {
-          ... on ContinuousAnnotationConfig {
-            id
-          }
-          ... on CategoricalAnnotationConfig {
-            id
-          }
-          ... on FreeformAnnotationConfig {
-            id
-          }
         }
       }
     }
@@ -124,7 +119,6 @@ const SettingsAnnotations = ({
       onError,
     }: { onCompleted?: () => void; onError?: (error: string) => void } = {}
   ) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, annotationType, ...config } = _config;
     const key = annotationType.toLowerCase();
     updateAnnotationConfig({
@@ -136,10 +130,12 @@ const SettingsAnnotations = ({
           },
         },
       },
-      onCompleted,
+      onCompleted: () => {
+        onCompleted?.();
+        refetch();
+      },
       onError: parseError(onError),
     });
-    revalidate();
   };
 
   const handleDeleteAnnotationConfig = (
@@ -151,28 +147,30 @@ const SettingsAnnotations = ({
   ) => {
     deleteAnnotationConfigs({
       variables: { input: { ids: [id] } },
-      onCompleted,
+      onCompleted: () => {
+        onCompleted?.();
+        refetch();
+      },
       onError: parseError(onError),
     });
-    revalidate();
   };
 
   return (
     <Card
       title="Annotation Configs"
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
       extra={
         <DialogTrigger>
           <Button size="S">
             <Icon svg={<Icons.PlusOutline />} />
             New Configuration
           </Button>
-          <Modal>
-            <AnnotationConfigDialog
-              onAddAnnotationConfig={handleAddAnnotationConfig}
-            />
-          </Modal>
+          <ModalOverlay>
+            <Modal>
+              <AnnotationConfigDialog
+                onAddAnnotationConfig={handleAddAnnotationConfig}
+              />
+            </Modal>
+          </ModalOverlay>
         </DialogTrigger>
       }
     >

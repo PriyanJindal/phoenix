@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b260f228c0065bed1680376b1d7eced2>>
+ * @generated SignedSource<<5e93685810b01465b956606350eb59b2>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -14,9 +14,13 @@ export type PromptsTable_prompts$data = {
   readonly prompts: {
     readonly edges: ReadonlyArray<{
       readonly prompt: {
-        readonly createdAt: string;
         readonly description: string | null;
         readonly id: string;
+        readonly labels: ReadonlyArray<{
+          readonly color: string | null;
+          readonly id: string;
+          readonly name: string;
+        }>;
         readonly name: string;
         readonly version: {
           readonly createdAt: string;
@@ -41,7 +45,14 @@ v1 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "createdAt",
+  "name": "id",
+  "storageKey": null
+},
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
   "storageKey": null
 };
 return {
@@ -52,9 +63,19 @@ return {
       "name": "after"
     },
     {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "filter"
+    },
+    {
       "defaultValue": 100,
       "kind": "LocalArgument",
       "name": "first"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "labelIds"
     }
   ],
   "kind": "Fragment",
@@ -84,7 +105,18 @@ return {
   "selections": [
     {
       "alias": "prompts",
-      "args": null,
+      "args": [
+        {
+          "kind": "Variable",
+          "name": "filter",
+          "variableName": "filter"
+        },
+        {
+          "kind": "Variable",
+          "name": "labelIds",
+          "variableName": "labelIds"
+        }
+      ],
       "concreteType": "PromptConnection",
       "kind": "LinkedField",
       "name": "__PromptsTable_prompts_connection",
@@ -106,20 +138,8 @@ return {
               "name": "node",
               "plural": false,
               "selections": [
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "id",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "name",
-                  "storageKey": null
-                },
+                (v1/*: any*/),
+                (v2/*: any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -127,7 +147,6 @@ return {
                   "name": "description",
                   "storageKey": null
                 },
-                (v1/*: any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -136,7 +155,33 @@ return {
                   "name": "version",
                   "plural": false,
                   "selections": [
-                    (v1/*: any*/)
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "createdAt",
+                      "storageKey": null
+                    }
+                  ],
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "concreteType": "PromptLabel",
+                  "kind": "LinkedField",
+                  "name": "labels",
+                  "plural": true,
+                  "selections": [
+                    (v1/*: any*/),
+                    (v2/*: any*/),
+                    {
+                      "alias": null,
+                      "args": null,
+                      "kind": "ScalarField",
+                      "name": "color",
+                      "storageKey": null
+                    }
                   ],
                   "storageKey": null
                 }
@@ -205,6 +250,6 @@ return {
 };
 })();
 
-(node as any).hash = "829c7cff273e0ebcfba1c0606c052d8b";
+(node as any).hash = "33daede08f0acc18f45f19692993314f";
 
 export default node;

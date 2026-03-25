@@ -1,31 +1,38 @@
-import React, { useMemo } from "react";
-import { graphql, useFragment } from "react-relay";
 import { css } from "@emotion/react";
+import { useMemo } from "react";
+import { graphql, useFragment } from "react-relay";
 
-import { Flex, Text } from "@phoenix/components";
+import { Flex, IDBadge, Text } from "@phoenix/components";
 import { LatencyText } from "@phoenix/components/trace/LatencyText";
 import { SpanKindToken } from "@phoenix/components/trace/SpanKindToken";
 import { SpanStatusCodeIcon } from "@phoenix/components/trace/SpanStatusCodeIcon";
-import { TokenCount } from "@phoenix/components/trace/TokenCount";
-import { fullTimeFormatter } from "@phoenix/utils/timeFormatUtils";
+import { SpanTokenCosts } from "@phoenix/components/trace/SpanTokenCosts";
+import { SpanTokenCount } from "@phoenix/components/trace/SpanTokenCount";
+import { useTimeFormatters } from "@phoenix/hooks";
 
-import { SpanHeader_span$key } from "./__generated__/SpanHeader_span.graphql";
+import type { SpanHeader_span$key } from "./__generated__/SpanHeader_span.graphql";
 
 type SpanHeaderProps = {
   span: SpanHeader_span$key;
 };
 export function SpanHeader(props: SpanHeaderProps) {
+  const { fullTimeFormatter } = useTimeFormatters();
   const span = useFragment(
     graphql`
       fragment SpanHeader_span on Span {
+        id
         name
         spanKind
+        spanId
         code: statusCode
         latencyMs
         startTime
-        tokenCountPrompt
-        tokenCountCompletion
         tokenCountTotal
+        costSummary {
+          total {
+            cost
+          }
+        }
       }
     `,
     props.span
@@ -50,11 +57,12 @@ export function SpanHeader(props: SpanHeaderProps) {
           <SpanStatusCodeIcon
             statusCode={span.code}
             css={css`
-              font-size: var(--ac-global-font-size-m);
+              font-size: var(--global-font-size-m);
             `}
           />
         </Flex>
         <Flex direction="row" gap="size-100" alignItems="center">
+          <IDBadge id={span.spanId} />
           {typeof span.latencyMs === "number" ? (
             <LatencyText latencyMs={span.latencyMs} size="S" />
           ) : null}
@@ -62,10 +70,16 @@ export function SpanHeader(props: SpanHeaderProps) {
             at {fullTimeFormatter(startTime)}
           </Text>
           {span.tokenCountTotal ? (
-            <TokenCount
+            <SpanTokenCount
               tokenCountTotal={span.tokenCountTotal}
-              tokenCountPrompt={span.tokenCountPrompt ?? 0}
-              tokenCountCompletion={span.tokenCountCompletion ?? 0}
+              nodeId={span.id}
+              size="S"
+            />
+          ) : null}
+          {span.costSummary?.total?.cost ? (
+            <SpanTokenCosts
+              totalCost={span.costSummary.total.cost}
+              spanNodeId={span.id}
               size="S"
             />
           ) : null}

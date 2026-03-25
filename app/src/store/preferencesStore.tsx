@@ -1,15 +1,76 @@
-import { create, StateCreator } from "zustand";
+import type { StateCreator } from "zustand";
+import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-import { LastNTimeRangeKey } from "@phoenix/components/datetime/types";
+import type { LastNTimeRangeKey } from "@phoenix/components/datetime/types";
+import type { PackageManager, ProgrammingLanguage } from "@phoenix/types/code";
+import {
+  pythonPackageManagers,
+  typescriptPackageManagers,
+} from "@phoenix/types/code";
+import { getSupportedTimezones } from "@phoenix/utils/timeUtils";
 
-import { ModelConfig } from "./playground";
+import type { ModelConfig } from "./playground";
+
+/**
+ * Per-language package manager preferences.
+ */
+export type PackageManagerByLanguage = Record<
+  ProgrammingLanguage,
+  PackageManager
+>;
+
+/**
+ * Available package managers for each programming language.
+ */
+export const packageManagersByLanguage: Record<
+  ProgrammingLanguage,
+  readonly PackageManager[]
+> = {
+  Python: pythonPackageManagers,
+  TypeScript: typescriptPackageManagers,
+};
+
+/**
+ * The default package manager preference for each language.
+ */
+const defaultPackageManagerByLanguage: PackageManagerByLanguage = {
+  Python: "pip",
+  TypeScript: "npm",
+};
 
 export type MarkdownDisplayMode = "text" | "markdown";
 
+export const awsBedrockModelPrefixes = [
+  "",
+  "apac",
+  "au",
+  "ca",
+  "eu",
+  "global",
+  "il",
+  "jp",
+  "us",
+  "us-gov",
+] as const;
+
+export type AwsBedrockModelPrefix = (typeof awsBedrockModelPrefixes)[number];
+
 export type ModelConfigByProvider = Partial<
-  Record<ModelProvider, Omit<ModelConfig, "supportedInvocationParameters">>
+  Record<
+    ModelProvider,
+    Omit<ModelConfig, "supportedInvocationParameters" | "customProvider">
+  >
 >;
+
+export type ProjectViewMode = "table" | "grid";
+
+export type ProjectSortOrder = {
+  column: "name" | "endTime";
+  direction: "asc" | "desc";
+};
+
+export type DisplayTimezone = string;
 
 export interface PreferencesProps {
   /**
@@ -44,11 +105,43 @@ export interface PreferencesProps {
    * Note: this is always false in environments that do not support streaming
    */
   playgroundStreamingEnabled: boolean;
-
   /**
    * Whether or not the span details are in annotating mode
    */
   isAnnotatingSpans: boolean;
+  /**
+   * The view mode for projects
+   */
+  projectViewMode: ProjectViewMode;
+  /**
+   * The sort order for projects
+   */
+  projectSortOrder: ProjectSortOrder;
+  /**
+   * Whether the side nav is open or closed
+   * @default true
+   */
+  isSideNavExpanded: boolean;
+  /**
+   * The timezone to display timestamps in
+   * @default undefined - use the browser's local timezone
+   */
+  displayTimezone?: DisplayTimezone;
+  /**
+   * The preferred programming language for code snippets
+   * @default "Python"
+   */
+  programmingLanguage: ProgrammingLanguage;
+  /**
+   * The preferred package manager for install commands, per language
+   */
+  packageManagerByLanguage: PackageManagerByLanguage;
+  /**
+   * The AWS Bedrock cross-region inference model prefix
+   * @default "us"
+   * @see https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+   */
+  awsBedrockModelPrefix: AwsBedrockModelPrefix;
 }
 
 export interface PreferencesState extends PreferencesProps {
@@ -94,19 +187,57 @@ export interface PreferencesState extends PreferencesProps {
    * Setter for enabling/disabling span annotating
    */
   setIsAnnotatingSpans: (isAnnotatingSpans: boolean) => void;
+  /**
+   * Setter for the project view mode
+   */
+  setProjectViewMode: (projectViewMode: ProjectViewMode) => void;
+  /**
+   * Setter for the project sort order
+   */
+  setProjectSortOrder: (projectSortOrder: ProjectSortOrder) => void;
+  /**
+   * Setter for the side nav open state
+   */
+  setIsSideNavExpanded: (isSideNavExpanded: boolean) => void;
+  /**
+   * Setter for the display timezone
+   */
+  setDisplayTimezone: (displayTimezone: DisplayTimezone | undefined) => void;
+  /**
+   * Setter for the preferred programming language
+   */
+  setProgrammingLanguage: (programmingLanguage: ProgrammingLanguage) => void;
+  /**
+   * Setter for the preferred package manager for a given language
+   */
+  setPackageManager: (
+    language: ProgrammingLanguage,
+    packageManager: PackageManager
+  ) => void;
+  /**
+   * Setter for the AWS Bedrock model prefix
+   */
+  setAwsBedrockModelPrefix: (
+    awsBedrockModelPrefix: AwsBedrockModelPrefix
+  ) => void;
 }
 
 export const createPreferencesStore = (
   initialProps?: Partial<PreferencesProps>
 ) => {
-  const preferencesStore: StateCreator<PreferencesState> = (set) => ({
+  const preferencesStore: StateCreator<
+    PreferencesState,
+    [["zustand/devtools", unknown]]
+  > = (set) => ({
     markdownDisplayMode: "text",
     setMarkdownDisplayMode: (markdownDisplayMode) => {
-      set({ markdownDisplayMode });
+      set({ markdownDisplayMode }, false, { type: "setMarkdownDisplayMode" });
     },
     traceStreamingEnabled: true,
     setTraceStreamingEnabled: (traceStreamingEnabled) => {
-      set({ traceStreamingEnabled });
+      set({ traceStreamingEnabled }, false, {
+        type: "setTraceStreamingEnabled",
+      });
     },
     lastNTimeRangeKey: "7d",
     setLastNTimeRangeKey: (lastNTimeRangeKey) => {
@@ -114,35 +245,93 @@ export const createPreferencesStore = (
     },
     projectsAutoRefreshEnabled: true,
     setProjectAutoRefreshEnabled: (projectsAutoRefreshEnabled) => {
-      set({ projectsAutoRefreshEnabled });
+      set({ projectsAutoRefreshEnabled }, false, {
+        type: "setProjectAutoRefreshEnabled",
+      });
     },
     showMetricsInTraceTree: true,
     setShowMetricsInTraceTree: (showMetricsInTraceTree) => {
-      set({ showMetricsInTraceTree });
+      set({ showMetricsInTraceTree }, false, {
+        type: "setShowMetricsInTraceTree",
+      });
     },
     modelConfigByProvider: {},
     setModelConfigForProvider: ({ provider, modelConfig }) => {
-      set((state) => {
-        return {
-          modelConfigByProvider: {
-            ...state.modelConfigByProvider,
-            [provider]: modelConfig,
-          },
-        };
-      });
+      set(
+        (state) => {
+          return {
+            modelConfigByProvider: {
+              ...state.modelConfigByProvider,
+              [provider]: modelConfig,
+            },
+          };
+        },
+        false,
+        { type: "setModelConfigForProvider" }
+      );
     },
     playgroundStreamingEnabled: true,
     setPlaygroundStreamingEnabled: (playgroundStreamingEnabled) => {
-      set({ playgroundStreamingEnabled });
+      set({ playgroundStreamingEnabled }, false, {
+        type: "setPlaygroundStreamingEnabled",
+      });
     },
     isAnnotatingSpans: true,
     setIsAnnotatingSpans: (isAnnotatingSpans) => {
-      set({ isAnnotatingSpans });
+      set({ isAnnotatingSpans }, false, { type: "setIsAnnotatingSpans" });
+    },
+    projectViewMode: "grid",
+    setProjectViewMode: (projectViewMode) => {
+      set({ projectViewMode }, false, { type: "setProjectViewMode" });
+    },
+    projectSortOrder: {
+      column: "endTime",
+      direction: "desc",
+    },
+    setProjectSortOrder: (projectSortOrder) => {
+      set({ projectSortOrder }, false, { type: "setProjectSortOrder" });
+    },
+    isSideNavExpanded: true,
+    setIsSideNavExpanded: (isSideNavExpanded) => {
+      set({ isSideNavExpanded }, false, { type: "setIsSideNavExpanded" });
+    },
+    setDisplayTimezone: (displayTimezone) => {
+      // Just to be extra safe of what we store in local storage.
+      if (
+        displayTimezone &&
+        !getSupportedTimezones().includes(displayTimezone)
+      ) {
+        throw new Error(`Invalid timezone: ${displayTimezone}`);
+      }
+      set({ displayTimezone }, false, { type: "setDisplayTimezone" });
+    },
+    programmingLanguage: "Python",
+    setProgrammingLanguage: (programmingLanguage) => {
+      set({ programmingLanguage }, false, { type: "setProgrammingLanguage" });
+    },
+    packageManagerByLanguage: { ...defaultPackageManagerByLanguage },
+    setPackageManager: (language, packageManager) => {
+      set(
+        (state) => ({
+          packageManagerByLanguage: {
+            ...state.packageManagerByLanguage,
+            [language]: packageManager,
+          },
+        }),
+        false,
+        { type: "setPackageManager" }
+      );
+    },
+    awsBedrockModelPrefix: "us",
+    setAwsBedrockModelPrefix: (awsBedrockModelPrefix) => {
+      set({ awsBedrockModelPrefix }, false, {
+        type: "setAwsBedrockModelPrefix",
+      });
     },
     ...initialProps,
   });
   return create<PreferencesState>()(
-    persist(devtools(preferencesStore), {
+    persist(devtools(preferencesStore, { name: "preferencesStore" }), {
       name: "arize-phoenix-preferences",
     })
   );

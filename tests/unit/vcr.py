@@ -1,9 +1,9 @@
 import re
 from typing import Any
 
-import vcr
+import vcr  # type: ignore[import-untyped]
 from pytest import FixtureRequest
-from vcr.cassette import Cassette
+from vcr.cassette import Cassette  # type: ignore[import-untyped]
 
 
 class CustomVCR(vcr.VCR):  # type: ignore[misc]
@@ -33,7 +33,7 @@ class CustomVCR(vcr.VCR):  # type: ignore[misc]
         file_name_parts.append(_remove_parameters(test_name))
         test_file_path = self._request.path
         path = (
-            test_file_path.parent / "cassettes" / module_name / f'{".".join(file_name_parts)}.yaml'
+            test_file_path.parent / "cassettes" / module_name / f"{'.'.join(file_name_parts)}.yaml"
         )
         return super().use_cassette(**{"path": path, **kwargs})
 

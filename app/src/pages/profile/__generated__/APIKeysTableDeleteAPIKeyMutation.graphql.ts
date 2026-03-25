@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<652b7db0509cc6582d4714ae2358f0f8>>
+ * @generated SignedSource<<1649555d3c8fbb8e67132fd53fdd3403>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -18,10 +18,10 @@ export type APIKeysTableDeleteAPIKeyMutation$variables = {
 };
 export type APIKeysTableDeleteAPIKeyMutation$data = {
   readonly deleteUserApiKey: {
-    readonly __typename: "DeleteApiKeyMutationPayload";
-    readonly apiKeyId: string;
     readonly query: {
-      readonly " $fragmentSpreads": FragmentRefs<"UserAPIKeysTableFragment">;
+      readonly viewer: {
+        readonly " $fragmentSpreads": FragmentRefs<"APIKeysTableFragment">;
+      } | null;
     };
   };
 };
@@ -49,14 +49,7 @@ v2 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "__typename",
-  "storageKey": null
-},
-v3 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "apiKeyId",
+  "name": "id",
   "storageKey": null
 };
 return {
@@ -74,8 +67,6 @@ return {
         "name": "deleteUserApiKey",
         "plural": false,
         "selections": [
-          (v2/*: any*/),
-          (v3/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -85,9 +76,20 @@ return {
             "plural": false,
             "selections": [
               {
+                "alias": null,
                 "args": null,
-                "kind": "FragmentSpread",
-                "name": "UserAPIKeysTableFragment"
+                "concreteType": "User",
+                "kind": "LinkedField",
+                "name": "viewer",
+                "plural": false,
+                "selections": [
+                  {
+                    "args": null,
+                    "kind": "FragmentSpread",
+                    "name": "APIKeysTableFragment"
+                  }
+                ],
+                "storageKey": null
               }
             ],
             "storageKey": null
@@ -113,8 +115,6 @@ return {
         "name": "deleteUserApiKey",
         "plural": false,
         "selections": [
-          (v2/*: any*/),
-          (v3/*: any*/),
           {
             "alias": null,
             "args": null,
@@ -126,64 +126,52 @@ return {
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "UserApiKey",
+                "concreteType": "User",
                 "kind": "LinkedField",
-                "name": "userApiKeys",
-                "plural": true,
+                "name": "viewer",
+                "plural": false,
                 "selections": [
                   {
                     "alias": null,
                     "args": null,
-                    "kind": "ScalarField",
-                    "name": "id",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "name",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "description",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "createdAt",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "expiresAt",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": "User",
+                    "concreteType": "UserApiKey",
                     "kind": "LinkedField",
-                    "name": "user",
-                    "plural": false,
+                    "name": "apiKeys",
+                    "plural": true,
                     "selections": [
+                      (v2/*: any*/),
                       {
                         "alias": null,
                         "args": null,
                         "kind": "ScalarField",
-                        "name": "email",
+                        "name": "name",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "description",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "createdAt",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "expiresAt",
                         "storageKey": null
                       }
                     ],
                     "storageKey": null
-                  }
+                  },
+                  (v2/*: any*/)
                 ],
                 "storageKey": null
               }
@@ -196,16 +184,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "f28a00e7a6eb2e18b1f8b31c8231c2b7",
+    "cacheID": "4bdd87573f4445b94a5d22dca4c9da3b",
     "id": null,
     "metadata": {},
     "name": "APIKeysTableDeleteAPIKeyMutation",
     "operationKind": "mutation",
-    "text": "mutation APIKeysTableDeleteAPIKeyMutation(\n  $input: DeleteApiKeyInput!\n) {\n  deleteUserApiKey(input: $input) {\n    __typename\n    apiKeyId\n    query {\n      ...UserAPIKeysTableFragment\n    }\n  }\n}\n\nfragment UserAPIKeysTableFragment on Query {\n  userApiKeys {\n    id\n    name\n    description\n    createdAt\n    expiresAt\n    user {\n      email\n    }\n  }\n}\n"
+    "text": "mutation APIKeysTableDeleteAPIKeyMutation(\n  $input: DeleteApiKeyInput!\n) {\n  deleteUserApiKey(input: $input) {\n    query {\n      viewer {\n        ...APIKeysTableFragment\n        id\n      }\n    }\n  }\n}\n\nfragment APIKeysTableFragment on User {\n  apiKeys {\n    id\n    name\n    description\n    createdAt\n    expiresAt\n  }\n  id\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3a505d9d13944798a57fc873ddf0992d";
+(node as any).hash = "8d26517ce1b7bca6482fbd3dcdd320e3";
 
 export default node;

@@ -1,9 +1,3 @@
-import React, {
-  PropsWithChildren,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -19,30 +13,36 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { css } from "@emotion/react";
-
-import { Card, Field, Form } from "@arizeai/components";
+import type { PropsWithChildren } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
+  Alert,
   Button,
+  Card,
   CopyToClipboardButton,
-  DisclosureGroup,
   Flex,
+  Form,
   Icon,
   Icons,
   Input,
+  Label,
   TextField,
   View,
 } from "@phoenix/components";
 import { CodeWrap, JSONEditor } from "@phoenix/components/code";
+import { fieldBaseCSS } from "@phoenix/components/core/field/styles";
 import { DragHandle } from "@phoenix/components/dnd/DragHandle";
 import {
   TemplateEditor,
   TemplateEditorWrap,
 } from "@phoenix/components/templateEditor";
-import { TemplateFormat } from "@phoenix/components/templateEditor/types";
+import { TemplateFormats } from "@phoenix/components/templateEditor/constants";
+import { validateMustacheSections } from "@phoenix/components/templateEditor/language/mustacheLike";
+import type { TemplateFormat } from "@phoenix/components/templateEditor/types";
 import { usePlaygroundContext } from "@phoenix/contexts/PlaygroundContext";
 import { useChatMessageStyles } from "@phoenix/hooks/useChatMessageStyles";
-import { ChatMessage, PlaygroundState } from "@phoenix/store";
+import type { ChatMessage, PlaygroundState } from "@phoenix/store";
 import { convertMessageToolCallsToProvider } from "@phoenix/store/playground/playgroundStoreUtils";
 import {
   selectPlaygroundInstance,
@@ -52,54 +52,45 @@ import { assertUnreachable } from "@phoenix/typeUtils";
 import { safelyStringifyJSON } from "@phoenix/utils/jsonUtils";
 
 import { ChatMessageToolCallsEditor } from "./ChatMessageToolCallsEditor";
-import {
-  RESPONSE_FORMAT_PARAM_CANONICAL_NAME,
-  RESPONSE_FORMAT_PARAM_NAME,
-} from "./constants";
-import {
-  AIMessageContentRadioGroup,
-  AIMessageMode,
-  MessageMode,
-} from "./MessageContentRadioGroup";
-import { MessageRolePicker } from "./MessageRolePicker";
+import type { AIMessageMode, MessageMode } from "./MessageContentRadioGroup";
+import { AIMessageContentRadioGroup } from "./MessageContentRadioGroup";
+import { MessageRoleSelect } from "./MessageRoleSelect";
 import { PlaygroundChatTemplateFooter } from "./PlaygroundChatTemplateFooter";
 import { PlaygroundResponseFormat } from "./PlaygroundResponseFormat";
 import { PlaygroundTools } from "./PlaygroundTools";
-import {
-  areInvocationParamsEqual,
-  createToolCallForProvider,
-} from "./playgroundUtils";
-import { PlaygroundInstanceProps } from "./types";
+import { createToolCallForProvider } from "./playgroundUtils";
+import type { PlaygroundInstanceProps } from "./types";
 
-const MESSAGE_Z_INDEX = 1;
 /**
  * The z-index of the dragging message.
- * Must be higher than the z-index of the other messages. Otherwise when dragging
- * from top to bottom, the dragging message will be covered by the message below.
+ * Only applied when actively dragging to ensure the dragged message appears above others.
+ * Non-dragging messages should NOT have a z-index to avoid creating stacking contexts
+ * that would clip autocomplete dropdowns.
  */
-const DRAGGING_MESSAGE_Z_INDEX = MESSAGE_Z_INDEX + 1;
+const DRAGGING_MESSAGE_Z_INDEX = 10;
 
-interface PlaygroundChatTemplateProps extends PlaygroundInstanceProps {}
+interface PlaygroundChatTemplateProps extends PlaygroundInstanceProps {
+  appendedMessagesPath?: string | null;
+  availablePaths: string[] | undefined;
+}
 
 export function PlaygroundChatTemplate(props: PlaygroundChatTemplateProps) {
   const id = props.playgroundInstanceId;
 
   const templateFormat = usePlaygroundContext((state) => state.templateFormat);
   const updateInstance = usePlaygroundContext((state) => state.updateInstance);
+
+  const appendedMessagesPath = props.appendedMessagesPath;
   const instanceSelector = useMemo(() => selectPlaygroundInstance(id), [id]);
   const playgroundInstance = usePlaygroundContext(instanceSelector);
   if (!playgroundInstance) {
     throw new Error(`Playground instance ${id} not found`);
   }
 
-  const hasTools = playgroundInstance.tools.length > 0;
+  const hasTools = !props.disableTools && playgroundInstance.tools.length > 0;
+  const supportsResponseFormat = !props.disableResponseFormat;
   const hasResponseFormat =
-    playgroundInstance.model.invocationParameters.find((p) =>
-      areInvocationParamsEqual(p, {
-        canonicalName: RESPONSE_FORMAT_PARAM_CANONICAL_NAME,
-        invocationName: RESPONSE_FORMAT_PARAM_NAME,
-      })
-    ) != null;
+    supportsResponseFormat && playgroundInstance.model.responseFormat != null;
   const { template } = playgroundInstance;
   if (template.__type !== "chat") {
     throw new Error(`Invalid template type ${template.__type}`);
@@ -113,6 +104,8 @@ export function PlaygroundChatTemplate(props: PlaygroundChatTemplateProps) {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const { disableNewTool } = props;
 
   return (
     <DndContext
@@ -145,13 +138,13 @@ export function PlaygroundChatTemplate(props: PlaygroundChatTemplateProps) {
           css={css`
             display: flex;
             flex-direction: column;
-            gap: var(--ac-global-dimension-size-200);
-            padding: var(--ac-global-dimension-size-200);
+            gap: var(--global-dimension-size-100);
           `}
         >
           {messageIds.map((messageId) => {
             return (
               <SortableMessageItem
+                availablePaths={props.availablePaths}
                 playgroundInstanceId={id}
                 templateFormat={templateFormat}
                 key={messageId}
@@ -161,25 +154,28 @@ export function PlaygroundChatTemplate(props: PlaygroundChatTemplateProps) {
           })}
         </ul>
       </SortableContext>
-      <View
-        paddingStart="size-200"
-        paddingEnd="size-200"
-        paddingTop="size-100"
-        paddingBottom="size-100"
-        borderColor="dark"
-        borderTopWidth="thin"
-        borderBottomWidth={hasTools || hasResponseFormat ? "thin" : undefined}
-      >
+      {appendedMessagesPath ? (
+        <View paddingTop="size-100" paddingBottom="size-100">
+          <Alert variant="info">
+            Messages from the configured path{" "}
+            <strong>{appendedMessagesPath}</strong> will be appended to this
+            prompt.
+          </Alert>
+        </View>
+      ) : null}
+      <View paddingTop="size-100" paddingBottom="size-100">
         <PlaygroundChatTemplateFooter
           instanceId={id}
           hasResponseFormat={hasResponseFormat}
+          supportsResponseFormat={supportsResponseFormat}
+          disableNewTool={disableNewTool}
         />
       </View>
       {hasTools || hasResponseFormat ? (
-        <DisclosureGroup defaultExpandedKeys={["tools", "response-format"]}>
+        <Flex direction="column" gap="size-100">
           {hasTools ? <PlaygroundTools {...props} /> : null}
           {hasResponseFormat ? <PlaygroundResponseFormat {...props} /> : null}
-        </DisclosureGroup>
+        </Flex>
       ) : null}
     </DndContext>
   );
@@ -191,19 +187,32 @@ function MessageEditor({
   templateFormat,
   playgroundInstanceId,
   messageMode,
+  availablePaths,
 }: {
   playgroundInstanceId: number;
   message: ChatMessage;
   templateFormat: TemplateFormat;
   updateMessage: (patch: Partial<ChatMessage>) => void;
   messageMode: MessageMode;
+  availablePaths?: string[];
 }) {
+  // Track whether to show validation alerts - becomes true on first blur
+  // and stays true so errors remain visible until fixed
+  const [showValidation, setShowValidation] = useState(false);
+
   const onChange = useCallback(
     (val: string) => {
       updateMessage({ content: val });
     },
     [updateMessage]
   );
+  const onBlur = useCallback(() => setShowValidation(true), []);
+  const sectionValidation = useMemo(() => {
+    if (templateFormat !== TemplateFormats.Mustache) {
+      return null;
+    }
+    return validateMustacheSections(message.content ?? "");
+  }, [message.content, templateFormat]);
   if (messageMode === "toolCalls") {
     return (
       <View
@@ -212,14 +221,15 @@ function MessageEditor({
         paddingEnd="size-250"
         paddingBottom="size-200"
       >
-        <Field label={"Tool Calls"}>
-          <CodeWrap width={"100%"}>
+        <div css={fieldBaseCSS}>
+          <Label>Tool Calls</Label>
+          <CodeWrap style={{ width: "100%" }}>
             <ChatMessageToolCallsEditor
               playgroundInstanceId={playgroundInstanceId}
               messageId={message.id}
             />
           </CodeWrap>
-        </Field>
+        </div>
       </View>
     );
   }
@@ -258,12 +268,24 @@ function MessageEditor({
 
   return (
     <TemplateEditorWrap>
+      {showValidation && sectionValidation?.errors.length ? (
+        <Alert variant="danger" banner title="Invalid mustache sections">
+          {sectionValidation.errors.join(", ")}
+        </Alert>
+      ) : null}
+      {showValidation && sectionValidation?.warnings.length ? (
+        <Alert variant="warning" banner title="Unclosed mustache sections">
+          {sectionValidation.warnings.join(", ")}
+        </Alert>
+      ) : null}
       <TemplateEditor
         height="100%"
         defaultValue={message.content || ""}
         aria-label="Message content"
         templateFormat={templateFormat}
         onChange={onChange}
+        onBlur={onBlur}
+        availablePaths={availablePaths}
       />
     </TemplateEditorWrap>
   );
@@ -273,10 +295,12 @@ function SortableMessageItem({
   playgroundInstanceId,
   templateFormat,
   messageId,
+  availablePaths,
 }: PropsWithChildren<{
   playgroundInstanceId: number;
   messageId: number;
   templateFormat: TemplateFormat;
+  availablePaths: string[] | undefined;
 }>) {
   const updateMessage = usePlaygroundContext((state) => state.updateMessage);
   const deleteMessage = usePlaygroundContext((state) => state.deleteMessage);
@@ -312,7 +336,9 @@ function SortableMessageItem({
   const dragAndDropLiStyles = {
     transform: CSS.Translate.toString(transform),
     transition,
-    zIndex: isDragging ? DRAGGING_MESSAGE_Z_INDEX : MESSAGE_Z_INDEX,
+    // Only set z-index when dragging to avoid creating stacking contexts
+    // that would clip autocomplete dropdowns
+    zIndex: isDragging ? DRAGGING_MESSAGE_Z_INDEX : undefined,
   };
 
   const hasTools = message.toolCalls != null && message.toolCalls.length > 0;
@@ -347,45 +373,36 @@ function SortableMessageItem({
     <li ref={setNodeRef} style={dragAndDropLiStyles}>
       <Card
         collapsible
-        variant="compact"
-        bodyStyle={{ padding: 0 }}
         {...messageCardStyles}
         title={
-          <div
-            css={css`
-              // Align the role picker with the prompt picker in PlaygroundTemplate header
-              margin-left: var(--ac-global-dimension-size-150);
-            `}
-          >
-            <MessageRolePicker
-              includeLabel={false}
-              role={message.role}
-              onChange={(role) => {
-                let content = message.content;
-                let toolCalls = message.toolCalls;
-                // Tool calls should only be attached to ai messages
-                // Clear tools from the message and reset the message mode when switching away form ai
-                if (role !== "ai") {
-                  toolCalls = undefined;
-                  setAIMessageMode("text");
-                }
-                // Tool role messages should contain tool result content
-                // Reset the content to an empty json string
-                if (role === "tool") {
-                  content = `""`;
-                }
-                updateMessage({
-                  instanceId: playgroundInstanceId,
-                  messageId,
-                  patch: {
-                    role,
-                    toolCalls,
-                    content,
-                  },
-                });
-              }}
-            />
-          </div>
+          <MessageRoleSelect
+            includeLabel={false}
+            role={message.role}
+            onChange={(role) => {
+              let content = message.content;
+              let toolCalls = message.toolCalls;
+              // Tool calls should only be attached to ai messages
+              // Clear tools from the message and reset the message mode when switching away form ai
+              if (role !== "ai") {
+                toolCalls = undefined;
+                setAIMessageMode("text");
+              }
+              // Tool role messages should contain tool result content
+              // Reset the content to an empty json string
+              if (role === "tool") {
+                content = `""`;
+              }
+              updateMessage({
+                instanceId: playgroundInstanceId,
+                messageId,
+                patch: {
+                  role,
+                  toolCalls,
+                  content,
+                },
+              });
+            }}
+          />
         }
         extra={
           <Flex direction="row" gap="size-100">
@@ -464,11 +481,13 @@ function SortableMessageItem({
       >
         <div>
           <MessageEditor
+            key={`${message.id}-${templateFormat}`}
             message={message}
             messageMode={aiMessageMode}
             playgroundInstanceId={playgroundInstanceId}
             templateFormat={templateFormat}
             updateMessage={onMessageUpdate}
+            availablePaths={availablePaths}
           />
         </div>
       </Card>

@@ -1,5 +1,6 @@
 # Generated dirs
 .vscode
+!.vscode/extensions.json
 .idea
 .coverage
 node_modules
@@ -9,9 +10,13 @@ sdist
 **/.pytest_cache
 **/.ipynb_checkpoints/
 **/.DS_Store
+**/.playwright-mcp/
 
 # Server static files
 /src/phoenix/server/static/*
+
+# sqlite db files
+phoenix.db*
 
 # Docgen
 /js/**/docs
@@ -19,6 +24,7 @@ sdist
 # Data files
 *.csv
 !tests/**/fixtures/*.csv
+!app/tests/fixtures/*.csv
 *.hdf
 *.hdf5
 
@@ -31,6 +37,8 @@ pyrightconfig.json
 !/packages/phoenix-client/src/phoenix/client/helpers/sdk/pyrightconfig.json
 !/packages/phoenix-client/tests/canary/sdk/pyrightconfig.json
 !/tests/integration/pyrightconfig.json
+
+.cursorrules
 
 # Demo data
 tutorials/internal/demo_llama_index/*.json
@@ -59,18 +67,22 @@ js/examples/notebooks/**/deno.lock
 /packages/phoenix-otel/src/__init__.py
 /packages/phoenix-otel/src/phoenix/__init__.py
 
-# Symbolic links
-# Note that this can affect hatch build for those packages. That's why
-# we need to un-ignore it if it's an actual folder (i.e. with the trailing /).
-/src/phoenix/client
-!src/phoenix/client/
-/src/phoenix/evals
-!src/phoenix/evals/
-/src/phoenix/otel
-!src/phoenix/otel/
-
 # Caches
 .pnpm-store
 
 # scrtach work
-/.scratch/
+.scratch
+
+# git worktrees
+/.worktrees/
+
+# builds
+packages/phoenix-otel/docs/build/
+packages/phoenix-client/docs/build/
+packages/phoenix-evals/docs/build/
+
+# Deployment
+helm/charts/*.tgz
+# mypy
+.mypy_cache
+.hypothesis

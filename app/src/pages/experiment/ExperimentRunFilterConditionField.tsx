@@ -1,49 +1,49 @@
-import React, {
-  startTransition,
-  useDeferredValue,
-  useEffect,
-  useState,
-} from "react";
-import { useSearchParams } from "react-router";
-import {
-  autocompletion,
+import type {
   CompletionContext,
   CompletionResult,
 } from "@codemirror/autocomplete";
+import { autocompletion } from "@codemirror/autocomplete";
 import { python } from "@codemirror/lang-python";
-import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
-import CodeMirror, { EditorView, keymap } from "@uiw/react-codemirror";
-import { fetchQuery, graphql } from "relay-runtime";
 import { css } from "@emotion/react";
-
+import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
+import type { EditorView } from "@uiw/react-codemirror";
+import CodeMirror, { keymap } from "@uiw/react-codemirror";
 import {
-  AddonBefore,
-  Field,
-  HelpTooltip,
-  PopoverTrigger,
-  TooltipTrigger,
-  TriggerWrap,
-} from "@arizeai/components";
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useSearchParams } from "react-router";
+import { fetchQuery, graphql } from "relay-runtime";
 
 import {
   Button,
+  DialogTrigger,
   Flex,
   Form,
   Icon,
+  IconButton,
   Icons,
+  Label,
+  Popover,
   Text,
+  Tooltip,
+  TooltipTrigger,
   View,
 } from "@phoenix/components";
+import { fieldBaseCSS } from "@phoenix/components/core/field/styles";
 import { useTheme } from "@phoenix/contexts";
 import environment from "@phoenix/RelayEnvironment";
 
-import { ExperimentRunFilterConditionFieldValidationQuery } from "./__generated__/ExperimentRunFilterConditionFieldValidationQuery.graphql";
+import type { ExperimentRunFilterConditionFieldValidationQuery } from "./__generated__/ExperimentRunFilterConditionFieldValidationQuery.graphql";
 import { useExperimentRunFilterCondition } from "./ExperimentRunFilterConditionContext";
 
 const codeMirrorCSS = css`
   flex: 1 1 auto;
   .cm-content {
-    padding: var(--ac-global-dimension-static-size-100) 0;
+    padding: var(--global-dimension-static-size-100) 0;
   }
   .cm-editor {
     background-color: transparent !important;
@@ -52,27 +52,30 @@ const codeMirrorCSS = css`
     outline: none;
   }
   .cm-selectionLayer .cm-selectionBackground {
-    background: var(--ac-global-color-cyan-400) !important;
+    background: var(--global-color-cyan-400) !important;
   }
 `;
 
 const fieldCSS = css`
-  border-width: var(--ac-global-border-size-thin);
+  border-width: var(--global-border-size-thin);
   border-style: solid;
-  border-color: var(--ac-global-input-field-border-color);
-  border-radius: var(--ac-global-rounding-small);
-  background-color: var(--ac-global-input-field-background-color);
+  border-color: var(--global-input-field-border-color);
+  border-radius: var(--global-rounding-small);
+  background-color: var(--global-input-field-background-color);
   transition: all 0.2s ease-in-out;
   overflow-x: hidden;
   &:hover,
   &[data-is-focused="true"] {
-    border-color: var(--ac-global-input-field-border-color-active);
-    background-color: var(--ac-global-input-field-background-color-active);
+    border-color: var(--global-input-field-border-color-active);
   }
   &[data-is-invalid="true"] {
-    border-color: var(--ac-global-color-danger);
+    border-color: var(--global-color-danger);
   }
   box-sizing: border-box;
+  .search-icon {
+    margin-left: var(--global-dimension-static-size-100);
+    margin-top: var(--global-dimension-static-size-100);
+  }
 `;
 
 function filterConditionCompletions(
@@ -81,7 +84,7 @@ function filterConditionCompletions(
   const word = context.matchBefore(/\w*/);
   if (!word) return null;
 
-  if (word.from == word.to && !context.explicit) return null;
+  if (word.from === word.to && !context.explicit) return null;
 
   return {
     from: word.from,
@@ -183,7 +186,7 @@ async function isConditionValid(condition: string, experimentIds: string[]) {
       graphql`
         query ExperimentRunFilterConditionFieldValidationQuery(
           $condition: String!
-          $experimentIds: [GlobalID!]!
+          $experimentIds: [ID!]!
         ) {
           validateExperimentRunFilterCondition(
             condition: $condition
@@ -242,6 +245,8 @@ export function ExperimentRunFilterConditionField(
   const [searchParams] = useSearchParams();
   const experimentIds = searchParams.getAll("experimentId");
 
+  const filterConditionFieldRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     isConditionValid(deferredFilterCondition, experimentIds).then((result) => {
       if (!result?.isValid) {
@@ -258,11 +263,19 @@ export function ExperimentRunFilterConditionField(
   const hasError = errorMessage !== "";
   const hasCondition = filterCondition !== "";
   return (
-    <div data-is-focused={isFocused} data-is-invalid={hasError} css={fieldCSS}>
+    <div
+      data-is-focused={isFocused}
+      data-is-invalid={hasError}
+      css={css(
+        fieldCSS,
+        css`
+          flex: 1;
+        `
+      )}
+      ref={filterConditionFieldRef}
+    >
       <Flex direction="row">
-        <AddonBefore>
-          <Icon svg={<Icons.Search />} />
-        </AddonBefore>
+        <Icon svg={<Icons.Search />} className="search-icon" />
         <CodeMirror
           css={codeMirrorCSS}
           indentWithTab={false}
@@ -287,8 +300,8 @@ export function ExperimentRunFilterConditionField(
         />
         <button
           css={css`
-            margin-right: var(--ac-global-dimension-static-size-100);
-            color: var(--ac-global-text-color-700);
+            margin-right: var(--global-dimension-static-size-100);
+            color: var(--global-text-color-700);
             visibility: ${hasCondition ? "visible" : "hidden"};
           `}
           onClick={() => setFilterCondition("")}
@@ -296,37 +309,37 @@ export function ExperimentRunFilterConditionField(
         >
           <Icon svg={<Icons.CloseCircleOutline />} />
         </button>
-        <PopoverTrigger placement="bottom right">
-          <TriggerWrap>
-            <button
-              css={css`
-                color: var(--ac-global-text-color-700);
-                background-color: var(--ac-global-color-grey-300);
-                padding-left: var(--ac-global-dimension-static-size-100);
-                padding-right: var(--ac-global-dimension-static-size-100);
-                height: 100%;
-              `}
-              className="button--reset"
-            >
-              <Icon svg={<Icons.PlusCircleOutline />} />
-            </button>
-          </TriggerWrap>
-          <FilterConditionBuilder
-            onAddFilterConditionSnippet={appendFilterCondition}
-          />
-        </PopoverTrigger>
+        <DialogTrigger>
+          <IconButton
+            css={css`
+              color: var(--global-text-color-700);
+              border-left: 1px solid var(--global-input-field-border-color);
+              border-bottom: 0;
+              border-top: 0;
+              padding-left: var(--global-dimension-static-size-100);
+              padding-right: var(--global-dimension-static-size-100);
+              border-radius: 0;
+              height: 36px !important;
+            `}
+            className="button--reset"
+          >
+            <Icon svg={<Icons.PlusOutline />} />
+          </IconButton>
+          <Popover placement="bottom right">
+            <FilterConditionBuilder
+              onAddFilterConditionSnippet={appendFilterCondition}
+            />
+          </Popover>
+        </DialogTrigger>
       </Flex>
-      <TooltipTrigger isOpen={hasError && isFocused} placement="bottom">
-        <TriggerWrap>
-          <div />
-        </TriggerWrap>
-        <HelpTooltip>
-          {errorMessage != "" ? (
+      <TooltipTrigger isOpen={hasError && isFocused}>
+        <Tooltip placement="bottom" triggerRef={filterConditionFieldRef}>
+          {errorMessage !== "" ? (
             <Text color="danger">{errorMessage}</Text>
           ) : (
             <Text color="success">Valid Expression</Text>
           )}
-        </HelpTooltip>
+        </Tooltip>
       </TooltipTrigger>
     </div>
   );
@@ -346,10 +359,9 @@ function FilterConditionBuilder(props: {
       paddingTop="size-200"
       paddingStart="size-200"
       paddingEnd="size-200"
+      paddingBottom="size-200"
       borderRadius="medium"
-      borderWidth="thin"
-      borderColor="light"
-      backgroundColor="light"
+      backgroundColor="gray-75"
     >
       <Form>
         <FilterConditionSnippet
@@ -419,7 +431,8 @@ function FilterConditionSnippet(props: {
   const { theme } = useTheme();
   const codeMirrorTheme = theme === "light" ? githubLight : githubDark;
   return (
-    <Field label={props.label}>
+    <div css={fieldBaseCSS}>
+      <Label>{props.label}</Label>
       <Flex direction="row" width="100%" gap="size-100">
         <div
           css={css(
@@ -453,6 +466,6 @@ function FilterConditionSnippet(props: {
           leadingVisual={<Icon svg={<Icons.PlusCircleOutline />} />}
         />
       </Flex>
-    </Field>
+    </div>
   );
 }

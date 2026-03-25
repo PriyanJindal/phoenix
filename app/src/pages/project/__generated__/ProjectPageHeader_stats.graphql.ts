@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bbcb7bd2a35dccc26420a83a2331f935>>
+ * @generated SignedSource<<4bea7f8a65afbb69183c6c8c1f36bb16>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,15 +11,23 @@
 import { ReaderFragment } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type ProjectPageHeader_stats$data = {
+  readonly costSummary: {
+    readonly completion: {
+      readonly cost: number | null;
+    };
+    readonly prompt: {
+      readonly cost: number | null;
+    };
+    readonly total: {
+      readonly cost: number | null;
+    };
+  };
   readonly documentEvaluationNames: ReadonlyArray<string>;
   readonly id: string;
   readonly latencyMsP50: number | null;
   readonly latencyMsP99: number | null;
   readonly spanAnnotationNames: ReadonlyArray<string>;
-  readonly tokenCountCompletion: number;
-  readonly tokenCountPrompt: number;
-  readonly tokenCountTotal: number;
-  readonly traceCount: number;
+  readonly timeRangeTraceCount: number;
   readonly " $fragmentType": "ProjectPageHeader_stats";
 };
 export type ProjectPageHeader_stats$key = {
@@ -37,6 +45,15 @@ var v0 = {
 },
 v1 = [
   (v0/*: any*/)
+],
+v2 = [
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "cost",
+    "storageKey": null
+  }
 ];
 return {
   "argumentDefinitions": [
@@ -62,7 +79,7 @@ return {
   "name": "ProjectPageHeader_stats",
   "selections": [
     {
-      "alias": null,
+      "alias": "timeRangeTraceCount",
       "args": (v1/*: any*/),
       "kind": "ScalarField",
       "name": "traceCount",
@@ -71,22 +88,42 @@ return {
     {
       "alias": null,
       "args": (v1/*: any*/),
-      "kind": "ScalarField",
-      "name": "tokenCountTotal",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": (v1/*: any*/),
-      "kind": "ScalarField",
-      "name": "tokenCountPrompt",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": (v1/*: any*/),
-      "kind": "ScalarField",
-      "name": "tokenCountCompletion",
+      "concreteType": "SpanCostSummary",
+      "kind": "LinkedField",
+      "name": "costSummary",
+      "plural": false,
+      "selections": [
+        {
+          "alias": null,
+          "args": null,
+          "concreteType": "CostBreakdown",
+          "kind": "LinkedField",
+          "name": "total",
+          "plural": false,
+          "selections": (v2/*: any*/),
+          "storageKey": null
+        },
+        {
+          "alias": null,
+          "args": null,
+          "concreteType": "CostBreakdown",
+          "kind": "LinkedField",
+          "name": "prompt",
+          "plural": false,
+          "selections": (v2/*: any*/),
+          "storageKey": null
+        },
+        {
+          "alias": null,
+          "args": null,
+          "concreteType": "CostBreakdown",
+          "kind": "LinkedField",
+          "name": "completion",
+          "plural": false,
+          "selections": (v2/*: any*/),
+          "storageKey": null
+        }
+      ],
       "storageKey": null
     },
     {
@@ -144,6 +181,6 @@ return {
 };
 })();
 
-(node as any).hash = "e110b84031cc6bfa6bb37751b9c69765";
+(node as any).hash = "042b76a71b57987b50febe61073a6b21";
 
 export default node;

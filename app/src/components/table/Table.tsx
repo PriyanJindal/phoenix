@@ -1,6 +1,5 @@
-import React from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
@@ -22,6 +21,8 @@ export function Table<DataRow extends object>({
   columns,
   data,
 }: TableProps<DataRow>) {
+  "use no memo";
+  // eslint-disable-next-line react-hooks-js/incompatible-library
   const table = useReactTable<DataRow>({
     columns,
     data,

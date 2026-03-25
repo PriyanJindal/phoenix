@@ -1,7 +1,4 @@
-import React from "react";
-
-import { CopyToClipboardButton } from "../CopyToClipboardButton";
-
+import { CopyToClipboardButton } from "../core/copy";
 import { codeBlockWithCopyCSS } from "./styles";
 import { TypeScriptBlock } from "./TypeScriptBlock";
 

@@ -1,12 +1,13 @@
-import React, { createContext, PropsWithChildren, useState } from "react";
+import type { PropsWithChildren } from "react";
+import { createContext, useContext, useState } from "react";
 import { useZustand } from "use-zustand";
 
-import {
-  createPreferencesStore,
+import type {
   PreferencesProps,
   PreferencesState,
   PreferencesStore,
 } from "@phoenix/store/preferencesStore";
+import { createPreferencesStore } from "@phoenix/store/preferencesStore";
 
 export const PreferencesContext = createContext<PreferencesStore | null>(null);
 
@@ -29,7 +30,7 @@ export function usePreferencesContext<T>(
   selector: (state: PreferencesState) => T,
   equalityFn?: (left: T, right: T) => boolean
 ): T {
-  const store = React.useContext(PreferencesContext);
+  const store = useContext(PreferencesContext);
   if (!store)
     throw new Error("Missing PreferencesContext.Provider in the tree");
   return useZustand(store, selector, equalityFn);

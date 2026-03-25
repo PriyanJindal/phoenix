@@ -1,19 +1,28 @@
-import React, { ReactNode, useCallback, useState } from "react";
-import { graphql, useMutation } from "react-relay";
 import { getLocalTimeZone } from "@internationalized/date";
+import { useCallback, useState } from "react";
+import { graphql, useMutation } from "react-relay";
 
-import { Card, DialogContainer } from "@arizeai/components";
-
-import { Button, Icon, Icons } from "@phoenix/components";
 import {
-  APIKeyFormParams,
+  Alert,
+  Button,
+  Card,
+  DialogTrigger,
+  Icon,
+  Icons,
+  Modal,
+  ModalOverlay,
+} from "@phoenix/components";
+import type { APIKeyFormParams } from "@phoenix/components/auth";
+import {
   CreateAPIKeyDialog,
   OneTimeAPIKeyDialog,
 } from "@phoenix/components/auth";
-import { useNotifyError } from "@phoenix/contexts";
 
-import { APIKeysTableFragment$key } from "./__generated__/APIKeysTableFragment.graphql";
-import { ViewerAPIKeysCreateUserAPIKeyMutation } from "./__generated__/ViewerAPIKeysCreateUserAPIKeyMutation.graphql";
+import type { APIKeysTableFragment$key } from "./__generated__/APIKeysTableFragment.graphql";
+import type {
+  ViewerAPIKeysCreateUserAPIKeyMutation,
+  ViewerAPIKeysCreateUserAPIKeyMutation$data,
+} from "./__generated__/ViewerAPIKeysCreateUserAPIKeyMutation.graphql";
 import { APIKeysTable } from "./APIKeysTable";
 
 export function ViewerAPIKeys({
@@ -21,14 +30,13 @@ export function ViewerAPIKeys({
 }: {
   viewer: APIKeysTableFragment$key;
 }) {
-  const [dialog, setDialog] = useState<ReactNode>(null);
-  const notifyError = useNotifyError();
+  const [showCreateAPIKeyResponse, setShowCreateAPIKeyResponse] =
+    useState<ViewerAPIKeysCreateUserAPIKeyMutation$data | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [commit, isCommitting] =
     useMutation<ViewerAPIKeysCreateUserAPIKeyMutation>(graphql`
-      mutation ViewerAPIKeysCreateUserAPIKeyMutation(
-        $input: CreateUserApiKeyInput!
-      ) {
+      mutation ViewerAPIKeysCreateUserAPIKeyMutation($input: CreateUserApiKeyInput!) {
         createUserApiKey(input: $input) {
           jwt
           apiKey {
@@ -42,7 +50,7 @@ export function ViewerAPIKeys({
     `);
 
   const onSubmit = useCallback(
-    (data: APIKeyFormParams) => {
+    (data: APIKeyFormParams, onCloseCreateAPIKeyDialog: () => void) => {
       commit({
         variables: {
           input: {
@@ -52,50 +60,54 @@ export function ViewerAPIKeys({
           },
         },
         onCompleted: (response) => {
-          setDialog(
-            <OneTimeAPIKeyDialog jwt={response.createUserApiKey.jwt} />
-          );
+          onCloseCreateAPIKeyDialog();
+          setShowCreateAPIKeyResponse(response);
         },
         onError: (error) => {
-          notifyError({
-            title: "Error creating API key",
-            message: error.message,
-          });
+          setError(error.message);
         },
       });
     },
-    [commit, notifyError]
+    [commit]
   );
   return (
-    <Card
-      title="API Keys"
-      variant="compact"
-      bodyStyle={{ padding: 0 }}
-      extra={
-        <Button
-          size="S"
-          leadingVisual={<Icon svg={<Icons.PlusCircleOutline />} />}
-          onPress={() =>
-            setDialog(
-              <CreateAPIKeyDialog
-                onSubmit={onSubmit}
-                isCommitting={isCommitting}
-              />
-            )
-          }
-        >
-          New Key
-        </Button>
-      }
-    >
-      <APIKeysTable query={viewer} />
-      <DialogContainer
-        onDismiss={() => {
-          setDialog(null);
-        }}
+    <>
+      <Card
+        title="API Keys"
+        extra={
+          <DialogTrigger>
+            <Button
+              size="S"
+              leadingVisual={<Icon svg={<Icons.PlusCircleOutline />} />}
+            >
+              New Key
+            </Button>
+            <ModalOverlay>
+              <Modal size="M">
+                <CreateAPIKeyDialog
+                  onSubmit={onSubmit}
+                  isCommitting={isCommitting}
+                />
+              </Modal>
+            </ModalOverlay>
+          </DialogTrigger>
+        }
       >
-        {dialog}
-      </DialogContainer>
-    </Card>
+        {error && <Alert variant="danger">{error}</Alert>}
+        <APIKeysTable query={viewer} />
+      </Card>
+      <DialogTrigger
+        isOpen={!!showCreateAPIKeyResponse}
+        onOpenChange={() => setShowCreateAPIKeyResponse(null)}
+      >
+        <ModalOverlay>
+          <Modal size="L">
+            <OneTimeAPIKeyDialog
+              jwt={showCreateAPIKeyResponse?.createUserApiKey?.jwt ?? ""}
+            />
+          </Modal>
+        </ModalOverlay>
+      </DialogTrigger>
+    </>
   );
 }

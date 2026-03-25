@@ -1,21 +1,19 @@
-import React, { useMemo } from "react";
-import { graphql, useFragment } from "react-relay";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useMemo } from "react";
+import { graphql, useFragment } from "react-relay";
 
-import { Card } from "@arizeai/components";
-
-import { Flex, Icon, Icons, Link } from "@phoenix/components";
+import { Card, Flex, Icon, Icons, Link } from "@phoenix/components";
 import { TextCell } from "@phoenix/components/table";
 import { tableCSS } from "@phoenix/components/table/styles";
 import { TableEmpty } from "@phoenix/components/table/TableEmpty";
 
-import { PromptVersionTagsConfigCard_data$key } from "./__generated__/PromptVersionTagsConfigCard_data.graphql";
+import type { PromptVersionTagsConfigCard_data$key } from "./__generated__/PromptVersionTagsConfigCard_data.graphql";
 import { DeletePromptVersionTagButton } from "./DeletePromptVersionTagButton";
 
 export function PromptVersionTagsConfigCard({
@@ -23,6 +21,7 @@ export function PromptVersionTagsConfigCard({
 }: {
   prompt: PromptVersionTagsConfigCard_data$key;
 }) {
+  "use no memo";
   const data = useFragment(
     graphql`
       fragment PromptVersionTagsConfigCard_data on Prompt {
@@ -98,6 +97,7 @@ export function PromptVersionTagsConfigCard({
     }));
   }, [data]);
 
+  // eslint-disable-next-line react-hooks-js/incompatible-library
   const table = useReactTable<(typeof tableData)[number]>({
     columns,
     data: tableData,
@@ -108,7 +108,7 @@ export function PromptVersionTagsConfigCard({
   const rows = table.getRowModel().rows;
   const isEmpty = rows.length === 0;
   return (
-    <Card title="Tags" variant="compact" bodyStyle={{ padding: 0 }}>
+    <Card title="Tags">
       <table css={tableCSS}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -118,9 +118,7 @@ export function PromptVersionTagsConfigCard({
                   {header.isPlaceholder ? null : (
                     <div
                       {...{
-                        className: header.column.getCanSort()
-                          ? "cursor-pointer"
-                          : "",
+                        className: header.column.getCanSort() ? "sort" : "",
                         onClick: header.column.getToggleSortingHandler(),
                         style: {
                           left: header.getStart(),

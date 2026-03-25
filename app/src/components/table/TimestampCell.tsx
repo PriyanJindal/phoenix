@@ -1,7 +1,7 @@
-import React from "react";
-import { CellContext } from "@tanstack/react-table";
+import type { CellContext } from "@tanstack/react-table";
 
-import { isStringOrNull } from "@phoenix/typeUtils";
+import { useTimeFormatters } from "@phoenix/hooks/useTimeFormatters";
+import { isStringOrNullOrUndefined } from "@phoenix/typeUtils";
 
 /**
  * A table cell that nicely formats a timestamp
@@ -9,19 +9,13 @@ import { isStringOrNull } from "@phoenix/typeUtils";
 export function TimestampCell<TData extends object, TValue>({
   getValue,
 }: CellContext<TData, TValue>) {
+  const { fullTimeFormatter } = useTimeFormatters();
   const value = getValue();
-  if (!isStringOrNull(value)) {
-    throw new Error("TimestampCell only supports string or null values.");
+  if (!isStringOrNullOrUndefined(value)) {
+    throw new Error(
+      "TimestampCell only supports string, null, or undefined values."
+    );
   }
-  const timestamp =
-    value != null
-      ? new Date(value).toLocaleString([], {
-          year: "numeric",
-          month: "numeric",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "--";
+  const timestamp = value != null ? fullTimeFormatter(new Date(value)) : "--";
   return <time title={value != null ? String(value) : ""}>{timestamp}</time>;
 }

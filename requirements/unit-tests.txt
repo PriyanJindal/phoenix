@@ -1,18 +1,19 @@
 -r ci.txt
+-r type-check.txt
 Faker>=30.1.0
-arize
+arize>=8.1.0
 asgi-lifespan
 asyncpg
+google-genai>=1.0.0
 grpc-interceptor[testing]
 httpx
 httpx-ws
-litellm>1.61.15
+litellm>1.61.15,<1.82.7
 nest-asyncio # for executor testing
 numpy
-openai>=1.0.0
 pandas-stubs==2.0.3.230814
 pandas>=1.0
-protobuf==3.20.2  # version minimum (for tests)
+protobuf
 psycopg[binary,pool]
 pyarrow-stubs
 pytest-postgresql
@@ -21,10 +22,8 @@ respx>=0.22.0
 syrupy
 tenacity
 tiktoken
-types-pytz
 typing-extensions
 vcrpy
-aiohttp>=3.0; python_version < "3.10"
-urllib3<2.0; python_version < "3.10"
 pytest-smtpd
 freezegun
+aiosqlite<0.22.0  # new version is causing tests to hang

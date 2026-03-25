@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<17980864e7d0bd10c0391b1bda526700>>
+ * @generated SignedSource<<c2d33f42a5a5f93c3ac5ea62d32e1906>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -11,12 +11,18 @@
 import { ConcreteRequest } from 'relay-runtime';
 import { FragmentRefs } from "relay-runtime";
 export type ExampleDetailsDialogQuery$variables = {
+  datasetVersionId?: string | null;
   exampleId: string;
 };
 export type ExampleDetailsDialogQuery$data = {
   readonly example: {
+    readonly datasetSplits?: ReadonlyArray<{
+      readonly color: string;
+      readonly id: string;
+      readonly name: string;
+    }>;
     readonly id?: string;
-    readonly latestRevision?: {
+    readonly revision?: {
       readonly input: any;
       readonly metadata: any;
       readonly output: any;
@@ -40,37 +46,53 @@ export type ExampleDetailsDialogQuery = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = [
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "exampleId"
-  }
-],
-v1 = [
+var v0 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "datasetVersionId"
+},
+v1 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "exampleId"
+},
+v2 = [
   {
     "kind": "Variable",
     "name": "id",
     "variableName": "exampleId"
   }
 ],
-v2 = {
+v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v3 = {
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "output",
   "storageKey": null
 },
-v4 = {
-  "alias": "latestRevision",
+v5 = {
+  "alias": null,
   "args": null,
+  "kind": "ScalarField",
+  "name": "metadata",
+  "storageKey": null
+},
+v6 = {
+  "alias": null,
+  "args": [
+    {
+      "kind": "Variable",
+      "name": "datasetVersionId",
+      "variableName": "datasetVersionId"
+    }
+  ],
   "concreteType": "DatasetExampleRevision",
   "kind": "LinkedField",
   "name": "revision",
@@ -83,25 +105,46 @@ v4 = {
       "name": "input",
       "storageKey": null
     },
+    (v4/*: any*/),
+    (v5/*: any*/)
+  ],
+  "storageKey": null
+},
+v7 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v8 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "DatasetSplit",
+  "kind": "LinkedField",
+  "name": "datasetSplits",
+  "plural": true,
+  "selections": [
     (v3/*: any*/),
+    (v7/*: any*/),
     {
       "alias": null,
       "args": null,
       "kind": "ScalarField",
-      "name": "metadata",
+      "name": "color",
       "storageKey": null
     }
   ],
   "storageKey": null
 },
-v5 = {
+v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "traceId",
   "storageKey": null
 },
-v6 = {
+v10 = {
   "alias": null,
   "args": null,
   "concreteType": "Span",
@@ -109,7 +152,7 @@ v6 = {
   "name": "span",
   "plural": false,
   "selections": [
-    (v2/*: any*/),
+    (v3/*: any*/),
     {
       "alias": null,
       "args": null,
@@ -118,8 +161,8 @@ v6 = {
       "name": "trace",
       "plural": false,
       "selections": [
-        (v2/*: any*/),
-        (v5/*: any*/),
+        (v3/*: any*/),
+        (v9/*: any*/),
         {
           "alias": null,
           "args": null,
@@ -128,7 +171,7 @@ v6 = {
           "name": "project",
           "plural": false,
           "selections": [
-            (v2/*: any*/)
+            (v3/*: any*/)
           ],
           "storageKey": null
         }
@@ -138,21 +181,21 @@ v6 = {
   ],
   "storageKey": null
 },
-v7 = {
+v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "__typename",
   "storageKey": null
 },
-v8 = [
+v12 = [
   {
     "kind": "Literal",
     "name": "first",
     "value": 100
   }
 ],
-v9 = {
+v13 = {
   "alias": null,
   "args": null,
   "concreteType": "Trace",
@@ -160,8 +203,8 @@ v9 = {
   "name": "trace",
   "plural": false,
   "selections": [
-    (v2/*: any*/),
-    (v5/*: any*/),
+    (v3/*: any*/),
+    (v9/*: any*/),
     {
       "alias": null,
       "args": null,
@@ -174,14 +217,17 @@ v9 = {
 };
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v0/*: any*/),
+      (v1/*: any*/)
+    ],
     "kind": "Fragment",
     "metadata": null,
     "name": "ExampleDetailsDialogQuery",
     "selections": [
       {
         "alias": "example",
-        "args": (v1/*: any*/),
+        "args": (v2/*: any*/),
         "concreteType": null,
         "kind": "LinkedField",
         "name": "node",
@@ -190,9 +236,10 @@ return {
           {
             "kind": "InlineFragment",
             "selections": [
-              (v2/*: any*/),
-              (v4/*: any*/),
-              (v6/*: any*/)
+              (v3/*: any*/),
+              (v6/*: any*/),
+              (v8/*: any*/),
+              (v10/*: any*/)
             ],
             "type": "DatasetExample",
             "abstractKey": null
@@ -211,32 +258,32 @@ return {
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*: any*/),
+    "argumentDefinitions": [
+      (v1/*: any*/),
+      (v0/*: any*/)
+    ],
     "kind": "Operation",
     "name": "ExampleDetailsDialogQuery",
     "selections": [
       {
         "alias": "example",
-        "args": (v1/*: any*/),
+        "args": (v2/*: any*/),
         "concreteType": null,
         "kind": "LinkedField",
         "name": "node",
         "plural": false,
         "selections": [
-          (v7/*: any*/),
-          {
-            "kind": "TypeDiscriminator",
-            "abstractKey": "__isNode"
-          },
-          (v2/*: any*/),
+          (v11/*: any*/),
+          (v3/*: any*/),
           {
             "kind": "InlineFragment",
             "selections": [
-              (v4/*: any*/),
               (v6/*: any*/),
+              (v8/*: any*/),
+              (v10/*: any*/),
               {
                 "alias": null,
-                "args": (v8/*: any*/),
+                "args": (v12/*: any*/),
                 "concreteType": "ExperimentRunConnection",
                 "kind": "LinkedField",
                 "name": "experimentRuns",
@@ -258,7 +305,7 @@ return {
                         "name": "node",
                         "plural": false,
                         "selections": [
-                          (v2/*: any*/),
+                          (v3/*: any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -280,8 +327,8 @@ return {
                             "name": "error",
                             "storageKey": null
                           },
-                          (v3/*: any*/),
-                          (v9/*: any*/),
+                          (v4/*: any*/),
+                          (v13/*: any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -306,14 +353,8 @@ return {
                                     "name": "node",
                                     "plural": false,
                                     "selections": [
-                                      (v2/*: any*/),
-                                      {
-                                        "alias": null,
-                                        "args": null,
-                                        "kind": "ScalarField",
-                                        "name": "name",
-                                        "storageKey": null
-                                      },
+                                      (v3/*: any*/),
+                                      (v7/*: any*/),
                                       {
                                         "alias": null,
                                         "args": null,
@@ -335,6 +376,7 @@ return {
                                         "name": "explanation",
                                         "storageKey": null
                                       },
+                                      (v5/*: any*/),
                                       {
                                         "alias": null,
                                         "args": null,
@@ -342,7 +384,7 @@ return {
                                         "name": "annotatorKind",
                                         "storageKey": null
                                       },
-                                      (v9/*: any*/)
+                                      (v13/*: any*/)
                                     ],
                                     "storageKey": null
                                   }
@@ -370,7 +412,8 @@ return {
                         "name": "node",
                         "plural": false,
                         "selections": [
-                          (v7/*: any*/)
+                          (v11/*: any*/),
+                          (v3/*: any*/)
                         ],
                         "storageKey": null
                       }
@@ -407,7 +450,7 @@ return {
               },
               {
                 "alias": null,
-                "args": (v8/*: any*/),
+                "args": (v12/*: any*/),
                 "filters": null,
                 "handle": "connection",
                 "key": "ExampleExperimentRunsTable_experimentRuns",
@@ -424,16 +467,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "ae7779e6fb1148a472e58fff0f5e0f66",
+    "cacheID": "01b5d9b615ac87b02a8166174a74de39",
     "id": null,
     "metadata": {},
     "name": "ExampleDetailsDialogQuery",
     "operationKind": "query",
-    "text": "query ExampleDetailsDialogQuery(\n  $exampleId: GlobalID!\n) {\n  example: node(id: $exampleId) {\n    __typename\n    ... on DatasetExample {\n      id\n      latestRevision: revision {\n        input\n        output\n        metadata\n      }\n      span {\n        id\n        trace {\n          id\n          traceId\n          project {\n            id\n          }\n        }\n      }\n    }\n    ...ExampleExperimentRunsTableFragment\n    __isNode: __typename\n    id\n  }\n}\n\nfragment ExampleExperimentRunsTableFragment on DatasetExample {\n  experimentRuns(first: 100) {\n    edges {\n      run: node {\n        id\n        startTime\n        endTime\n        error\n        output\n        trace {\n          id\n          traceId\n          projectId\n        }\n        annotations {\n          edges {\n            annotation: node {\n              id\n              name\n              label\n              score\n              explanation\n              annotatorKind\n              trace {\n                id\n                traceId\n                projectId\n              }\n            }\n          }\n        }\n      }\n      cursor\n      node {\n        __typename\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n  id\n}\n"
+    "text": "query ExampleDetailsDialogQuery(\n  $exampleId: ID!\n  $datasetVersionId: ID\n) {\n  example: node(id: $exampleId) {\n    __typename\n    ... on DatasetExample {\n      id\n      revision(datasetVersionId: $datasetVersionId) {\n        input\n        output\n        metadata\n      }\n      datasetSplits {\n        id\n        name\n        color\n      }\n      span {\n        id\n        trace {\n          id\n          traceId\n          project {\n            id\n          }\n        }\n      }\n    }\n    ...ExampleExperimentRunsTableFragment\n    id\n  }\n}\n\nfragment ExampleExperimentRunsTableFragment on DatasetExample {\n  experimentRuns(first: 100) {\n    edges {\n      run: node {\n        id\n        startTime\n        endTime\n        error\n        output\n        trace {\n          id\n          traceId\n          projectId\n        }\n        annotations {\n          edges {\n            annotation: node {\n              id\n              name\n              label\n              score\n              explanation\n              metadata\n              annotatorKind\n              trace {\n                id\n                traceId\n                projectId\n              }\n            }\n          }\n        }\n      }\n      cursor\n      node {\n        __typename\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n  id\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5c65343f3fa6361ad93f3e548a8f8c75";
+(node as any).hash = "b25d8729689f6dada78cb41d032ca69c";
 
 export default node;

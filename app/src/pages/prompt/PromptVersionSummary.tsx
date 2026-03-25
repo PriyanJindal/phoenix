@@ -1,18 +1,19 @@
-import React from "react";
-import { useFragment } from "react-relay";
 import { formatRelative } from "date-fns/formatRelative";
+import { useFragment } from "react-relay";
 import { graphql } from "relay-runtime";
 
 import { Flex, Text, Token, View } from "@phoenix/components";
+import { Truncate } from "@phoenix/components/core/utility/Truncate";
 import { UserPicture } from "@phoenix/components/user/UserPicture";
-import { Truncate } from "@phoenix/components/utility/Truncate";
+import { useCurrentTime } from "@phoenix/hooks";
 
-import { PromptVersionSummaryFragment$key } from "./__generated__/PromptVersionSummaryFragment.graphql";
+import type { PromptVersionSummaryFragment$key } from "./__generated__/PromptVersionSummaryFragment.graphql";
 import { PromptVersionTagsList } from "./PromptVersionTagsList";
 
 export function PromptVersionSummary(props: {
   promptVersion: PromptVersionSummaryFragment$key;
 }) {
+  const { nowEpochMs } = useCurrentTime();
   const version = useFragment<PromptVersionSummaryFragment$key>(
     graphql`
       fragment PromptVersionSummaryFragment on PromptVersion {
@@ -41,7 +42,7 @@ export function PromptVersionSummary(props: {
           width="100%"
         >
           <Flex direction="row" gap="size-100" alignItems="center">
-            <Token color="var(--ac-global-color-blue-900)">
+            <Token color="var(--global-color-blue-900)">
               {version.sequenceNumber}
             </Token>
             <span>{`${version.id}`}</span>
@@ -81,7 +82,7 @@ export function PromptVersionSummary(props: {
                 </Flex>
               )}
               <Text color="text-300" size="XS">
-                {formatRelative(version.createdAt, Date.now())}
+                {formatRelative(version.createdAt, nowEpochMs)}
               </Text>
             </Flex>
           </Flex>
