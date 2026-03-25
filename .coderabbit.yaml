@@ -12,7 +12,7 @@ reviews:
         Structure and navigation:
         - Any new page added under docs/ must also be listed in docs/SUMMARY.md in the correct position in the hierarchy. Flag additions that are missing from SUMMARY.md.
         - Each page should fit under exactly one product pillar (tracing/, evaluation/, datasets-and-experiments/, prompt-engineering/, retrieval/, inferences/, settings/). Flag pages that seem misplaced or duplicate content already covered in another section.
-        - Watch for drift between parallel sections: docs/llm-evals/ vs evaluation/llm-evals/, use-cases/ vs use-cases-evals/, inferences/ vs newer datasets docs. Flag if a PR touches one without updating the other.
+        - Watch for drift between parallel sections: docs/llm-evals/ vs docs/evaluation/llm-evals/, docs/use-cases/ vs docs/use-cases-evals/, docs/inferences/ vs newer datasets docs. Flag if a PR touches one without updating the other.
 
         GitBook syntax:
         - GitBook-specific blocks ({% tabs %}, {% tab %}, {% embed %}, {% hint %}, <figure>) must be properly closed and correctly nested. Flag any malformed blocks.
