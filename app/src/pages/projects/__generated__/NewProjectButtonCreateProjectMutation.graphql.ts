@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<15bdec60adef86473284d31b8926cc62>>
+ * @generated SignedSource<<db33516f1cd9fd3d700aebc46d13c84f>>
  * @lightSyntaxTransform
  * @nogrep
  */
@@ -15,13 +15,12 @@ export type CreateProjectInput = {
   gradientStartColor?: string | null;
   name: string;
 };
-export type ManualProjectGuideCreateProjectMutation$variables = {
+export type NewProjectButtonCreateProjectMutation$variables = {
   input: CreateProjectInput;
 };
-export type ManualProjectGuideCreateProjectMutation$data = {
+export type NewProjectButtonCreateProjectMutation$data = {
   readonly createProject: {
     readonly project: {
-      readonly createdAt: string;
       readonly gradientEndColor: string;
       readonly gradientStartColor: string;
       readonly id: string;
@@ -39,9 +38,9 @@ export type ManualProjectGuideCreateProjectMutation$data = {
     };
   };
 };
-export type ManualProjectGuideCreateProjectMutation = {
-  response: ManualProjectGuideCreateProjectMutation$data;
-  variables: ManualProjectGuideCreateProjectMutation$variables;
+export type NewProjectButtonCreateProjectMutation = {
+  response: NewProjectButtonCreateProjectMutation$data;
+  variables: NewProjectButtonCreateProjectMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -103,13 +102,6 @@ v3 = [
             "args": null,
             "kind": "ScalarField",
             "name": "gradientEndColor",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "createdAt",
             "storageKey": null
           }
         ],
@@ -176,7 +168,7 @@ return {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "ManualProjectGuideCreateProjectMutation",
+    "name": "NewProjectButtonCreateProjectMutation",
     "selections": (v3/*: any*/),
     "type": "Mutation",
     "abstractKey": null
@@ -185,20 +177,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*: any*/),
     "kind": "Operation",
-    "name": "ManualProjectGuideCreateProjectMutation",
+    "name": "NewProjectButtonCreateProjectMutation",
     "selections": (v3/*: any*/)
   },
   "params": {
-    "cacheID": "66adc44a362691c6f6552bd469443fc9",
+    "cacheID": "c05cdc005a38ad4285300f8f895ed799",
     "id": null,
     "metadata": {},
-    "name": "ManualProjectGuideCreateProjectMutation",
+    "name": "NewProjectButtonCreateProjectMutation",
     "operationKind": "mutation",
-    "text": "mutation ManualProjectGuideCreateProjectMutation(\n  $input: CreateProjectInput!\n) {\n  createProject(input: $input) {\n    project {\n      id\n      name\n      gradientStartColor\n      gradientEndColor\n      createdAt\n    }\n    query {\n      projects(first: 50) {\n        edges {\n          node {\n            id\n            name\n          }\n        }\n      }\n    }\n  }\n}\n"
+    "text": "mutation NewProjectButtonCreateProjectMutation(\n  $input: CreateProjectInput!\n) {\n  createProject(input: $input) {\n    project {\n      id\n      name\n      gradientStartColor\n      gradientEndColor\n    }\n    query {\n      projects(first: 50) {\n        edges {\n          node {\n            id\n            name\n          }\n        }\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "da1e5f68e9954a2618ba7de1fb86921c";
+(node as any).hash = "e39b2dd1009edc14856a735fd1b9d01b";
 
 export default node;
